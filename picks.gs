@@ -728,15 +728,28 @@ function processConfigurationSubmission(formObject) {
     }
   
     let modes = ['survivor','eliminator'];
+    let week;
     for (const type in modes) {
       if (configToSave[`${modes[type]}Include`]) {
-        if (previousConfig[`${modes[type]}StartWeek`] > configToSave[`${modes[type]}StartWeek`]) {
-          Logger.log(`Previous configuration for ${type} started in week ${previousConfig[modes[type]+'StartWeek']} and new setting has moved that to ${configToSave[modes[type]+'StartWeek']}`);
-          configToSave[`${modes[type]}Done`] = false;
-        } else if (!configToSave[`${modes[type]}Done`]) {
-          configToSave[`${modes[type]}Done`] = false;
+        week = week || fetchWeek();
+        if (parseInt(previousConfig[`${modes[type]}StartWeek`]) < parseInt(configToSave[`${modes[type]}StartWeek`])) {
+          if (parseInt(configToSave[modes[type]+'StartWeek']) < week) {
+            SpreadsheetApp.getUi().alert(`⚠️ ${type.toUpperCase()} START WEEK ISSUE!`, `You set your ${type} pool to week ${configToSave[modes[type]+'StartWeek']}, which is prior to this week (${week}). Please update to restart the pool`,SpreadsheetApp.getUi().ButtonSet.OK)
+            configToSave[`${modes[type]}Active`] = false;
+          }
+          if (parseInt(configToSave[modes[type]+'StartWeek']) == week ) {
+            Logger.log(`✅ New start week for ${type} pool is in the future, will start in week ${configToSave[modes[type]+'StartWeek']} (formerly started in week ${previousConfig[`${modes[type]}StartWeek`]})`);
+          } else {
+            Logger.log(`⚠️ New start week for ${type} pool is this week; ensure new form is generated with this change if one exists! (formerly started in week ${previousConfig[`${modes[type]}StartWeek`]})`);
+          }
+          configToSave[`${modes[type]}Active`] = true;
+        } else if (!configToSave[`${modes[type]}Active`]) {
+          configToSave[`${modes[type]}Active`] = false;
         }
-      } 
+      }
+      if ( configToSave[`${modes[type]}Include`] && !previousConfig[`${modes[type]}Include`] ) {
+        configToSave[`${modes[type]}Active`] = true;
+      }
     }
 
     if (!configToSave.year) configToSave.year = fetchYear();
@@ -3659,14 +3672,14 @@ function createNewFormForWeek(gamePlan) {
   let warnings = [];
   if (forms[week]) {
     if (forms[week].formId) {
-      warnings.push("An existing form for this week will be deleted.\n\nAny associated responses in the database file will be archived.");
+      warnings.push("An existing form for this week will be sent to your trash folder.\n\nAny associated responses in the database file will be archived.");
     }
   }
 
   // 2. User Confirmation (if necessary)
   if (warnings.length > 0) {
-    const message = "WARNING:\n\n" + warnings.join("\n") + "\n\nAre you sure you want to proceed?";
-    const response = ui.alert(message, ui.ButtonSet.YES_NO);
+    const message = warnings.join("\n") + "\n\nAre you sure you want to proceed?";
+    const response = ui.alert(`⚠️ WARNING!`,message,ui.ButtonSet.YES_NO);
     if (response !== ui.Button.YES) {
       throw new Error("Form creation canceled by user.");
     }
@@ -3717,9 +3730,20 @@ function createNewFormForWeek(gamePlan) {
       
       // 7. Setting up synce for form
       try {
-        setFormSubmitTrigger(newFormDetails.formId, true) 
+        setFormSubmitTrigger(newFormDetails.formId, true)
       } catch (err) {
-        Logger.log(`Could not set up trigger for new week ${week} form: ${err.stack}`);
+        Logger.log(`⚠️ Could not set up trigger for new week ${week} form: ${err.stack}`);
+      }
+
+      // 8. Setting up onEdit trigger if includes pool questions
+      try {
+        if (newFormDetails.survivorInclude || newFormDetails.eliminatorInclude) {
+          createOnEditTrigger();
+          Logger.log(`✅ Created onEdit trigger to continue updates to contests.`);
+        }
+      } catch (err) {
+        Logger.log(`⚠️ Error setting onEdit trigger for pools. Try again manually or get help.`)
+        ss.toast(`Issue setting an onEdit trigger for the contest pools, please try manually or reach out for help.`,`⚠️ ON EDIT TRIGGER ERROR`)
       }
       
       showFormActionsDialog(newFormsData, week);
@@ -3852,6 +3876,13 @@ function getFormsFolder(groupName) {
   return newFolder;
 }
 
+function checkCONFIGDATA() {
+  const formsData = JSON.parse(PropertiesService.getDocumentProperties().getProperty('configuration'));
+  Logger.log(Object.keys(formsData).length);
+  Logger.log(JSON.stringify(formsData.survivorActive));
+  Logger.log(JSON.stringify(formsData.eliminatorActive));
+  Logger.log(JSON.stringify(formsData));
+}
 /**
  * Takes a final, validated "game plan" and builds a Google Form.
  * This function is now modular and uses the ID-based members object.
@@ -3860,13 +3891,13 @@ function getFormsFolder(groupName) {
  * @returns {Object} An object with the new form's ID and URLs.
  */
 function buildFormFromGamePlan(gamePlan) {
+  const ss = fetchSpreadsheet();
   try {
     // --- Setup and Variable Initialization ---
-    const ss = fetchSpreadsheet();
     const docProps = PropertiesService.getDocumentProperties();
     const config = JSON.parse(docProps.getProperty('configuration'));
     const formsData = JSON.parse(docProps.getProperty('forms'));
-    const memberData = JSON.parse(docProps.getProperty('members'));
+    let memberData = JSON.parse(docProps.getProperty('members'));
     const week = parseInt(gamePlan.week, 10);
     const formName = gamePlan.formName;
 
@@ -3896,23 +3927,21 @@ function buildFormFromGamePlan(gamePlan) {
 
     // ESTABLISH ALL STATES
     const pickems = config.pickemsInclude;
-    const pickemsAts = gamePlan.pickmesAts;
 
-    let survivor = gamePlan.survivorInclude;
-    const survivorAts = gamePlan.survivorAts;
     const survivorStart = parseInt(config.survivorStartWeek,10) == week;
+    let survivor = config.survivorInclude && week >= parseInt(config.survivorStartWeek,10);
     
-    let eliminator = gamePlan.eliminatorInclude;
-    const eliminatorAts = gamePlan.eliminatorAts;
     const eliminatorStart = parseInt(config.eliminatorStartWeek,10) == week;
+    let eliminator = config.eliminatorInclude && week >= parseInt(config.eliminatorStartWeek,10);
 
     const hasMembers = memberData.memberOrder && memberData.memberOrder.length > 0;
-    const firstWeek = (forms ? (Object.keys(forms).length > 0 ? false : true) : true);
-    ss.toast(`No other forms detected, assuming this week (${week}) is the start of your group`,`🚀 START WEEK DETECTED`);
-    Logger.log(`🚀 No other forms detected, assuming this week (${week}) is the start of your group`);
-
+    const firstWeek = formsData ? (Object.keys(formsData).length > 0 ? false : true) : true;
+    if (firstWeek) {
+      ss.toast(`No other forms detected, assuming this week (${week}) is the start of your group`,`🚀 START WEEK DETECTED`);
+      Logger.log(`🚀 No other forms detected, assuming this week (${week}) is the start of your group`);
+    }
     // FORM BUILDING ROUTER
-    
+
     /// 1. NAME QUESTION
     let nameQuestion, welcomeHeader;
     // In the event of no members, we shift away from name choices and simply create a text box for name entry to start the pool up
@@ -3932,7 +3961,7 @@ function buildFormFromGamePlan(gamePlan) {
     }
     if (firstWeek || week == 1) {
       welcomeHeader = form.addSectionHeaderItem()
-        .setTitle(`Welcome to the ${config.year} ${LEAGUE} season!`)
+        .setTitle(`👋 Welcome to the ${config.year} ${LEAGUE} season!`)
       if (config.welcomeLetter) {
         welcomeHeader.setHelpText(config.welcomeLetter);
       }
@@ -3944,7 +3973,7 @@ function buildFormFromGamePlan(gamePlan) {
       // 1. Add a Section Header to act as the title for this part of the form.
       form.addSectionHeaderItem().setTitle("🏈 Weekly Pick 'Em Selections");
       // 2. If ATS is enabled for Pick'em, add a very clear instructional message.
-      if (pickemsAts) {
+      if (config.pickemsAts) {
         form.addSectionHeaderItem()
           .setTitle('🔢 Instructions: Pick Against the Spread (ATS)')
           .setHelpText('For each game, select the team you believe will win WITH the point spread. The point spread is listed in the help text of each question.');
@@ -3955,8 +3984,6 @@ function buildFormFromGamePlan(gamePlan) {
       Logger.log(`❌ No pick 'ems pool active, moving on to survivor/eliminator`)
     }
 
-    const submitPage = form.addPageBreakItem().setGoToPage(FormApp.PageNavigationType.SUBMIT);
-    
     // --- Build Survivor/Eliminator Pages ---
     const pageDestinations = {}; // Will map memberId -> destination page
     
@@ -3966,165 +3993,136 @@ function buildFormFromGamePlan(gamePlan) {
       Logger.log(`🔹${member.name} Data\nSurvivor Lives: ${member.sL}\nEliminator Lives: ${member.eL}`);
     });
 
-    const survivorIsActive = !config.survivorDone && config.survivorInclude && week >= config.survivorStartWeek;
-    const eliminatorIsActive = !config.eliminatorDone && config.eliminatorInclude && week >= config.eliminatorStartWeek;
-
-
-    let firstWeekContestPage = null;
-    if (week === parseInt(config.survivorStartWeek, 10) || week === parseInt(config.eliminatorStartWeek, 10)) {
-      // Create ONE common page for all existing users for the first week.
-      firstWeekContestPage = form.addPageBreakItem().setTitle('Contest Picks');
-      firstWeekContestPage.setGoToPage(FormApp.PageNavigationType.SUBMIT);
-      
-      if (survivorIsActive && week === parseInt(config.survivorStartWeek, 10)) {
-        addContestQuestion(form, 'survivor', {}, config.survivorAts,config.survivorStartWeek, gamePlan); // Pass empty member object
-      }
-      if (eliminatorIsActive && week === parseInt(config.eliminatorStartWeek, 10)) {
-        addContestQuestion(form, 'eliminator', {}, config.eliminatorAts,config.eliminatorStartWeek, gamePlan); // Pass empty member object
-      }
+    let singlePageForm = false, submitPage, memberNames = [], nameChoices = [], eligibleMembers = [];
+    if (hasMembers) {
+      submitPage = form.addPageBreakItem().setGoToPage(FormApp.PageNavigationType.SUBMIT);
+    } else {
+      singlePageForm = true;
+      Logger.log(`📃 Single Page form being deployed -- no members to allow for selection.`);
     }
-
-    if (week > 1) {
-      const sLivesIndex = week - 2; // e.g., for Week 2, check index 0.
-      const eLivesIndex = week - 2;
-      const sLS = config.survivorLives;
-      const eLS = config.eliminatorLives;
+    const contests = (survivor && eliminator) ? 2 : (survivor || eliminator ? 1 : 0);
+    if (contests > 0) {
+      for (let a = config.survivorStart; a < week; a++) {
+        evalSurvElimStatus(a);
+      }
+      let survivorMembers = 0, eliminatorMembers = 0;
       let allSurvivorTeamsForWeek = buildTeamList(gamePlan, config, config.survivorAts);
-      let allEliminatorTeamsForWeek = buildTeamList(gamePlan, config, config.eliminatorAts)
-      // 1. First, find members active in BOTH contests and create their combined page.
-      if (survivorIsActive && eliminatorIsActive) {
+      let allEliminatorTeamsForWeek = buildTeamList(gamePlan, config, config.eliminatorAts);
+      if (((survivor && week === parseInt(config.survivorStartWeek, 10)) && (eliminator && week === parseInt(config.eliminatorStartWeek, 10))) ||
+          (survivor && week === parseInt(config.survivorStartWeek, 10) && !eliminator) ||
+          (eliminator && week === parseInt(config.eliminatorStartWeek, 10) && !survivor)) {
+        // Create ONE common page for all existing users for the first week.
+        form.addSectionHeaderItem().setTitle(`🏆 Contest Pick${survivor && eliminator ? 's' : ''}`);
+        if (survivor) {
+          addContestQuestion(form, 'survivor', {}, config.survivorAts, config.survivorStartWeek, allSurvivorTeamsForWeek, survivorStart); // Pass empty member object
+        }
+        if (eliminator) {
+          addContestQuestion(form, 'eliminator', {}, config.eliminatorAts, config.eliminatorStartWeek, allEliminatorTeamsForWeek, eliminatorStart); // Pass empty member object
+        }
+        Logger.log(`1️⃣ First week of contest(s), creating a generic drop-down for included games`);
+        ss.toast(`First week of one of your contests where the other is inactive/absent, created generic question(s).`,`1️⃣ FIRST WEEK FOR CONTEST(S)`);
+      } else {
+        const sLivesIndex = Math.max(0,week - 2); // e.g., for Week 2, check index 0.
+        const eLivesIndex = Math.max(0,week - 2);
+        const sLS = config.survivorLives;
+        const eLS = config.eliminatorLives;
         ss.toast(`Creating questions for members who are in both survivor and eliminator for week ${week}`,`👑&💀 SURVIVOR AND ELIMINATOR`);
         Logger.log('👑&💀 Creating possible destinations for instances where both Survivor and Eliminator are both active')
         memberData.memberOrder.forEach(memberId => {
-          
           const member = memberData.members[memberId];
-          if (member && member.active && member.sL[sLivesIndex] > 0 && member.eL[eLivesIndex] > 0) {
-            let survivorHelp = sLS == 1 ? `One Survivor Life: ${createLivesString(member.sL[sLivesIndex],sLS)}` : `Survivor Lives: ${createLivesString(member.sL[sLivesIndex],sLS)} (${member.sL[sLivesIndex] < sLS ? member.sL[sLivesIndex] + ' remaining' : 'all remaining'})`;
-            let eliminatorHelp = eLS == 1 ? `One Eliminator Life: ${createLivesString(member.eL[eLivesIndex],eLS)}` : `Eliminator Lives: ${createLivesString(member.eL[eLivesIndex],eLS)} (${member.eL[eLivesIndex] < eLS ? member.eL[eLivesIndex] + ' remaining' : 'all remaining'})`;
-            const helpText = `${survivorHelp}  |  ${eliminatorHelp}`;
-            const combinedPage = form.addPageBreakItem().setTitle(`${member.name}'s Picks`).setHelpText(helpText);
-            combinedPage.setGoToPage(FormApp.PageNavigationType.SUBMIT);
+          if (member) {
+            let contestIcon, contestText, helpText, survivorHelp, eliminatorHelp, both = false;
+            const member = memberData.members[memberId];
             
-            // Add both questions to this single page
-            addContestQuestion(form, 'survivor', member, config.survivorAts, config.survivorStartWeek, allSurvivorTeamsForWeek);
-            addContestQuestion(form, 'eliminator', member, config.eliminatorAts, config.eliminatorStartWeek, allEliminatorTeamsForWeek);
-            
-            pageDestinations[memberId] = combinedPage; // Assign their destination
-            Logger.log(`👑&💀 Questions for ${member.name} created.`);
+            const survivorStatus = survivor && isMemberEligible(member, 'survivor', week, config);
+            const eliminatorStatus = eliminator && isMemberEligible(member, 'eliminator', week, config);
+        
+            if (survivorStatus || eliminatorStatus) {
+              if (survivorStatus && eliminatorStatus) {
+                contestIcon = `👑&💀`;
+                contestText = `${member.name} is active in SURVIVOR & ELIMINATOR`;
+                survivorMembers++;
+                eliminatorMembers++;
+                both = true;
+              } else if (survivorStatus && eliminator) {
+                contestIcon = `👑`;
+                contestText = `${member.name} is active in SURVIVOR ${contests > 1 ? 'ONLY' : ''}`;
+                survivorMembers++;
+              } else if (eliminatorStatus && survivor) {
+                contestIcon = `💀`;
+                contestText = `${member.name} is active in ELIMINATOR ${contests > 1 ? 'ONLY' : ''}`;
+                eliminatorMembers++;
+              }
+              ss.toast(contestText,`${contestIcon} CREATING CONTEST QUESTION`);
+              Logger.log(`${contestIcon} Creating Customized Page: ${contestText}`);
+              
+              if (survivor) survivorHelp = sLS == 1 ? `One Survivor Life: ${createLivesString(member.sL[sLivesIndex],sLS)}` : `Survivor Lives: ${createLivesString(member.sL[sLivesIndex],sLS)} (${member.sL[sLivesIndex] < sLS ? member.sL[sLivesIndex] + ' remaining' : 'all remaining'})`;
+              if (eliminator) eliminatorHelp = eLS == 1 ? `One Eliminator Life: ${createLivesString(member.eL[eLivesIndex],eLS)}` : `Eliminator Lives: ${createLivesString(member.eL[eLivesIndex],eLS)} (${member.eL[eLivesIndex] < eLS ? member.eL[eLivesIndex] + ' remaining' : 'all remaining'})`;
+              helpText = contests > 1 ? `${survivorHelp}  |  ${eliminatorHelp}` : (survivor ? survivorHelp : eliminatorHelp);
+              
+              const title = `${member.name}'s ${both ? 'Survivor & Eliminator' : (survivorStatus ? 'Survivor' : 'Eliminator')} Pick${both ? 's' : ''}`;
+              
+              const contestPage = form.addPageBreakItem().setTitle(title).setHelpText(helpText).setGoToPage(FormApp.PageNavigationType.SUBMIT);
+              
+              // Add both questions to this single page
+              if (survivorStatus) addContestQuestion(form, 'survivor', member, config.survivorAts, config.survivorStartWeek, allSurvivorTeamsForWeek, survivorStart);
+              if (eliminatorStatus) addContestQuestion(form, 'eliminator', member, config.eliminatorAts, config.eliminatorStartWeek, allEliminatorTeamsForWeek, eliminatorStart);
+    
+              nameChoices.push(nameQuestion.createChoice(member.name, contestPage));
+              
+              Logger.log(`✅ Question${both ? 's' : ''} for ${member.name} created.`);
+            } else {
+              Logger.log(`❌ ${member.name} Is out or ineligible for ${heading.toLowerCase()}.`)
+              nameChoices.push(nameQuestion.createChoice(member.name, submitPage));
+            }
+          } else {
+            Logger.log(`⚠️ Invalid member! (ID: ${memberId})`)
           }
-          
         });
       }
-      ss.toast(`Created questions for members who are in both survivor and eliminator for week ${week}`,`✅&✅ SURVIVOR/ELIMINATOR DONE`);
-      ss.toast(`✅&✅ Created questions for members who are in both survivor and eliminator for week ${week}`);
-      // 2. Next, handle members active in ONLY ONE contest.
-      
-      let text = `questions for members who are in both survivor and eliminator for week ${week}`;
-      let heading = `SURVIVOR OR ELIMINATOR`;
-      let icon = `👑/💀`;
-      let doneIcon = `✅/✅`
-      if (config.survivorInclude && !config.eliminatorInclude) {
-        text = `questions for members who are in survivor for week ${week}`;
-        heading = `SURVIVOR`;
-        icon = `👑`;
-        doneIcon = `✅`
-      } if (!config.survivorInclude && config.eliminatorInclude) {
-        text = `questions for members who are in eliminator for week ${week}`;
-        heading = `ELIMINATOR`;
-        icon = `💀`;
-        doneIcon = `✅`
-      }
-      ss.toast(`Creating ${text}`, `${icon} ${heading}`);
-      Logger.log(`${icon} Creating ${text}`);
+      ss.toast(`Created all contest questions.${survivor ? '\nSurvivor Members: ' + survivorMembers : ''}${eliminator ? '\nEliminator Members: ' +  eliminatorMembers : ''}`,`🔀 MEMBERS ROUTED`);
+      Logger.log(`🔀 Linked all members to their respective pages for navigation... adding new user page if needed.${survivor ? '\nSurvivor Members: ' + survivorMembers : ''}${eliminator ? '\nEliminator Members: ' +  eliminatorMembers : ''}`);
+    } else if (hasMembers) { // Event where contests didn't exist or are over and need to route all members to a submit page instead of contest pages
+      Logger.log(`❌ No survivor or eliminator contest active`);
       memberData.memberOrder.forEach(memberId => {
-        // Skip members we've already handled
-        if (pageDestinations[memberId]) return;
-
         const member = memberData.members[memberId];
-        if (member && member.active) {
-          if (survivorIsActive && member.sL[sLivesIndex] > 0) {
-            const helpText = `Survivor Lives: ${createLivesString(member.sL[sLivesIndex],sLS)} (${member.sL[sLivesIndex]})`;
-            const survivorPage = form.addPageBreakItem().setTitle(`${member.name}'s Survivor Pick`).setHelpText(helpText);
-            survivorPage.setGoToPage(FormApp.PageNavigationType.SUBMIT);
-            addContestQuestion(form, 'survivor', member, config.survivorAts, config.survivorStartWeek, allSurvivorTeamsForWeek);
-            pageDestinations[memberId] = survivorPage;
-            Logger.log(`👑 Question for ${member.name} created.`);
-          } else if (eliminatorIsActive && member.eL[eLivesIndex] > 0) {
-            const helpText = `Eliminator Lives: ${createLivesString(member.eL[eLivesIndex],eLS)} (${member.eL[eLivesIndex]})`;
-            const eliminatorPage = form.addPageBreakItem().setTitle(`${member.name}'s Eliminator Pick`).setHelpText(helpText);
-            eliminatorPage.setGoToPage(FormApp.PageNavigationType.SUBMIT);
-            addContestQuestion(form, 'eliminator', member, config.eliminatorAts, config.eliminatorStartWeek, allEliminatorTeamsForWeek);
-            pageDestinations[memberId] = eliminatorPage;
-            Logger.log(`💀 Question for ${member.name} created.`);
-          } else {
-            Logger.log(`❌ ${member.name} Is out or ineligible for ${heading.toLowerCase()}.`)
-          }
+        if (member) {
+          Logger.log(`➕ Adding name choice option for member ${member.name}.`)
+          nameChoices.push(nameQuestion.createChoice(member.name, submitPage));
+        } else {
+          Logger.log(`❗ Unable to add name choice option for member ${member.name}.`)
+          Logger.log(`❔ Member Data: \n ${JSON.stringify(member)}`)
         }
       });
-      ss.toast(`Created ${text}`, `${doneIcon} ${heading}`);
-      Logger.log(`${doneIcon} Created ${text}`);
+      ss.toast(`Completed form questions and routed all existing members to submit page.`,`🔀 MEMBERS ROUTED`);
+      Logger.log(`🔀 Linked all members to submit page... adding new user page if needed.`);
     }
-    
-    // 3. Finally, build the name dropdown using our new destination map.
-    Logger.log('Creating links to name drop-down based on members enrollment in Survivor and/or Eliminator pools')
-    let nameChoices = [], eligibleMembers = [];
-    memberData.memberOrder.forEach(memberId => {
-      const member = memberData.members[memberId];
-      if (member && member.active) {
-        let destination;
-        let isEligible = false;
 
-        // [THE FIX B] Determine eligibility and destination
-        if (week === parseInt(config.survivorStartWeek, 10) || week === parseInt(config.eliminatorStartWeek, 10)) {
-          // It's the first week, everyone is eligible and goes to the common page.
-          isEligible = survivorIsActive || eliminatorIsActive;
-          destination = isEligible ? firstWeekContestPage : submitPage;
-        } else {
-          // For later weeks, use the page map created by your individual page logic.
-          destination = pageDestinations[memberId] || submitPage;
-          isEligible = (destination !== submitPage);
-        }
-
-        if (isEligible || pickems) {
-          nameChoices.push(nameQuestion.createChoice(member.name, destination));
-          eligibleMembers.push(member.name);
-        }
-
-        // // A member is eligible for the dropdown if they have a custom page OR if pick'em is enabled.
-        // if (destination !== submitPage || pickems) {
-        //   nameChoices.push(nameQuestion.createChoice(member.name, destination));
-        //   eligibleMembers.push(member.name);
-        // }
-      }
-    });
-    if (nameChoices.length === 0 && config.membershipLocked) {
-      // Throw a user-friendly error instead of letting the script crash.
-      throw new Error("Form creation failed: No members are eligible to make picks for this week, and membership is locked.");
-    }
-    
-    ss.toast(`Linked all members to their respective pages for navigation`,`🔀 MEMBERS ROUTED`);
-    Logger.log(`🔀 Linked all members to their respective pages for navigation`);
     // Add 'New User' option if applicable
     if (!config.membershipLocked) {
       const text = 'Membership is unlocked--creating a new user question';
       Logger.log('🔓 '+ text);
       ss.toast(text,'🔓 MEMBERSHIP UNLOCKED')
-      const newUserPage = buildNewUserPage(ss, form, config, gamePlan);
-      nameChoices.unshift(nameQuestion.createChoice(('✏️ NEW USER'), newUserPage));
+      if (!singlePageForm) {
+        const newUserPage = buildNewUserPage(ss, form, config, gamePlan, survivor, eliminator, survivorStart, eliminatorStart);
+        nameChoices.unshift(nameQuestion.createChoice(('✏️ NEW USER'), newUserPage));
+      }
     } else {
       const text = 'Membership is locked--no new user question added';
       Logger.log('🔓 '+ text);
       ss.toast(text,'🔒 MEMBERSHIP LOCKED')
     }
     
-    if (nameChoices.length === 0) {
+    if (!singlePageForm) { // If single page form there is only a text entry field and a submit button on bottom.
+      if (nameChoices.length === 0) { // Check for failure to make name choices - probably unnecessary now
         nameChoices.push(nameQuestion.createChoice("No members eligible", submitPage));
         form.setDescription(`⚠️ Warning: No members are currently eligible to make picks. Please check Member Management or unlock membership.`);
+      } else {
+        Logger.log('📝 Setting Name Choices');
+        nameQuestion.setChoices(nameChoices);
+        ss.toast('Set all choices for name question drop-down','📝 NAME CHOICES SET');
+      }
     }
-
-    Logger.log('📝 Setting Name Choices');
-    nameQuestion.setChoices(nameChoices);
-    ss.toast('Set all choices for name question drop-down','📝 NAME CHOICES SET');
 
     // --- Final Touches ---
     Logger.log('↩️ Returning information to form creation controller...');
@@ -4138,10 +4136,11 @@ function buildFormFromGamePlan(gamePlan) {
       editUrl: urlFormEdit,
       publishedUrl: urlFormPub,
       eligibleMembers: eligibleMembers,
-      survivorInclude: survivorIsActive,
-      eliminatorInclude: eliminatorIsActive
+      survivorInclude: survivor,
+      eliminatorInclude: eliminator
     };
   } catch (err) {
+    ss.toast(`Encountered an issue during the creation of the form. Check logs for details: ${err.stack}`,`❗ ERROR CREATING FORM`)
     Logger.log(`❗ Encountered an issue during the creation of the form: ${err.stack}`)
     Logger.log(`❌ Deleting form if it was created somewhere during the process...`);
     try {
@@ -4176,7 +4175,6 @@ function isMemberEligible(member, contestType, week, config) {
   }
 }
 
-
 /**
  * Form has a back-end database that stores its responses immediately for faster fetching.
  * This document ensures that the pool members don't see the responses until they've been imported
@@ -4195,8 +4193,6 @@ function formDatabaseLinking(week,form,databaseSheet,ss) {
       // Get the initial count of sheets before linking
       const initialSheets = databaseSheet.getSheets();
       const initialSheetNames = initialSheets.map(sheet => sheet.getName());
-      Logger.log(databaseSheetId);
-      Logger.log(getDatabaseSheet().getId())
       // Set the form's destination. This creates a new sheet in the spreadsheet.
       form.setDestination(FormApp.DestinationType.SPREADSHEET, databaseSheetId);
       let waitPeriod = 1;
@@ -4289,8 +4285,8 @@ function formDatabaseLinking(week,form,databaseSheet,ss) {
       // Now safely rename the newly linked sheet
       newResponseSheet.setName(newSheetName);
       newResponseSheet.activate(); // Brings the new tab to the front
-      Logger.log(`Successfully linked form and renamed response sheet to '${newSheetName}'.`);
-      ss.toast(`Backend database new response sheet found and renamed to WK${week}`,`✅ DATABASE LINKED`);
+      Logger.log(`🔗 Successfully linked form and renamed response sheet to '${newSheetName}'.`);
+      ss.toast(`Backend database new response sheet found and renamed to WK${week}`,`🔗 DATABASE LINKED`);
       return { status: 'success'};
     } catch (err) {
       // If linking fails, delete the form to avoid orphans
@@ -4308,33 +4304,35 @@ function formDatabaseLinking(week,form,databaseSheet,ss) {
 /**
  * Adds a single, correctly filtered contest question to the form.
  */
-function addContestQuestion(form, contestType, member, isAts, startWeek, allTeamsForWeek) {
-  const startIndex = (parseInt(startWeek, 10) || 1) - 1;
-  const picksKey = contestType === 'survivor' ? 'sP' : 'eP';
-  const allMemberPicks = member[picksKey] || [];
-  const relevantPicks = allMemberPicks.slice(startIndex).filter(team => {
-    const teamAbbr = team.split(' ')[0];
-    return teamAbbr;
-  });
-  
-  const availableTeams = allTeamsForWeek.filter(team => {
-    const teamAbbr = team.split(' ')[0];
-    return !relevantPicks.includes(teamAbbr);
-  });
-  
-  if (!isFirstWeek) {
+function addContestQuestion(form, contestType, member, isAts, startWeek, allTeamsForWeek, isStart) {
+  let availableTeams = [];
+  if (isStart) {
+    availableTeams = [...allTeamsForWeek];
+  } else {
+    const startIndex = (parseInt(startWeek, 10) || 1) - 1;
     const picksKey = contestType === 'survivor' ? 'sP' : 'eP';
     const allMemberPicks = member[picksKey] || [];
-    const startWeek = config[`${contestType.toLowerCase()}StartWeek`] || 1;
-    const relevantPicks = allMemberPicks.slice(startWeek - 1);
-    availableTeams = allTeamsForWeek.filter(team => !relevantPicks.includes(team.split(' ')[0]));
+    const relevantPicks = allMemberPicks.slice(startIndex).filter(team => {
+      const teamAbbr = team.split(' ')[0];
+      return teamAbbr;
+    });
+    
+    availableTeams = allTeamsForWeek.filter(team => {
+      const teamAbbr = team.split(' ')[0];
+      return !relevantPicks.includes(teamAbbr);
+    });
+  }
+  if (availableTeams.length === 0) {
+    Logger.log(`Member has already selected all available teams for this week of the formerly available ${allTeamsForWeek.length}. Group owner should adjust form`);
+    SpreadsheetApp.getUi().alert(`One of your members has no avaialble options for your current form selections of games to include. Please re-run the form builder and select more games.`);
+    availableTeams = ['NO OPTIONS'];
   }
 
-  const baseTitle = (contestType === 'survivor' ? '👑 ' : '💀 ') + capitalize(contestType) + (contestType === 'eliminator' ? ' Loser' + (isAts ? ' ATS' : '') + ' Pick' : ' Winner' + (isAts ? ' ATS' : '') + ' Pick');
-  const uniqueTitle = `${baseTitle} (${member.name})`;
+  let title = (contestType === 'survivor' ? '👑 ' : '💀 ') + capitalize(contestType) + (contestType === 'eliminator' ? ' Loser' + (isAts ? ' ATS' : '') + ' Pick' : ' Winner' + (isAts ? ' ATS' : '') + ' Pick');
+  if (member.name) title += ` (${member.name})`;
   const helpText = `Select which team you believe will ${isAts ? (contestType === 'survivor' ? 'WIN' : 'LOSE') + ' when factoring in the given spread' : (contestType === 'survivor' ? 'WIN' : 'LOSE') + ' this week'}.`;
   form.addListItem()
-    .setTitle(uniqueTitle)
+    .setTitle(title)
     .setHelpText(helpText)
     .setChoiceValues(availableTeams)
     .setRequired(true);
@@ -4350,10 +4348,10 @@ function buildPickemQuestions(ss, form, gamePlan, config) {
     let item = form.addMultipleChoiceItem();
     const evening = game.hour >= 17;
     const mnf = evening && game.dayName === "Monday";
-    let title = `${game.awayTeamLocation} ${game.awayTeamName} at ${game.homeTeamLocation} ${game.homeTeamName}${game.divisional == 1 ? ' ('+game.division+' Divisional Game)':''}`;
+    let title = `${game.awayTeamLocation} ${game.awayTeamName} at ${game.homeTeamLocation} ${game.homeTeamName}${game.divisional == 1 && game.division ? ' ('+game.division+' Divisional Game)':''}`;
     let helpText = `${mnf ? 'Monday Night Football' : game.dayName} at ${formatTime(game.hour, game.minute)}`;
-    if (config.pickemsAts && game.spread) helpText += `  |  Spread: ${game.spread}`;
-    if (game.bonus > 1) title += ` (${game.bonus}x Bonus)`;
+    if (config.pickemsAts && game.spread) helpText += `  | ↔️ Spread: ${game.spread}`;
+    if (game.bonus > 1) title += ` (${game.bonus == 3 ? '3️⃣' : '2️⃣'}x Bonus)`;
     if (config.tiebreakerInclude) {
       tiebreakerMatchup = `${game.awayTeamLocation} ${game.awayTeamName} at ${game.homeTeamLocation} ${game.homeTeamName}`;
       tiebreakerOverUnder = game.overUnder;
@@ -4403,58 +4401,57 @@ function buildPickemQuestions(ss, form, gamePlan, config) {
  * @param {Object} gamePlan The game plan for the current week.
  * @returns {PageBreakItem} The created page break item for navigation.
  */
-function buildNewUserPage(ss, form, config, gamePlan) {
+function buildNewUserPage(ss, form, config, gamePlan, survivor, eliminator, survivorStart, eliminatorStart) {
   // 1. Create the page break and set its final destination.
-  const newUserPage = form.addPageBreakItem().setTitle('New User Signup');
+  const newUserPage = form.addPageBreakItem();
   newUserPage.setGoToPage(FormApp.PageNavigationType.SUBMIT);
+  
+  // --- [THE NEW LOGIC] ---
+  // 3. Conditionally add contest questions directly to this page.  
+  contests = 0;
+  if ((survivor && survivorStart) || (eliminator && eliminatorStart)) {
+    form.addSectionHeaderItem().setTitle(`🏆 Contest Pick${(survivor && survivorStart) && (eliminator && eliminatorStart) ? 's' : ''}`);
+  }
+  if (survivor) {
+    if (survivorStart) {
+      Logger.log(`👑 NEW USER: Eligible for survivor start week (${gamePlan.week}), adding queston...`);
+      let allSurvivorTeamsForWeek = buildTeamList(gamePlan, config, config.survivorAts);
+      addContestQuestion(form, 'survivor', {}, config.survivorAts, config.survivorStartWeek, allSurvivorTeamsForWeek, survivorStart); // Pass empty member object
+      ss.toast(`Generated new user survivor question`,`👑 NEW USER SURVIVOR`);
+      contests++;
+    } else {
+      Logger.log(`👑 NEW USER: Ineligible for survivor start week (${gamePlan.week})`);
+    }
+  } else {
+    Logger.log(`👑 NEW USER: No eliminator pool present`);
+  }
+
+  if (eliminator) {
+    if (eliminatorStart) {
+      Logger.log(`💀 NEW USER: Eligible for eliminator start week (${gamePlan.week}), adding queston...`);
+      let allEliminatorTeamsForWeek = buildTeamList(gamePlan, config, config.eliminatorAts);
+      addContestQuestion(form, 'eliminator', {}, config.eliminatorAts, config.eliminatorStartWeek, allEliminatorTeamsForWeek, eliminatorStart); // Pass empty member object
+      ss.toast(`Generated new user eliminator question`,`💀 NEW USER ELIMINATOR`);
+      contests++;
+    } else {
+      Logger.log(`💀 NEW USER: Ineligible for eliminator start week (${gamePlan.week})`);
+    }
+  } else {
+    Logger.log(`💀 NEW USER: No eliminator pool present`);
+  }
+
+  if (contests > 0) {
+    form.addSectionHeaderItem().setTitle('✏️ Name Entry');
+    newUserPage.setTitle('New User Contest Entry & Signup')
+  } else {
+    newUserPage.setTitle('New User Signup')
+  }
 
   form.addTextItem()
     .setTitle('Enter Your Name')
     .setHelpText('Please enter your name as it will appear in the pool.')
     .setRequired(true)
     .setValidation(nameValidation);
-  
-  // --- [THE NEW LOGIC] ---
-  // 3. Conditionally add contest questions directly to this page.  
-  
-  // Check if it's the first week for the Survivor pool
-  const survivorIsActiveFirstWeek = !config.survivorDone && config.survivorInclude && gamePlan.week == config.survivorStartWeek;
-  if (survivorIsActiveFirstWeek) {
-    Logger.log(`👑 New user section ELIGIBLE for survivor start week (${gamePlan.week}), adding queston...`);
-    const sLS = config.survivorLives;
-    const isAts = config.survivorAts;
-    let survivorHelp = `Select the team you believe will WIN${isAts ? ' AGAINST THE SPREAD':''}.  |  `;
-    survivorHelp += sLS == 1 ? `One Survivor Life: ${createLivesString(sLS)}` : `Survivor Lives: ${createLivesString(sLS)} (all remaining)`;    
-    const allTeamsForWeek = buildTeamList(gamePlan, config, isAts);
-    form.addListItem()
-      .setTitle(`Survivor ${isAts ? "ATS" : "" } Pick`)
-      .setHelpText(survivorHelp)
-      .setChoiceValues(allTeamsForWeek)
-      .setRequired(true);
-    ss.toast(`Generated new user survivor question`,`👑 NEW USER SURVIVOR`);
-  } else {
-    Logger.log(`👑 New user section INELIGIBLE for survivor start week (${gamePlan.week})`);
-  }
-
-  // Check if it's the first week for the Eliminator pool
-  const eliminatorIsActiveFirstWeek = !config.eliminatorDone && config.eliminatorInclude && gamePlan.week == config.eliminatorStartWeek;
-  if (eliminatorIsActiveFirstWeek) {
-    Logger.log(`💀 New user section ELIGIBLE for eliminator start week (${gamePlan.week}), adding queston...`);
-    const eLS = config.eliminatorLives;
-    const isAts = config.eliminatorAts;
-    let eliminatorHelp = `Select the team you believe will LOSE${isAts ? ' AGAINST THE SPREAD':''}.  |  `;
-    eliminatorHelp += eLS == 1 ? `One Eliminator Life: ${createLivesString(eLS)}` : `Eliminator Lives: ${createLivesString(eLS)} (all remaining)`;    
-    const allTeamsForWeek = buildTeamList(gamePlan, config, isAts);
-    form.addListItem()
-      .setTitle(`Eliminator ${isAts ? "ATS" : "" } Pick`)
-      .setHelpText(eliminatorHelp)
-      .setChoiceValues(allTeamsForWeek)
-      .setRequired(true);
-    ss.toast(`Generated new user eliminator question`,`💀 NEW USER ELIMINATOR`);
-  } else {
-    Logger.log(`💀 New user section INELIGIBLE for eliminator start week (${gamePlan.week})`);
-  }
-  
   // 4. Return the page break item so the main function can use it for navigation.
   return newUserPage;
 }
@@ -4865,14 +4862,14 @@ function executePickImport(week, importOnlyStartedGames) {
       });
       // --- Prepare Data for Writing (Unchanged) ---
       const picksRange = ss.getRangeByName(`${LEAGUE}_PICKS_${week}`);
-      let tiebreakers;
+      let tiebreakerRange, tiebreakers;
       if (config.tiebreakerInclude) {
-        const tiebreakerRange = ss.getRangeByName(`${LEAGUE}_TIEBREAKER_${week}`);
+        tiebreakerRange = ss.getRangeByName(`${LEAGUE}_TIEBREAKER_${week}`);
         if (tiebreakerRange) tiebreakers = tiebreakerRange.getValues();
       }
-      let comments;
+      let commentRange, comments;
       if (!config.commentsExclude) {
-        const commentRange = ss.getRangeByName(`COMMENTS_${week}`);
+        commentRange = ss.getRangeByName(`COMMENTS_${week}`);
         if (commentRange) comments = commentRange.getValues();
       }
       
@@ -4920,8 +4917,8 @@ function executePickImport(week, importOnlyStartedGames) {
       
       // --- 4. Write Data Back to the Sheet (Unchanged) ---
       picksRange.setValues(picksData);
-      if (!importOnlyStartedGames) tiebreakerRange.setValues(tiebreakers);
-      commentRange.setValues(comments);
+      if (!importOnlyStartedGames && config.tiebreakerInclude) tiebreakerRange.setValues(tiebreakers);
+      if (!config.commentsExclude) commentRange.setValues(comments);
       const text = `Successfully imported Pick 'Em data into week '${week}' sheet.`;
       Logger.log(`✅ ${text}`);
       ss.toast(text,`✅ PICK 'EMS IMPORTED`)
@@ -5429,10 +5426,7 @@ function updateSurvElimSheet(ss, config, memberData, contestType) {
   livesRange.setValues(newLivesData);
   revivesRange.setValues(newRevivesData);
   eliminatedRange.setValues(newEliminatedData);
-  if (config[`${contestType}Done`] != done) {
-    config[`${contestType}Done`] = done;
-    saveProperties('configuration',config);
-  }
+
   Logger.log(`✅ Successfully updated '${sheetName}' sheet.`);
 }
 
@@ -5768,14 +5762,26 @@ function processContest(ss, week, contestType, memberData, outcomeMap, config) {
     if (livesAtStartOfWeek > 0 && livesAtEndOfWeek == 0) poolMembersEliminated.push(names[rowIndex]);
 
   });
-  if (poolLives > 0) {
-    Logger.log(`${contestType} remaining pool lives: ${poolLives}`);
-  } else {
-    Logger.log(`${contestType} POOL COMPLETED! The final members who were eliminated were ${poolMembersEliminated}.`);
-    let finalMembersString = `🔹` + poolMembersEliminated.join(`\n🔹 `);
+
+  let completionString;
+  if (poolMembers.length > 1) {
+    Logger.log(`🧮 ${contestType} remaining pool lives: ${poolLives}`);
+    config[`${contestType.toLowerCase()}Active`] = true;
+  } else if (poolMembers.length <= 1) {
+    if ( poolMembers.length == 1) {
+      Logger.log(`🏆 ${contestType} POOL COMPLETED! The final member standing was ${poolMembers[0]}!`);
+      completionString = `🏆 ${poolMembers} is the sole remaining ${contestType.toUpperCase()} CHAMPION!`;
+    } else {
+      Logger.log(`🏆 ${contestType} POOL COMPLETED! The final members who were eliminated were ${poolMembersEliminated}.`);
+      completionString = `The following members were eliminated in the previous week as the last standing participants:\n🔹` + poolMembersEliminated.join(`\n🔹 `);
+    }
     const ui = fetchUi();
-    ui.alert(`Your ${contestType.toLowerCase()} pool was completed this week with the following members as final survivors:\n${finalMembersString}\n\nIf you'd like to restart the pool, go to configuration and set the start week to a new week past week ${week}.`,`✔️ ${contestType} COMPLETE!`, ui.ButtonSet.OK);
+    if (config[`${contestType.toLowerCase()}Active`]) {
+      ui.alert(`✔️ ${contestType} COMPLETE!`,`Your ${contestType.toLowerCase()} pool was completed this week.\n\n${completionString}\n\nIf you'd like to restart the pool, go to configuration and set the start week to a new week past week ${week}.`, ui.ButtonSet.OK);
+    }
+    config[`${contestType.toLowerCase()}Active`] = false;
   }
+  saveProperties('configuration',config);
   return memberData;
 }
 
@@ -5812,8 +5818,8 @@ function calculateAtsResult(pick, winner, loser, margin, spread) {
       // There was a TIE or the favorite won by less than the spread value
       return false;
     }
-  } catch (e) {
-    Logger.log(`Error calculating ATS result for spread "${spread}": ${e.toString()}`);
+  } catch (err) {
+    Logger.log(`⚠️ Error calculating ATS result for spread "${spread}"| ERROR: ${err.stack}`);
     return false;
   }
 }
