@@ -3985,15 +3985,7 @@ function buildFormFromGamePlan(gamePlan) {
     }
 
     // --- Build Survivor/Eliminator Pages ---
-    const pageDestinations = {}; // Will map memberId -> destination page
-    
-    // Report on members before diving in:
-    memberData.memberOrder.forEach(memberId => {
-      const member = memberData.members[memberId];
-      Logger.log(`🔹${member.name} Data\nSurvivor Lives: ${member.sL}\nEliminator Lives: ${member.eL}`);
-    });
-
-    let singlePageForm = false, submitPage, memberNames = [], nameChoices = [], eligibleMembers = [];
+    let singlePageForm = false, submitPage, nameChoices = [], eligibleMembers = [];
     if (hasMembers) {
       submitPage = form.addPageBreakItem().setGoToPage(FormApp.PageNavigationType.SUBMIT);
     } else {
@@ -4031,9 +4023,8 @@ function buildFormFromGamePlan(gamePlan) {
         memberData.memberOrder.forEach(memberId => {
           const member = memberData.members[memberId];
           if (member) {
-            let contestIcon, contestText, helpText, survivorHelp, eliminatorHelp, both = false;
-            const member = memberData.members[memberId];
-            
+            Logger.log(`🔹${member.name} Data${survivor ? '\nSurvivor Lives: ' + member.sL : ''}${eliminator ? '\nEliminator Lives: ' + member.eL : ''}`);
+            let contestIcon, contestText, helpText, survivorHelp, eliminatorHelp, both = false;            
             const survivorStatus = survivor && isMemberEligible(member, 'survivor', week, config);
             const eliminatorStatus = eliminator && isMemberEligible(member, 'eliminator', week, config);
         
@@ -4044,11 +4035,11 @@ function buildFormFromGamePlan(gamePlan) {
                 survivorMembers++;
                 eliminatorMembers++;
                 both = true;
-              } else if (survivorStatus && eliminator) {
+              } else if (survivorStatus) {
                 contestIcon = `👑`;
                 contestText = `${member.name} is active in SURVIVOR ${contests > 1 ? 'ONLY' : ''}`;
                 survivorMembers++;
-              } else if (eliminatorStatus && survivor) {
+              } else if (eliminatorStatus) {
                 contestIcon = `💀`;
                 contestText = `${member.name} is active in ELIMINATOR ${contests > 1 ? 'ONLY' : ''}`;
                 eliminatorMembers++;
@@ -4072,7 +4063,7 @@ function buildFormFromGamePlan(gamePlan) {
               
               Logger.log(`✅ Question${both ? 's' : ''} for ${member.name} created.`);
             } else {
-              Logger.log(`❌ ${member.name} Is out or ineligible for ${heading.toLowerCase()}.`)
+              Logger.log(`❌ ${member.name} Is out or ineligible for ${contests > 1 ? 'both contests' : 'the contest'}.`)
               nameChoices.push(nameQuestion.createChoice(member.name, submitPage));
             }
           } else {
