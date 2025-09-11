@@ -1,7 +1,7 @@
 /** GOOGLE SHEETS FOOTBALL PICK 'EMS, SURVIVOR, & ELIMINATOR TOOL | 2025 Edition
  * Script Library for League Creator & Management Platform
  * v1.0
- * 09/10/2025
+ * 09/11/2025
  * 
  * Created by Ben Powers
  * ben.powers.creative@gmail.com
@@ -29,8 +29,9 @@
  * Form Import - import picks for any week that has a form (only do this when you're ready to import). Should prompt to only bring in passed weeks if desired
  * -----------
  * UTILITIES:
- * Fetch Scores - bring in NFL outcomes to the sheet IN PROGRESS!
+ * Fetch Scores - bring in NFL outcomes to the sheet
  * Fetch NFL Data - update the schedule data, should bring in new spreads
+ * Update Spread Data - attempt to pull spreads for week, may need to wait to get updated data
  * Update Formulas - should refresh formulas on all sheets that have named ranges
  * AUTOMATION:
  * Spread Auto-Fetch Panel - lets you set a time for the schedule data (and spreads) to automatically be udpated
@@ -58,34 +59,34 @@ function onOpen() {
   const config = JSON.parse(docProps.getProperty('configuration'));
   if (isInitialized) {
     const ui = SpreadsheetApp.getUi();
-    let menu = ui.createMenu('Picks')
-      .addItem('Configuration', 'launchConfiguration');
+    let menu = ui.createMenu('🏈 Picks')
+      .addItem('⚙️ Configuration', 'launchConfiguration');
     if (docProps.getProperty('configuration')) {
-      menu.addSubMenu(ui.createMenu('Members')
-        .addItem('Member Manager', 'launchMemberPanel')
-        .addItem('Rename a Member','showRenamePanel'));
-      menu.addSubMenu(ui.createMenu('Forms')
-        .addItem('Form Builder', 'launchFormBuilder')
-        .addItem('Form Import', 'launchFormImport')
-        .addItem('Form Manager', 'launchFormManager'));
+      menu.addSubMenu(ui.createMenu('👥 Members')
+        .addItem('👤 Member Manager', 'launchMemberPanel')
+        .addItem('✏️ Rename a Member','showRenamePanel'));
+      menu.addSubMenu(ui.createMenu('📝 Forms')
+        .addItem('🛠 Form Builder', 'launchFormBuilder')
+        .addItem('📥 Form Import', 'launchFormImport')
+        .addItem('🗃 Form Manager', 'launchFormManager'));
     }
     if (docProps.getProperty('forms')) {
       menu.addSeparator()
-      menu.addSubMenu(ui.createMenu('Utilities')
-        .addItem('Fetch Scores','launchApiOutcomeImport')
-        .addItem('Update ' + LEAGUE + ' Data', 'fetchSchedule')
-        .addItem('Update Formulas', 'allFormulasUpdate')
-        .addItem('Deploy Sheets','setupSheets'));
-      if (config.pickemsInclude || config.survivorInclude) {
-        let string = config.survivorInclude && config.eliminatorInclude ? 'Survivor/Eliminator' : config.survivorInclude ? 'Survivor' : 'Eliminator';
-        menu.addSubMenu(ui.createMenu('Automation')
-          .addItem('Spread Auto-Fetch Panel','showAutoFetchPanel')
-          .addItem(`Enable ${string} Triggers`,'createOnEditTrigger')
-          .addItem(`Disable ${string} Triggers`,'deleteOnEditTrigger'));
-      }
+      menu.addSubMenu(ui.createMenu('🧰 Utilities')
+        .addItem('📊 Fetch Scores','launchApiOutcomeImport')
+        .addItem('📅 Update ' + LEAGUE + ' Data', 'fetchSchedule')
+        .addItem('⏰ Update Spread Data','fetchLatestSpreadsForWeek')
+        .addItem('🧮 Update Formulas', 'allFormulasUpdate')
+        .addItem('🗂 Deploy Sheets','setupSheets'));
+      let icons = config.survivorInclude && config.eliminatorInclude ? '👑&💀' : config.survivorInclude ? '👑' : '💀';
+      // let string = config.survivorInclude && config.eliminatorInclude ? 'Survivor/Eliminator' : config.survivorInclude ? 'Survivor' : 'Eliminator';
+      menu.addSubMenu(ui.createMenu('🧙 Automation')
+        .addItem('🔄 Spread Auto-Fetch Panel','showAutoFetchPanel')
+        .addItem(`✔️ Enable ${icons} Triggers`,'createOnEditTrigger')
+        .addItem(`❌ Disable ${icons} Triggers`,'deleteOnEditTrigger'));
     }
     menu.addSeparator()
-      .addItem('Help & Support','showSupportDialog')
+      .addItem('❔ Help & Support','showSupportDialog')
       .addToUi();
 
   } else {
@@ -677,6 +678,8 @@ function processConfigurationSubmission(formObject) {
       'mnfDouble',
       'tiebreakerInclude',
       'overUnderInclude',
+      'weeklyPaidTracking',
+      'hideNonParticipants',
       
       'survivorInclude', // Survivor options below
       'survivorStartWeek',
@@ -1895,7 +1898,7 @@ function fetchSchedule(ss,year,currentWeek,auto,overwrite) {
   }
   
   // This section creates a nice table to be used for lookups and queries about NFL season
-  let week, awayTeam, awayTeamName, awayTeamLocation, homeTeam, homeTeamName, homeTeamLocation, day, dayName, divisional, division, formsData = [];
+  let week, awayTeam, awayTeamName, awayTeamLocation, homeTeam, homeTeamName, homeTeamLocation, day, dayName, divisional, division, scheduleData = [];
   
   // Create an array of matchups per week where index of 0 is equivalent to week 1 and so forth
   let matchupsPerWeek = Array(WEEKS).fill(0);
@@ -1943,15 +1946,15 @@ function fetchSchedule(ss,year,currentWeek,auto,overwrite) {
           timeFetched
         ];
         matchupsPerWeek[week-1] = matchupsPerWeek[week-1] + 1;
-        formsData.push(arr);
+        scheduleData.push(arr);
       }
     }
   }
 
-  formsData = formsData.sort((a,b) => a[1] - b[1]);
+  scheduleData = scheduleData.sort((a,b) => a[1] - b[1]);
     
-  for (let a = 0; a < formsData.length; a++) {
-    weekArr.push(formsData[a][0]);
+  for (let a = 0; a < scheduleData.length; a++) {
+    weekArr.push(scheduleData[a][0]);
   }
   // Add the playoff schedule to that array of matchups per week
   Object.keys(WEEKNAME).forEach(weekNum => {
@@ -2040,7 +2043,7 @@ function fetchSchedule(ss,year,currentWeek,auto,overwrite) {
       for (let b = 0; b < WEEKNAME[a].matchups; b++) {
         let newRow = [...blankRow];
         newRow[0] = a; // Replace first value with week number
-        formsData.push(newRow);
+        scheduleData.push(newRow);
       }
     }
   }
@@ -2080,16 +2083,16 @@ function fetchSchedule(ss,year,currentWeek,auto,overwrite) {
     ];
     scoreboardData.push(arr);
   }
-  for (let a = 0; a < formsData.length; a++) {
-    if (formsData[a][0] == currentWeek) {
-      formsData.splice(a,1,scoreboardData[0]);
+  for (let a = 0; a < scheduleData.length; a++) {
+    if (scheduleData[a][0] == currentWeek) {
+      scheduleData.splice(a,1,scoreboardData[0]);
       scoreboardData.shift();
     }
   }
-  formsData.splice(formsData.indexOf(currentWeek),scoreboardData.length,...scoreboardData);
+  scheduleData.splice(scheduleData.indexOf(currentWeek),scoreboardData.length,...scoreboardData);
 
-  let rows = formsData.length + 1;
-  let columns = formsData[0].length;
+  let rows = scheduleData.length + 1;
+  let columns = scheduleData[0].length;
   
   // utilities.gs functions to remove/add rows that are blank
   adjustRows(sheet,rows);
@@ -2120,14 +2123,14 @@ function fetchSchedule(ss,year,currentWeek,auto,overwrite) {
   // Checking for postseason empty slots within recently pulled data
   let missingMatchups = {};
   if (currentWeek > REGULAR_SEASON) {
-    for (let a = 0; a < formsData.length; a++) {
-      let formsDataWeek = formsData[a][0];
-      if (formsDataWeek > REGULAR_SEASON) {
-        if (formsData[a][headers.indexOf('awayTeam')] == '' || formsData[a][headers.indexOf('homeTeam') == '']) {
-          missingMatchups[formsDataWeek] = missingMatchups[formsDataWeek] || {};
-          missingMatchups[formsDataWeek].rows = missingMatchups[formsDataWeek].rows || [];
-          missingMatchups[formsDataWeek].rows.push(a);
-          missingMatchups[formsDataWeek].count = missingMatchups[formsDataWeek].count + 1 || 1;
+    for (let a = 0; a < scheduleData.length; a++) {
+      let scheduleDataWeek = scheduleData[a][0];
+      if (scheduleDataWeek > REGULAR_SEASON) {
+        if (scheduleData[a][headers.indexOf('awayTeam')] == '' || scheduleData[a][headers.indexOf('homeTeam') == '']) {
+          missingMatchups[scheduleDataWeek] = missingMatchups[scheduleDataWeek] || {};
+          missingMatchups[scheduleDataWeek].rows = missingMatchups[scheduleDataWeek].rows || [];
+          missingMatchups[scheduleDataWeek].rows.push(a);
+          missingMatchups[scheduleDataWeek].count = missingMatchups[scheduleDataWeek].count + 1 || 1;
         }
       }
     }
@@ -2137,7 +2140,7 @@ function fetchSchedule(ss,year,currentWeek,auto,overwrite) {
     if (missingMatchups[week].count == matchupsPerWeek[week-1]) {
       Object.keys(existing[week]).forEach(matchup => {
         if (!existing[week][matchup].placed) {
-          formsData[missingMatchups[week].rows[0]] = existing[week][matchup].row;
+          scheduleData[missingMatchups[week].rows[0]] = existing[week][matchup].row;
           existing[week][matchup].placed = true;
           missingMatchups[week].rows.splice(0,1);
         } else {
@@ -2147,10 +2150,10 @@ function fetchSchedule(ss,year,currentWeek,auto,overwrite) {
     } else {
       let emptyRows = [];
       let knownMatchups = [];
-      for (let a = 0; a < formsData.length; a++) {
-        if (formsData[a][0] == week) {
-          if (formsData[a][headers.indexOf('awayTeam')] != '' && formsData[a][headers.indexOf('homeTeam')] != '') {
-            knownMatchups.push(formsData[a]);
+      for (let a = 0; a < scheduleData.length; a++) {
+        if (scheduleData[a][0] == week) {
+          if (scheduleData[a][headers.indexOf('awayTeam')] != '' && scheduleData[a][headers.indexOf('homeTeam')] != '') {
+            knownMatchups.push(scheduleData[a]);
           } else {
             emptyRows.push(a);
           }
@@ -2163,19 +2166,19 @@ function fetchSchedule(ss,year,currentWeek,auto,overwrite) {
       }
       Object.keys(existing[week]).forEach(matchup => {
         if (!existing[week][matchup].placed) {
-          formsData.splice(emptyRows[0],1,existing[week][matchup].row);
+          scheduleData.splice(emptyRows[0],1,existing[week][matchup].row);
           emptyRows.shift();
           existing[week][matchup].placed = true;
         }
       });
     }
   });
-  for (let a = 0; a < formsData.length; a++ ) {
-    let formsDataWeek = formsData[a][0];
-    if (existing.hasOwnProperty(formsDataWeek)) {     
-      if (existing[formsDataWeek].hasOwnProperty('row')) {
-        Logger.log(`Replacing ${formsData[a]} with object data: ${existing[formsDataWeek].row}`);
-        formsData.splice(a,1,existing[formsDataWeek].row);
+  for (let a = 0; a < scheduleData.length; a++ ) {
+    let scheduleDataWeek = scheduleData[a][0];
+    if (existing.hasOwnProperty(scheduleDataWeek)) {     
+      if (existing[scheduleDataWeek].hasOwnProperty('row')) {
+        Logger.log(`Replacing ${scheduleData[a]} with object data: ${existing[scheduleDataWeek].row}`);
+        scheduleData.splice(a,1,existing[scheduleDataWeek].row);
       }
     }
   }
@@ -2187,20 +2190,20 @@ function fetchSchedule(ss,year,currentWeek,auto,overwrite) {
     let overUnderIndex = headers.indexOf('overUnder');
     let spreadAutoIndex = headers.indexOf('spreadAutoFetched');
     let timeFetchedIndex = headers.indexOf('timeFetched');
-    for (let a = 0; a < formsData.length; a++) {
-      let dataWeek = formsData[a][0];
-      let matchup = `${formsData[a][awayIndex]}@${[formsData[a][homeIndex]]}`;
+    for (let a = 0; a < scheduleData.length; a++) {
+      let dataWeek = scheduleData[a][0];
+      let matchup = `${scheduleData[a][awayIndex]}@${[scheduleData[a][homeIndex]]}`;
       if (dataWeek != currentWeek) {
         if (existing.hasOwnProperty(dataWeek)) {
           if (existing[dataWeek].hasOwnProperty(matchup)) {
             if (existing[dataWeek][matchup].hasOwnProperty('overUnder')) {
-              formsData[a][overUnderIndex] = existing[dataWeek][matchup].overUnder;
+              scheduleData[a][overUnderIndex] = existing[dataWeek][matchup].overUnder;
             }
             if (existing[dataWeek][matchup].hasOwnProperty('spread')) {
-              formsData[a][spreadIndex] = existing[dataWeek][matchup].spread;
+              scheduleData[a][spreadIndex] = existing[dataWeek][matchup].spread;
             }
-            formsData[a][spreadAutoIndex] = existing[dataWeek][matchup].auto;
-            formsData[a][timeFetchedIndex] = existing[dataWeek][matchup].timeFetched;
+            scheduleData[a][spreadAutoIndex] = existing[dataWeek][matchup].auto;
+            scheduleData[a][timeFetchedIndex] = existing[dataWeek][matchup].timeFetched;
           }
         }
       }
@@ -2209,16 +2212,16 @@ function fetchSchedule(ss,year,currentWeek,auto,overwrite) {
       let ui = fetchUi();
       let replaceAlert = ui.alert(`Found previous over/under and spread data for week ${currentWeek} in the existing NFL data. Would you like to overwright with new values?`, ui.ButtonSet.YES_NO_CANCEL);
       if (replaceAlert !== ui.Button.YES) {
-        for (let a = 0; a < formsData.length; a++) {
-          let dataWeek = formsData[a][0];
-          let matchup = `${formsData[a][awayIndex]}@${[formsData[a][homeIndex]]}`;
+        for (let a = 0; a < scheduleData.length; a++) {
+          let dataWeek = scheduleData[a][0];
+          let matchup = `${scheduleData[a][awayIndex]}@${[scheduleData[a][homeIndex]]}`;
           if (dataWeek === currentWeek) {
             if (existing.hasOwnProperty(dataWeek)) {
               if (existing[dataWeek].hasOwnProperty(matchup)) {
-                formsData[a][overUnderIndex] = existing[dataWeek][matchup].overUnder;
-                formsData[a][spreadIndex] = existing[dataWeek][matchup].spread;
-                formsData[a][spreadAutoIndex] = auto ? 1 : 0;
-                formsData[a][timeFetchedIndex] = timeFetched;
+                scheduleData[a][overUnderIndex] = existing[dataWeek][matchup].overUnder;
+                scheduleData[a][spreadIndex] = existing[dataWeek][matchup].spread;
+                scheduleData[a][spreadAutoIndex] = auto ? 1 : 0;
+                scheduleData[a][timeFetchedIndex] = timeFetched;
               }
             }
           }
@@ -2226,7 +2229,7 @@ function fetchSchedule(ss,year,currentWeek,auto,overwrite) {
       }
     }
   }
-  rangeData.setValues(formsData);
+  rangeData.setValues(scheduleData);
 
   sheet.protect().setDescription(sheetName);
   try {
@@ -2246,25 +2249,42 @@ function fetchSchedule(ss,year,currentWeek,auto,overwrite) {
  * @param {number} week The week number to fetch data for.
  * @returns {Object} A simple success message.
  */
-function fetchLatestSpreadsForWeek(week) {
+function fetchLatestSpreadsForWeek(week,year) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  
+  week = week || fetchWeek();
+  year = year || fetchYear();
   try {
-    ss.toast(`Attempting to fetch latest spreads for Week ${week}...`, 'In Progress', 10);
+    ss.toast(`Attempting to fetch latest spreads for Week ${week}...\nIf week is prior to the one desired, spread data may not be available yet.`, '🔄 RUNNING SPREAD FETCH', 10);
     
     // Call your existing, powerful function with the correct parameters for a single week.
     // We pass the spreadsheet, null for year (let it auto-detect), the specific week, and false for auto, and true for automatically overriding existing spreads
-    fetchSchedule(ss, null, week, false, true); 
+    fetchSchedule(ss, year, week, false, true); 
     
-    ss.toast(`Successfully updated data for Week ${week}.`, '✅ Success', 5);
+    ss.toast(`Successfully updated data for Week ${week}.`, '✅ SPREAD DATA UPDATED', 5);
     return { success: true, message: 'Data fetch complete.' };
 
-  } catch (error) {
-    Logger.log("Error in fetchLatestSpreadsForWeek: ", error);
-    ss.toast(`Failed to fetch data: ${error.message}`, '❌ Error', 10);
-    throw new Error(`Failed to fetch latest data. ${error.message}`);
+  } catch (err) {
+    Logger.log(`❌ Error for week ${week} in fetchLatestSpreadsForWeek | ${err.stack}`);
+    ss.toast(`Failed to fetch data for week ${week}. See logs for details.`, '❌ SPREAD ERROR', 10);
   }
 }
+
+
+/**
+ * This is the function the trigger will actually call.
+ * It provides the correct parameters to your main fetchSchedule function.
+ */
+function runWeeklyFetch() {
+  Logger.log("Weekly auto-fetch trigger is running...");
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const year = fetchYear();
+  const currentWeek = null; // Let fetchSchedule determine the current week
+  const isAuto = true;
+  const shouldOverwrite = true;
+  
+  fetchSchedule(ss, year, currentWeek, isAuto, shouldOverwrite);
+}
+
 
 
 // NFL GAMES - output by week input and in array format: [date,day,hour,minute,dayName,awayTeam,homeTeam,awayTeamLocation,awayTeamName,homeTeamLocation,homeTeamName]
@@ -2409,7 +2429,9 @@ function recordWeeklyScores(){
           const text = '❗ Issue with fetching weekly sheet or named ranges on weekly sheet, recreating now.';
           Logger.log(text + ' | ERROR: ' + err.stack);
           ss.toast(text,'MISSING WK' + week + ' SHEET');
-          weeklySheet(ss,week,config,null,memberData,true);
+          let displayEmpty = true;
+          if (config?.hideNonParticipants) displayEmpty = !config.hideNonParticipants;
+          weeklySheet(ss,week,config,null,memberData,displayEmpty);
         }
         let regex = new RegExp('[A-Z]{2,3}','g');
         let arr = [];
@@ -4711,23 +4733,6 @@ function deleteWeeklyFetchTrigger() {
   return { success: true };
 }
 
-/**
- * [NEW WRAPPER] This is the function the trigger will actually call.
- * It provides the correct parameters to your main fetchSchedule function.
- */
-function runWeeklyFetch() {
-  Logger.log("Weekly auto-fetch trigger is running...");
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const year = fetchYear();
-  const currentWeek = null; // Let fetchSchedule determine the current week
-  const isAuto = true;
-  const shouldOverwrite = true;
-  
-  fetchSchedule(ss, year, currentWeek, isAuto, shouldOverwrite);
-}
-
-
-
 
 
 /**
@@ -4828,12 +4833,31 @@ function executePickImport(week, importOnlyStartedGames) {
       if (!sheet || !ss.getRangeByName(`NAMES_${week}`)) {
         Logger.log(`🔁 No weekly sheet exists for week ${week}, creating one now...`);
         ss.toast(`Creating weekly sheet for week ${week}.`,'🔁 CREATING...');
-        sheet = weeklySheet(ss,week,config,formsData,memberData,true);
+        let displayEmpty = true;
+        if (config?.hideNonParticipants) displayEmpty = !config.hideNonParticipants;
+        sheet = weeklySheet(ss,week,config,formsData,memberData,displayEmpty);
       }
       // --- Create Lookup Maps ---
       // a) Member Name -> Row Index Map (Unchanged)
-      const memberNameRange = ss.getRangeByName(`NAMES_${week}`);
-      if (!memberNameRange) throw new Error(`Named range 'NAMES_${week}' not found.`);
+      let memberNameRange;
+      try { 
+        memberNameRange = ss.getRangeByName(`NAMES_${week}`);
+      } catch (err) {
+        Logger.log(`❗ Error getting named range for WK${week} names: ${err.stack}`);
+        let memberNameRangeStart = 3, memberNameRangeEnd = 0, index = memberNameRangeStart;
+        while (memberNameRangeEnd < memberNameRangeStart) {
+          if (sheet.getRange(index,1).getValue() == 'PREFERRED') {
+            memberNameRangeEnd = index;
+          }
+          if (index > 100) {
+            throw new Error(`⚠️ Unable to locate NAMES range for week ${week} weekly sheet even with fallback. Failed to import.`);
+          }
+          index++;
+        }
+        memberNameRange = sheet.getRange(memberNameRangeStart,1,memberNameRangeEnd - memberNameRangeStart,1);
+        Logger.log(`✅ Successfully pulled NAMES range by lookup value despite error being thrown.`);
+      }
+      if (!memberNameRange) throw new Error(`⚠️ Unable to locate NAMES range for week ${week} weekly sheet. Failed to import.`);
       const memberNames = memberNameRange.getValues().flat();
       const memberNameToRowMap = new Map(memberNames.map((name, index) => [name, index]));
 
@@ -6981,7 +7005,7 @@ function rnkSheet(ss,memberData) {
   sheet.setConditionalFormatRules(formatRules);
   
   overallPrimaryFormulas(sheet,totalMembers,maxCols,'average',false);
-  overallMainFormulas(weeks,sheet,totalMembers,'RANK',false);
+  overallMainFormulas(weeks,sheet,totalMembers,'RNK',false);
   
   return sheet;  
 }
@@ -7877,10 +7901,6 @@ function weeklySheet(ss,week,config,forms,memberData,displayEmpty) {
   if (displayEmpty) { //|| forms[week].respondents == totalMembers) {
     members = memberData.memberOrder.map(id => [memberData.members[id]?.name]);
   } else {
-    members = memberData.memberOrder.map(id => [memberData.members[id]?.name]);
-    Logger.log('all: ' + members);
-    members = [];
-
     // Re-sorts based on memberOrder, then applies conversion to the name
     const sortedRespondents = forms[week].respondents.sort((a, b) => {
       const indexA = memberData.memberOrder.indexOf(a);
@@ -7890,7 +7910,6 @@ function weeklySheet(ss,week,config,forms,memberData,displayEmpty) {
       return resolvedIndexA - resolvedIndexB;
     });
     members = sortedRespondents.map((id) => [memberData.members[id]?.name]);
-    Logger.log('filtered: ' + members);
   }
   let totalMembers = members.length;
   
@@ -7934,11 +7953,10 @@ function weeklySheet(ss,week,config,forms,memberData,displayEmpty) {
   // Adds tab colors
   weeklySheetTabColors(ss,sheet); 
 
-  let maxRows = sheet.getMaxRows();
   let maxCols = sheet.getMaxColumns();
   
   // DATA GATHERING IF DATA RESTORE ACTIVE
-  let regex, commentCol, tiebreakerCol = -1, firstInput, finalInput, previousRows, previousNames, previousData, previousOutcomes, previousComment, previousTiebreaker, previousTiebreakers, previousBonus = null, previousNamesRange, previousDataRange, previousOutcomesRange, previousCommentRange, previousTiebreakersRange, matchupStartCol, matchupEndCol;
+  let commentCol, paidCol, tiebreakerCol = -1;
   
   // CLEAR AND PREP SHEET
   sheet.clear();
@@ -8023,8 +8041,19 @@ function weeklySheet(ss,week,config,forms,memberData,displayEmpty) {
     commentCol = headers.indexOf('COMMENT')+1;
   }
 
+  // headers.push('WILDCARD SCORE');
+  // widths.push(90);
+  // let wildcardCol = headers.indexOf('WILDCARD SCORE');
+
   let diffCol = headers.length+1;
+
   let finalCol = diffCol + (diffCount-1);
+  // Add weekly checkboxes for payment status if configured
+  const paidCheckboxes = config?.weeklyPaidTracking ? config.weeklyPaidTracking : false;
+  if (paidCheckboxes) {
+    finalCol++;
+    paidCol = finalCol;
+  }
 
   // Headers completed, now adjusting number of columns once headers are populated
   adjustColumns(sheet,finalCol);
@@ -8032,13 +8061,7 @@ function weeklySheet(ss,week,config,forms,memberData,displayEmpty) {
 
   sheet.getRange(matchRow,1,1,headers.length).setValues([headers]);
   sheet.getRange(dayRow,firstMatchCol,1,matches).setValues([days]);
- 
-  // spreadRow
-  // outcomeRow
-  // outcomeMarginRow
-  // spreadOutcomeRow
-  // bonusRow
-  
+   
   // Place spread values
   sheet.getRange(spreadRow,firstMatchCol,1,spreads.length).setValues([spreads])
   
@@ -8054,8 +8077,7 @@ function weeklySheet(ss,week,config,forms,memberData,displayEmpty) {
   // Set all column widths
   for (let a = 0; a < widths.length; a++) {
     sheet.setColumnWidth(a+1,widths[a]);
-  }
-  
+  }  
 
   // Begin building functions
 
@@ -8118,7 +8140,7 @@ function weeklySheet(ss,week,config,forms,memberData,displayEmpty) {
     }
 
     // Formula to generate array of similar pickers on the week
-    sheet.getRange(row,diffCol).setFormulaR1C1('=iferror(if(isblank(R[0]C'+(firstMatchCol+2)+'),,transpose(arrayformula({arrayformula('+matches+'-query({R'+entryRowStart+'C1:R'+entryRowEnd+'C1,arrayformula(mmult(if(R'+entryRowStart+'C'+firstMatchCol+':R'+entryRowEnd+'C'+(finalMatchCol)+'=R[0]C'+firstMatchCol+':R[0]C'+finalMatchCol+',1,0),transpose(arrayformula(column(R[0]C'+firstMatchCol+':R[0]C'+finalMatchCol+')\^0))))},\"select Col2 where Col1 <> \'\"\&R[0]C1\&\"\' order by Col2 desc, Col1 asc limit '+diffCount+'\"))&\": \"&query({R'+entryRowStart+'C1:R'+entryRowEnd+'C1,arrayformula(mmult(if(R'+entryRowStart+'C'+firstMatchCol+':R'+entryRowEnd+'C'+finalMatchCol+'=R[0]C'+firstMatchCol+':R[0]C'+finalMatchCol+',1,0),transpose(arrayformula(column(R[0]C'+firstMatchCol+':R[0]C'+finalMatchCol+')\^0))))},\"select Col1 where Col1 \<\> \'\"\&R[0]C1\&\"\' order by Col2 desc, Col1 asc limit '+diffCount+
+    sheet.getRange(row,diffCol).setFormulaR1C1('=iferror(if(isblank(R[0]C'+(firstMatchCol)+'),,transpose(arrayformula({arrayformula('+matches+'-query({R'+entryRowStart+'C1:R'+entryRowEnd+'C1,arrayformula(mmult(if(R'+entryRowStart+'C'+firstMatchCol+':R'+entryRowEnd+'C'+(finalMatchCol)+'=R[0]C'+firstMatchCol+':R[0]C'+finalMatchCol+',1,0),transpose(arrayformula(column(R[0]C'+firstMatchCol+':R[0]C'+finalMatchCol+')\^0))))},\"select Col2 where Col1 <> \'\"\&R[0]C1\&\"\' order by Col2 desc, Col1 asc limit '+diffCount+'\"))&\": \"&query({R'+entryRowStart+'C1:R'+entryRowEnd+'C1,arrayformula(mmult(if(R'+entryRowStart+'C'+firstMatchCol+':R'+entryRowEnd+'C'+finalMatchCol+'=R[0]C'+firstMatchCol+':R[0]C'+finalMatchCol+',1,0),transpose(arrayformula(column(R[0]C'+firstMatchCol+':R[0]C'+finalMatchCol+')\^0))))},\"select Col1 where Col1 \<\> \'\"\&R[0]C1\&\"\' order by Col2 desc, Col1 asc limit '+diffCount+
       '\")}))))');
   }
 
@@ -8292,7 +8314,7 @@ function weeklySheet(ss,week,config,forms,memberData,displayEmpty) {
     }
     formatRules.push(formatRuleMNF);
   }
- 
+
   // DIFFERENCE TIEBREAKER COLUMN FORMATTING
   if (config.tiebreakerInclude) {
     let offsets = [1,3,5,10,15,20,20];
@@ -8413,6 +8435,17 @@ function weeklySheet(ss,week,config,forms,memberData,displayEmpty) {
     .build();
   formatRules.push(formatRuleWeightedTwo);
   
+  // // Format rules for wildcard scores
+  // let wildcardGradient = hexGradient('#46f081','#e4f0e8',8);
+  // range = sheet.getRange(entryRowStart,wildcardCol,totalMembers+1,diffCount);
+  // let formatRuleWildcard = SpreadsheetApp.newConditionalFormatRule()
+  //   .setGradientMaxpointWithValue("#75F0A1", SpreadsheetApp.InterpolationType.NUMBER, ".70")
+  //   .setGradientMidpointWithValue("#FFFFFF", SpreadsheetApp.InterpolationType.NUMBER, ".60")
+  //   .setGradientMinpointWithValue("#FF9B69", SpreadsheetApp.InterpolationType.NUMBER, ".50")
+  //   .setRanges([range])
+  //   .build();
+  // formatRules.push(formatRuleWildcard);
+
   // Format rules for difference columns to emphasize the most common picker
   let commonPickersGradient = hexGradient('#46f081','#e4f0e8',8);
   let commonPickersFormula = '=value(regexextract(indirect(\"R[0]C[0]\",false),\"[0-9]+\"))=%'; // Replaceable "%" for common picker number
@@ -8426,7 +8459,46 @@ function weeklySheet(ss,week,config,forms,memberData,displayEmpty) {
       .build();
     formatRules.push(rule);
   }
-
+  
+  // Add conditional formatting rules to indicate paid status (added last to take lowest priority)
+  if (paidCheckboxes) {
+    sheet.getRange(entryRowStart,paidCol,totalMembers,1).insertCheckboxes().setFontSize(11).setHorizontalAlignment('center');
+    let finalPaidCell = sheet.getRange(entryRowEnd+1,paidCol);
+    finalPaidCell.setHorizontalAlignment('center')
+      .setWrapStrategy(SpreadsheetApp.WrapStrategy.WRAP)
+      .setFontWeight('bold')
+      .setFormulaR1C1(`=if(and(R${entryRowStart}C[0]:R${entryRowEnd}C[0]),"ALL PAID","UNPAID")`);
+    let formatRuleAllPaid = SpreadsheetApp.newConditionalFormatRule()
+      .whenTextEqualTo('ALL PAID')
+      .setBackground('#b5fff2')
+      .setRanges([finalPaidCell])
+      .build();
+    formatRules.push(formatRuleAllPaid);
+    let formatRuleAllNotPaid = SpreadsheetApp.newConditionalFormatRule()
+      .whenTextEqualTo('UNPAID')
+      .setBackground('#ffd5b5')
+      .setRanges([finalPaidCell])
+      .build();
+    formatRules.push(formatRuleAllNotPaid);
+    sheet.getRange(1,paidCol).setValue('PAID');
+    sheet.setColumnWidth(paidCol,70);
+    const nameBlockRange = sheet.getRange('R'+entryRowStart+'C1:R'+entryRowEnd+'C4');
+    const paidColRange = sheet.getRange('R'+entryRowStart+'C'+paidCol+':R'+entryRowEnd+'C'+paidCol);
+    let formatRulePaid = SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied('=indirect(\"R[0]C'+paidCol+'\",false)=true')
+      .setBackground('#f0fffc')
+      .setRanges([nameBlockRange,paidColRange])
+      .build();      
+    formatRules.push(formatRulePaid);
+    let formatRuleUnpaid = SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied('=indirect(\"R[0]C'+paidCol+'\",false)=false')
+      .setBackground('#fff3eb')
+      .setItalic(true)
+      .setRanges([nameBlockRange,paidColRange])
+      .build();
+    formatRules.push(formatRuleUnpaid);
+  }
+ 
   // Sets all formerly pushed rules to the sheet
   sheet.setConditionalFormatRules(formatRules);
 
@@ -8546,184 +8618,10 @@ function weeklySheetTabColors(ss,sheet) {
         colors.pop();
       }
     }
-    Logger.log('changed all colors of tabs to reflect week shift');
+    Logger.log(`🎨 Changed all colors of tabs to reflect week shift to week ${week}`);
   }
   catch (err) {
-    Logger.log('Error assigning colors to weekly sheet tabs: ' + err.stack);
-  }
-}
-
-
-// ============================================================================================================================================
-// BONUS FEATURES
-// ============================================================================================================================================
-
-// GAME OF THE WEEK SHEET FUNCTION - selects one random game for 2x multiplier to be applied
-function bonusRandomGameSet() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const ui = SpreadsheetApp.getUi();
-  let tnf = true, bonusRange, mnfDouble = false, text;
-  const week = maxWeek();
-  let sheet, sheetExisted = true;
-  try { 
-    ss.getRangeByName('BONUS_PRESENT').getValue();
-  }
-  catch (err) {
-    Logger.log('No \'BONUS_PRESENT\' named range');
-    ui.alert('BONUS PRESENT NOT SET\r\n\r\nNo bonus present range established for inclusion/exclusion of bonus game weighting, please run the enable/disable bonus function and try this function again after that has been set', ui.ButtonSet.OK);
-    throw new Error('Canceled due to no bonus feature');
-  }
-  try { 
-    tnf = ss.getRangeByName('TNF_PRESENT').getValue();
-  }
-  catch (err) {
-    Logger.log('No \'TNF_PRESENT\' named range, assuming true');
-    ui.alert('THURSDAY NIGHT FOOTBALL EXCLUSION NOT SET\r\n\r\nNo Thursday present range established for inclusion/exclusion of Thursday\'s games', ui.ButtonSet.OK);
-  }
-  try { 
-    mnfDouble = ss.getRangeByName('MNF_DOUBLE').getValue();
-  }
-  catch (err) {
-    Logger.log('No \'MNF_DOUBLE\' named range, assuming \'false\' for double MNF and proceeding.');
-  }
-  try {
-    sheet = ss.getSheetByName(weeklySheetPrefix + week);
-  } catch (err) {
-    Logger.log('No sheet for week ' + week);
-    let prompt = ui.alert('NO SHEET\r\n\r\nThe week ' + week + ' sheet does not exist. Create a sheet now for week ' + week + '?\r\n\r\n(Selecting \'Cancel\' will exit and no game will be selected)', ui.ButtonSet.OK_CANCEL);
-    if (prompt == ui.Button.OK) {
-      sheet = weeklySheet(ss,week,config,null,members,true);
-      sheetExisted = false;
-    } else {
-      throw new Error('Exited when new sheet creation was declined');
-    }
-  }
-  try {
-    bonusRange = ss.getRangeByName(LEAGUE + '_BONUS_' + week);
-  }
-  catch (err) {
-    Logger.log('No \'BONUS\' named range for week ' + week);
-    ui.alert('NO BONUS\r\n\r\nThe week ' + week + ' sheet lacks the bonus game feature. Would you like to recreate the week ' + week + ' sheet now?\r\n\r\n(Selecting \'Cancel\' will exit and no game will be selected)', ui.ButtonSet.OK_CANCEL);
-    if (prompt == ui.Button.OK) {
-      sheet = weeklySheet(ss,week,config,null,members,true);
-      sheetExisted = false;
-    } else {
-      throw new Error('Exited when new sheet creation was declined');
-    }
-  }
-  bonusRange = ss.getRangeByName(LEAGUE + '_BONUS_' + week);
-
-  let mnf = false, mnfRange, bonusValues = bonusRange.getValues().flat();
-
-  if (mnfDouble) {
-    try {
-      mnfRange = ss.getRangeByName(LEAGUE + '_MNF_' + week);
-      bonusValues.splice(bonusValues.length-mnfRange.getNumColumns(),mnfRange.getNumColumns());
-      bonusRange = sheet.getRange(bonusRange.getRow(),bonusRange.getColumn(),1,bonusRange.getNumColumns()-mnfRange.getNumColumns());
-      if (mnfRange.getValues().length > 0) {
-        mnf = true;
-      }
-    }
-    catch (err) {
-      Logger.log('No MNF range for week ' + week + '. Including all games in randomization.');
-    }
-  }  
-
-  if (sheetExisted) {
-    for (let a = 0; a < bonusValues.length; a++) {
-      if (bonusValues[a] > 1) {
-        text = 'BONUS GAME ALREADY MARKED\r\n\r\nYou already have one or more games marked for 2x or greater weighting.\r\n\r\nMark all ';
-        if (mnfDouble && mnf) {
-          text = text.concat('non-MNF games\' weighting to 1 and try again');
-        } else {
-          text = text.concat('games\' weighting to 1 and try again');
-        }
-        ui.alert(text,ui.ButtonSet.OK);
-        throw new Error('Other games marked as bonus prior to running random Game of the Week function');
-      }
-    }
-  }
-
-  text = 'GAME OF THE WEEK\r\n\r\nWould you like to randomly select one game this week to count as double?';
-  if (mnfDouble) {
-    text = text.concat('\r\n\r\nAny MNF games will be excluded since you have the MNF Double feature enabled');
-  }
-  let gameOfTheWeek;
-  let randomPrompt = ui.alert(text,ui.ButtonSet.YES_NO);
-  if (randomPrompt == ui.Button.YES) {
-    gameOfTheWeek = bonusRandomGame(week,tnf,mnfDouble);
-    let matchupNames = ss.getRangeByName(LEAGUE + '_' + week).getValues().flat();
-    let regex = new RegExp(/[A-Z]{2,3}/,'g');
-    let matchupRegex = [];
-    matchupNames.forEach(a => matchupRegex.push(a.match(regex)[0]+ '@' + a.match(regex)[1]));
-    bonusValues[matchupRegex.indexOf(gameOfTheWeek)] = 2;
-    bonusRange.setValues([bonusValues]);
-  }
-
-  let formId = ss.getRangeByName('FORM_WEEK_' + week).getValue();
-  try {
-    let form = FormApp.openById(formId);
-    let prompt = ui.alert('FORM EXISTS\r\n\r\nYou\'ve already created a form for week ' + week + ', would you like to designate the Game of the Week on the Form?',ui.ButtonSet.YES_NO);
-    if (prompt == ui.Button.YES) {
-      let form = FormApp.openById(formId);
-      let questions = form.getItems(FormApp.ItemType.MULTIPLE_CHOICE);
-      for (let a = 0; a < questions.length; a++) {
-        try{
-          let choices = questions[a].asMultipleChoiceItem().getChoices();
-          let matchup = choices[0].getValue() + '@' + choices[1].getValue();
-          if (matchup == gameOfTheWeek) {
-            questions[a].setTitle('GAME OF THE WEEK (Double Points)\n' + questions[a].getTitle());
-            break;
-          }
-        }
-        catch (err) {
-          Logger.log('Issue with getting choices for question with title ' + questions[a].getTitle() + ' or setting the title.');
-        }
-      }
-    }
-  }
-  catch (err) {
-    Logger.log('❌ No form exists for week ' + week + ' or there was an error getting the questions for the form.'); 
-  }
-}
-
-// GAME OF THE WEEK SELECTION - selects one random game for 2x multiplier to be applied
-function bonusRandomGame(week,tnf,mnfDouble) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const ui = SpreadsheetApp.getUi();
-  if (week == null) {
-    week = maxWeek();
-  }
-
-  let games = fetchGames(week);
-  
-  let abbrevs = [];
-  let teams = [];
-  for (let a = games.length - 1; a >= 0; a--) {
-    if ((games[a][1] == 1 && mnfDouble) || (games[a][1] == -3 && !tnf)) {
-      games.splice(a,1);
-    } else {
-      abbrevs.push(games[a][5] + '@' + games[a][6]);
-      teams.push(games[a][7] + ' ' + games[a][8] + ' at ' + games[a][9] + ' ' + games[a][10]);
-    }
-  }
-
-  let gameOfTheWeekIndex = getRandomInt(0,abbrevs.length-1);
-
-  text = 'For week ' + week + ', your Game of the Week has been randomly selected as:\r\n\r\n';
-  try {
-    let gameOfTheWeek = abbrevs[gameOfTheWeekIndex];
-    text = text.concat(teams[gameOfTheWeekIndex] + '\r\n\r\nWould you like to mark it as such?');
-    let verify = ui.alert(text,ui.ButtonSet.OK_CANCEL);
-    if (verify == ui.Button.OK) {
-      return gameOfTheWeek;
-    } else {
-      ss.toast('Canceled Game of the Week selection');
-    }
-  }
-  catch (err) {
-    ss.toast('Error fetching matches or selecting Game of the Week\r\n\r\nError:\r\n' + err.message);
-    Logger.log('Error fetching matches or selecting Game of the Week\r\n\r\nError:\r\n' + err.message);
+    Logger.log(`❗ Error assigning colors to weekly sheet tabs | ERROR: ${err.stack}`);
   }
 }
 
