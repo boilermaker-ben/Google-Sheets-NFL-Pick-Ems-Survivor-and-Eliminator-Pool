@@ -99,8 +99,8 @@ function onOpen() {
     }
     ui.alert('Next, run the \'Initialize\' script from the \'Picks\' menu along the top bar.', ui.ButtonSet.OK);
     SpreadsheetApp.getUi()
-      .createMenu('Picks')
-      .addItem('Initialize', 'launchConfiguration')
+      .createMenu('🏈 Picks')
+      .addItem('🟢 Initialize', 'launchConfiguration')
       .addToUi();
   }
 }
