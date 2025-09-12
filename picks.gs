@@ -92,12 +92,12 @@ function onOpen() {
   } else {
     const ui = fetchUi();
     if (!docProps.getProperty('tz')){
-      ui.alert('WELCOME\r\n\r\nThanks for checking out this Pick \'Ems/Survivor/Eliminator script. \r\n\r\nBefore you get started, you\'ll need to allow the scripts to run and also check that your time zone is set correctly.', ui.ButtonSet.OK);
+      ui.alert(`🤗 WELCOME!`,`Thanks for checking out this Pick "Ems (🏈), Survivor (👑), and/or Eliminator (💀) script.\n\nBefore you get started, you'll need to allow the scripts to run and also check that your time zone is set correctly.`, ui.ButtonSet.OK);
       timezoneCheck(ui,docProps);
     } else {
-      ui.alert('WELCOME\r\n\r\nThanks for checking out this Pick \'Ems/Survivor/Eliminator script. \r\n\r\nBefore you get started, you\'ll need to allow the scripts to run if not already authorized and initialize the sheet.\r\n\r\nRun the \'Initialize\' script from the \'Picks\' menu along the top bar. .', ui.ButtonSet.OK);
+      ui.alert(`🤗 WELCOME\n\nThanks for checking out this Pick "Ems (🏈), Survivor (👑), and/or Eliminator (💀) script.\n\nBefore you get started, you'll need to allow the scripts to run if not already authorized and initialize the sheet.\n\nRun the "🟢 Initialize" script from the "🏈 Picks" menu along the top bar`, ui.ButtonSet.OK);
     }
-    ui.alert('Next, run the \'Initialize\' script from the \'Picks\' menu along the top bar.', ui.ButtonSet.OK);
+    ui.alert(`Next, run the "🟢 Initialize" script from the "Picks" menu along the top bar.`, ui.ButtonSet.OK);
     SpreadsheetApp.getUi()
       .createMenu('🏈 Picks')
       .addItem('🟢 Initialize', 'launchConfiguration')
@@ -107,7 +107,7 @@ function onOpen() {
 
 //------------------------------------------------------------------------
 // CHECKS IF TZ PROP SET AND PROMPTS IF NOT
-function timezoneCheck(ui,docProps,lost) {
+function timezoneCheck(ui,docProps) {
   if (docProps == undefined) {
     docProps = PropertiesService.getDocumentProperties();
   }
@@ -117,13 +117,9 @@ function timezoneCheck(ui,docProps,lost) {
 
   // Confirm timezone setting before continuing
   if (tzProp == null) {
-    let text = 'TIMEZONE\r\n\r\nThe timezone you\'re currently using is ' + tz + '. Is this correct?';
-    if (lost) {
-      text = 'TIMEZONE VALUE NOT SET\r\n\r\nDespite initialization, it seems like the timezone variable property isn\'t set. The one your account is set to is ' + tz + '. Is this correct?';
-    }
-    let timeZonePrompt = ui.alert(text, ui.ButtonSet.YES_NO);
+    let timeZonePrompt = ui.alert(`🕐 TIMEZONE`,`The timezone you're currently using is ${tz}.\n\nIs this correct?`, ui.ButtonSet.YES_NO);
     if ( timeZonePrompt != 'YES') {
-      ui.alert('FIX TIMEZONE\r\n\r\nFollow these steps to change your projects time zone:\r\n\r\n1\. Go to the \'Extensions\' > \'Apps Script\' menu\r\n2\. Select the gear icon on the left menu\r\n3\. Use the drop-down to select the correct timezone\r\n4\. Close the \'Apps Script\' editor and return to the sheet\r\n5\. Restart the script through the \'Picks\' menu', ui.ButtonSet.OK);
+      ui.alert(`🛠 FIX TIMEZONE`, `Follow these steps to change your projects time zone:\n\n1. Go to the "Extensions" > "Apps Script" menurn2. Select the gear icon on the left menurn3. Use the drop-down to select the correct timezonern4. Close the "Apps Script" editor and return to the sheetrn5. Restart the script through the "Picks" menu`, ui.ButtonSet.OK);
       return false;
     } else if ( timeZonePrompt == 'YES') {
       docProps.setProperty('tz',tz);
@@ -3397,10 +3393,12 @@ function launchFormBuilder() {
     } else {
       alertText += `Your membership is already set to open for joining via the form. However, would you like to enter any initial members?\n\nSelecting "YES" will bring up the "Member Management" panel to enter initial members. Then restart the form builder when completed.\n\nIf you select "NO", a text entry box will be provided for the first week of the form for all members to join.`;
     }
-    let membersMissing = ui.alert(`⚠️ No Members Configured Yet!`, ui.ButtonSet.YES_NO_CANCEL);
+    let membersMissing = ui.alert(`⚠️ No Members`,`You haven't entered any members yet, would you like to do that now?\n\nSelect "Yes" to launch the member configuration panel, "No" to skip to form creation without any members (fully open enrollment)`, ui.ButtonSet.YES_NO_CANCEL);
     if (membersMissing === ui.Button.YES) {
       launchMemberPanel();
       return;
+    } else if (membersMissing === ui.Button.CANCEL) {
+      ss.toast(`Canceled form creation. Please check if you'd like to include new members and try again.`,`🛑 FORM BUILDER STOPPED`);
     } else {
       if (config.membershipLocked) {
         config.membershipLocked = false;
@@ -3961,8 +3959,12 @@ function buildFormFromGamePlan(gamePlan) {
     
     const eliminatorStart = parseInt(config.eliminatorStartWeek,10) == week;
     let eliminator = config.eliminatorInclude && week >= parseInt(config.eliminatorStartWeek,10);
-
-    const hasMembers = memberData.memberOrder && memberData.memberOrder.length > 0;
+    let hasMembers = false;
+    try {
+      hasMembers = memberData.memberOrder && memberData.memberOrder.length > 0;
+    } catch (err) {
+      Logger.log(`🚫 No member data found, this will be a one page form.`);
+    }
     const firstWeek = formsData ? (Object.keys(formsData).length > 0 ? false : true) : true;
     if (firstWeek) {
       ss.toast(`No other forms detected, assuming this week (${week}) is the start of your group`,`🚀 START WEEK DETECTED`);
@@ -4041,6 +4043,20 @@ function buildFormFromGamePlan(gamePlan) {
         }
         Logger.log(`1️⃣ First week of contest(s), creating a generic drop-down for included games`);
         ss.toast(`First week of one of your contests where the other is inactive/absent, created generic question(s).`,`1️⃣ FIRST WEEK FOR CONTEST(S)`);
+        if (hasMembers) {
+          memberData.memberOrder.forEach(memberId => {
+            const member = memberData.members[memberId];
+            if (member) {
+              Logger.log(`➕ Adding first week name choice option for member: ${member.name}.`)
+              nameChoices.push(nameQuestion.createChoice(member.name, submitPage));
+            } else {
+              Logger.log(`❗ Unable to add first week name choice option for member: ${member.name}.`)
+              Logger.log(`❔ Member Data: \n ${JSON.stringify(member)}`)
+            }
+          });
+          ss.toast(`Generic contest page(s) created and linked members to submit page.`,`🔀 MEMBERS ROUTED`);
+          Logger.log(`🔀 Linked all members from generic page to the submit page... adding new user page if needed.`);
+        }
       } else {
         const sLivesIndex = Math.max(0,week - 2); // e.g., for Week 2, check index 0.
         const eLivesIndex = Math.max(0,week - 2);
@@ -4106,10 +4122,10 @@ function buildFormFromGamePlan(gamePlan) {
       memberData.memberOrder.forEach(memberId => {
         const member = memberData.members[memberId];
         if (member) {
-          Logger.log(`➕ Adding name choice option for member ${member.name}.`)
+          Logger.log(`➕ Adding name choice option for member: ${member.name}.`)
           nameChoices.push(nameQuestion.createChoice(member.name, submitPage));
         } else {
-          Logger.log(`❗ Unable to add name choice option for member ${member.name}.`)
+          Logger.log(`❗ Unable to add name choice option for member: ${member.name}.`)
           Logger.log(`❔ Member Data: \n ${JSON.stringify(member)}`)
         }
       });
