@@ -1989,6 +1989,8 @@ function fetchSchedule(ss,year,currentWeek,auto,overwrite) {
   }
   sheet.setTabColor(scheduleTabColor);
 
+  adjustColumns(sheet,headers.length);
+
   sheet.setColumnWidths(1,headers.length,30);
   sheet.setColumnWidth(headers.indexOf('date')+1,60);
   sheet.setColumnWidth(headers.indexOf('dayName')+1,60);
@@ -3506,7 +3508,9 @@ function fetchFormCreationData() {
       },
       validitySummary: scheduleAnalysis.validitySummary,
       apiWeek: apiWeek,
-      leagueData: LEAGUE_DATA
+      leagueData: LEAGUE_DATA,
+      dayColor: dayColorsObj,
+      dayColorBorder: dayColorsFilledObj
     };
   } catch (error) {
     Logger.log("A critical error occurred in fetchFormCreationData: ", error);
@@ -3517,7 +3521,9 @@ function fetchFormCreationData() {
         available: false, matchups: [], },
       validitySummary: {},
       apiWeek: apiWeek,
-      leagueData: LEAGUE_DATA
+      leagueData: LEAGUE_DATA,
+      dayColor: dayColorsObj,
+      dayColorBorder: dayColorsFilledObj
     };
   }
 }
@@ -4502,7 +4508,7 @@ function buildTeamList(gamePlan, config, isAts) {
       `${game.awayTeam} ${awaySpread > 0 ? '+' : ''}${awaySpread}${awayEmojis}`,
       `${game.homeTeam} ${homeSpread > 0 ? '+' : ''}${homeSpread}${homeEmojis}`
     ];
-  });
+  }).sort((a, b) => a.charAt(0).localeCompare(b.charAt(0)));
 }
 
 /**
@@ -8467,7 +8473,8 @@ function weeklySheet(ss,week,config,forms,memberData,displayEmpty) {
     finalPaidCell.setHorizontalAlignment('center')
       .setWrapStrategy(SpreadsheetApp.WrapStrategy.WRAP)
       .setFontWeight('bold')
-      .setFormulaR1C1(`=if(and(R${entryRowStart}C[0]:R${entryRowEnd}C[0]),"ALL PAID","UNPAID")`);
+      .setNumberFormat("##.#%")
+      .setFormulaR1C1(`=if(and(R${entryRowStart}C[0]:R${entryRowEnd}C[0]),"ALL PAID",if(arrayformula(and(NOT(R${entryRowStart}C[0]:R${entryRowEnd}C[0]))),"UNPAID",round(countif(R${entryRowStart}C[0]:R${entryRowEnd}C[0],true)/counta(R${entryRowStart}C[0]:R${entryRowEnd}C[0]),3)))`);
     let formatRuleAllPaid = SpreadsheetApp.newConditionalFormatRule()
       .whenTextEqualTo('ALL PAID')
       .setBackground('#b5fff2')
@@ -8480,6 +8487,13 @@ function weeklySheet(ss,week,config,forms,memberData,displayEmpty) {
       .setRanges([finalPaidCell])
       .build();
     formatRules.push(formatRuleAllNotPaid);
+    let formatRulePartialPaid = SpreadsheetApp.newConditionalFormatRule()
+      .setGradientMaxpointWithValue("#b5fff2", SpreadsheetApp.InterpolationType.NUMBER, ".99")
+      .setGradientMidpointWithValue("#FFFFFF", SpreadsheetApp.InterpolationType.NUMBER, ".50")
+      .setGradientMinpointWithValue("#ffd5b5", SpreadsheetApp.InterpolationType.NUMBER, ".01")
+      .setRanges([finalPaidCell])
+      .build();
+    formatRules.push(formatRulePartialPaid);
     sheet.getRange(1,paidCol).setValue('PAID');
     sheet.setColumnWidth(paidCol,70);
     const nameBlockRange = sheet.getRange('R'+entryRowStart+'C1:R'+entryRowEnd+'C4');
@@ -8631,3 +8645,4 @@ function getRandomInt(min, max) {
       max = Math.floor(max);
       return Math.floor(Math.random() * (max - min + 1)) + min;
 }
+
