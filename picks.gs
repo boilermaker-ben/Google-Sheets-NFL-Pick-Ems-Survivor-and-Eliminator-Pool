@@ -1,7 +1,7 @@
 /** GOOGLE SHEETS FOOTBALL PICK 'EMS, SURVIVOR, & ELIMINATOR TOOL | 2025 Edition
  * Script Library for League Creator & Management Platform
  * v1.0
- * 09/11/2025
+ * 09/12/2025
  * 
  * Created by Ben Powers
  * ben.powers.creative@gmail.com
@@ -4392,7 +4392,7 @@ function buildPickemQuestions(ss, form, gamePlan, config) {
       .requireNumberBetween(0,120)
       .build();
       // Tiebreaker question
-    let helpText = `Total points combined between ${tiebreakerMatchup}${config.overUnderInclude && tiebreakerOverUnder > 0 ? ' (current betting line is ' + tiebreakerOverUnder + ')' : ''}`
+    let helpText = `Combined points between ${tiebreakerMatchup}${config.overUnderInclude && tiebreakerOverUnder > 0 ? ' (betting line: ' + tiebreakerOverUnder + ')' : ''}`
     form.addTextItem()
       .setTitle('Tiebreaker')
       .setHelpText(helpText)
@@ -4943,6 +4943,10 @@ function executePickImport(week, importOnlyStartedGames) {
       const text = `Successfully imported Pick 'Em data into week '${week}' sheet.`;
       Logger.log(`✅ ${text}`);
       ss.toast(text,`✅ PICK 'EMS IMPORTED`)
+      
+      formsData[week].imported = true;
+      saveProperties('forms',formsData);
+
       if (!config.initialized) {
         const ui = fetchUi();
         let prompt = ui.alert(`Season-Long Tracking Sheets Creation`,'Would you like to create all additional tracking sheets now?\n\nThis can be done later via the "Picks" > "Utilities" menu.', ui.ButtonSet.YES_NO);
