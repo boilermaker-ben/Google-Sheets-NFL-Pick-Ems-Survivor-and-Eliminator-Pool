@@ -240,11 +240,55 @@
 
       // --- 5. Populate Options and Submit Logic ---
       const optionsContainer = document.getElementById('options-container');
-      const gamePlanGames = data.gamePlanGames.flatMap(g => [`${g.awayTeam} @ ${g.homeTeam}`,`${g.awayTeam} VS ${g.homeTeam}`]);
-      const startedGames = new Set(data.startedGames);
+      // Helper function to normalize team codes (first 2-3 characters)
+      
+      function normalizeTeam(team) {
+          return team.substring(0, 3).toUpperCase().trim();
+      }
 
-      pastGames = gamePlanGames.filter(g => startedGames.has(g));
-      futureGames = gamePlanGames.filter(g => !startedGames.has(g));
+      // Helper function to check if two game strings represent the same matchup
+      function isSameMatchup(game1, game2) {
+          // Extract teams from different formats: "TEAM1 @ TEAM2" or "TEAM1 VS TEAM2"
+          const separators = [' @ ', ' VS '];
+          
+          let teams1 = null, teams2 = null;
+          // Try to split game1
+          for (const sep of separators) {
+              if (game1.includes(sep)) {
+                  teams1 = game1.split(sep).map(t => normalizeTeam(t));
+                  break;
+              }
+          }
+          
+          // Try to split game2
+          for (const sep of separators) {
+              if (game2.includes(sep)) {
+                  teams2 = game2.split(sep).map(t => normalizeTeam(t));
+                  break;
+              }
+          }
+          
+          if (!teams1 || !teams2 || teams1.length !== 2 || teams2.length !== 2) {
+              return false;
+          }
+          
+          // Check if same teams (regardless of order for neutral matchups)
+          return (teams1[0] === teams2[0] && teams1[1] === teams2[1]) ||
+                (teams1[0] === teams2[1] && teams1[1] === teams2[0]);
+      }
+      
+      // Create games list without duplicates (keep original format from gamePlanGames)
+      const gamePlanGames = data.gamePlanGames.map(g => `${g.awayTeam} @ ${g.homeTeam}`);
+      const startedGamesArray = Array.from(data.startedGames);
+
+      // Filter with flexible matching
+      pastGames = gamePlanGames.filter(planGame => {
+          return startedGamesArray.some(startedGame => isSameMatchup(planGame, startedGame));
+      });
+
+      futureGames = gamePlanGames.filter(planGame => {
+          return !startedGamesArray.some(startedGame => isSameMatchup(planGame, startedGame));
+      });
       let optionsHtml = '';
 
       if (data.offerPartialImport && pastGames.length > 0 && futureGames.length > 0) {
