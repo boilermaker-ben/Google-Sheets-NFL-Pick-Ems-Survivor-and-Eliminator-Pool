@@ -4057,7 +4057,7 @@ function buildFormFromGamePlan(gamePlan) {
           ss.toast(`Generic contest page(s) created and linked members to submit page.`,`🔀 MEMBERS ROUTED`);
           Logger.log(`🔀 Linked all members from generic page to the submit page... adding new user page if needed.`);
         }
-      } else {
+      } else if (hasMembers) {
         const sLivesIndex = Math.max(0,week - 2); // e.g., for Week 2, check index 0.
         const eLivesIndex = Math.max(0,week - 2);
         const sLS = config.survivorLives;
@@ -4114,6 +4114,9 @@ function buildFormFromGamePlan(gamePlan) {
             Logger.log(`⚠️ Invalid member! (ID: ${memberId})`)
           }
         });
+      } else {
+        ui.alert(`⚠️ Start week past with no members!`,`You likely are seeing this because you've set a start date for a survivor or eliminator pool that is prior to this week's form and have no active members who would be eligible. Please adjust your start week in the configuration tool (⚙️) to this current week (${week}) and try again.`, ui.ButtonSet.OK);
+        return;
       }
       ss.toast(`Created all contest questions.${survivor ? '\nSurvivor Members: ' + survivorMembers : ''}${eliminator ? '\nEliminator Members: ' +  eliminatorMembers : ''}`,`🔀 MEMBERS ROUTED`);
       Logger.log(`🔀 Linked all members to their respective pages for navigation... adding new user page if needed.${survivor ? '\nSurvivor Members: ' + survivorMembers : ''}${eliminator ? '\nEliminator Members: ' +  eliminatorMembers : ''}`);
