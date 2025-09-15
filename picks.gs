@@ -2847,7 +2847,7 @@ function updateSheetsWithApiOutcomes(ss, week, completedGames, gamePlan) {
       }
     }
     if (config.tiebreakerInclude) {
-      if (formsData[week].gamePlan.games.length = completedGames.length) {
+      if (formsData[week].gamePlan.games.length == completedGames.length) {
         const tiebreakerMatchup = completedGames[completedGames.length-1]
         let score = parseInt(tiebreakerMatchup.awayScore) + parseInt(tiebreakerMatchup.homeScore);
         if (score) {
