@@ -1,7 +1,7 @@
 /** GOOGLE SHEETS FOOTBALL PICK 'EMS, SURVIVOR, & ELIMINATOR TOOL | 2025 Edition
  * Script Library for League Creator & Management Platform
  * v1.0
- * 09/12/2025
+ * 09/16/2025
  * 
  * Created by Ben Powers
  * ben.powers.creative@gmail.com
