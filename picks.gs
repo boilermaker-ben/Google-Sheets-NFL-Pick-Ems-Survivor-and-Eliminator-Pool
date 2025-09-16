@@ -3934,7 +3934,7 @@ function buildFormFromGamePlan(gamePlan) {
     
     // 2. Create the new form by copying the template.
     const newFormFile = DriveApp.getFileById(templateForm.getId()).makeCopy(formName, formsFolder);
-    const form = FormApp.openById(newFormFile.getId());
+    const form = FormApp.openById(newFormFile.getId()).setPublished(true);
 
     const urlFormEdit = form.shortenFormUrl(form.getEditUrl());
     const urlFormPub = form.shortenFormUrl(form.getPublishedUrl());
