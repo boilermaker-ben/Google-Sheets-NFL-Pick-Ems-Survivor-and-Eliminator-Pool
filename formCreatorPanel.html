@@ -397,13 +397,13 @@
         const homeData = LEAGUE_DATA[game.homeTeam] || { colors: [] };
         const homeBg = (homeData.colors[1]?.toUpperCase() === '#FFFFFF') ? homeData.colors[2] : homeData.colors[1];
         
+        const spreadValue = editedSpreadData[gameId]?.spread ?? (game.spread || 'N/A');
+        const { favoredTeam, points } = parseSpread(spreadValue, game.awayTeam, game.homeTeam);
+
         let spreadCellContent = '';
         if (showSpreads) {
           const initialSpreadValue = game.spread || 'N/A'; // Get original spread
           const isInitialDataValid = isValidSpread(initialSpreadValue, game.awayTeam, game.homeTeam);
-
-          const spreadValue = editedSpreadData[gameId]?.spread ?? initialSpreadValue;
-          const { favoredTeam, points } = parseSpread(spreadValue, game.awayTeam, game.homeTeam);
           
           spreadCellContent = `
             <td class="spread-input-cell" data-game-id="${gameId}">
@@ -428,23 +428,20 @@
 
           dayAndTimeCells = `<td>${dayCellHtml}</td><td>${formatTime(game.hour, game.minute)}</td>`;
         }
-        
-        const spreadValue = editedSpreadData[gameId]?.spread ?? (game.spread || 'N/A');
-        const { favoredTeam } = parseSpread(spreadValue, game.awayTeam, game.homeTeam);
-        
+
         return `
           <tr id="match-row-${gameId}" class="${rowClass}" data-day="${game.dayName}" data-game-id="${gameId}" data-away-team="${game.awayTeam}" data-home-team="${game.homeTeam}">
             ${dragHandleCell}
             <td>${firstCellContent}</td>
             ${dayAndTimeCells}
             <td>
-              <span class="team-cell team-cell-away ${favoredTeam === game.awayTeam ? 'favored' : ''}" data-team-abbr="${game.awayTeam}"
+              <span class="team-cell team-cell-away ${(showSpreads && favoredTeam === game.awayTeam) ? 'favored' : ''}" data-team-abbr="${game.awayTeam}"
                     style="background-color: ${awayData.colors[0] || '#888'}; color: ${awayData.colors[1] || '#fff'};">
                 ${game.awayTeam}${!config.hideEmojis ? awayData.mascot : ''}
               </span>
             </td>
             <td>
-              <span class="team-cell team-cell-home ${favoredTeam === game.homeTeam ? 'favored' : ''}" data-team-abbr="${game.homeTeam}"
+              <span class="team-cell team-cell-home ${(showSpreads && favoredTeam === game.homeTeam) ? 'favored' : ''}" data-team-abbr="${game.homeTeam}"
                     style="background-color: ${homeBg || '#888'}; color: ${homeData.colors[0] || '#fff'};">
                 ${game.homeTeam}${!config.hideEmojis ? homeData.mascot : ''}
               </span>
