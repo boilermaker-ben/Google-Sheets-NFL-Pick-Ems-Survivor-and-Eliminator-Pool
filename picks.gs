@@ -4764,7 +4764,7 @@ function deleteWeeklyFetchTrigger() {
  * [NEW] The main data-gathering function for the Import Picks panel.
  * This is called by the client-side script on load.
  */
-function getFormImportData(week) {
+function getFormImportData(week,auto) {
   try {
     const docProps = PropertiesService.getDocumentProperties();
     const formsData = JSON.parse(docProps.getProperty('forms'));
@@ -4785,12 +4785,19 @@ function getFormImportData(week) {
     const config = JSON.parse(docProps.getProperty('configuration'));
     
     const allCreatedWeeks = Object.keys(formsData).map(Number).sort((a,b) => a-b);
-    week = week || allCreatedWeeks[allCreatedWeeks.length - 1] || fetchWeek(null, true);
-    const gamePlan = formsData[week]?.gamePlan;
+    week = auto ? (allCreatedWeeks[allCreatedWeeks.length - 1] || fetchWeek(null, true)) : (week || allCreatedWeeks[allCreatedWeeks.length - 1] || fetchWeek(null, true));
+    let gamePlan = formsData[week]?.gamePlan;
 
     if (!gamePlan) {
-      gamePlan = {};
-      Logger.log(`It appears no gamePlans exist yet for forms. Are you sure you've created a form already?`)
+      Logger.log(`⚠️ No form found for week ${week}`);
+      Logger.log(`🔎 attempting to look for most recent week created...`);
+      week = allCreatedWeeks[allCreatedWeeks.length - 1] || fetchWeek(null, true);
+      gamePlan = formsData[week]?.gamePlan;
+      if (!gamePlan) {
+        Logger.log(`❓ It appears no gamePlans exist yet for forms. Are you sure you've created a form already?`)
+        Logger.log(`⚠️ Error in getFormImportData: ${err.stack}`);
+        throw new Error(`Failed to prepare for import: ${err.stack}`);
+      }
     }
 
     // 3. Determine which games are upcoming.
@@ -4814,12 +4821,11 @@ function getFormImportData(week) {
       offerPartialImport: offerPartialImport
     };
   } catch (err) {
-    Logger.log("Error in getFormImportData: ", err);
+    Logger.log(`⚠️ Error in getFormImportData: ${err.stack}`);
     // Re-throw the error so the client's onFailure handler gets it.
-    throw new Error(`Failed to prepare for import: ${err.stack}`);
+    throw new Error(`⚠️ Failed to prepare for import: ${err.stack}`);
   }
 }
-
 /**
  * [MODIFIED] This function now only launches the HTML file.
  */
