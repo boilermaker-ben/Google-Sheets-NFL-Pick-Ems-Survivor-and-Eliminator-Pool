@@ -138,7 +138,7 @@
       google.script.run
         .withSuccessHandler(buildImportPanel)
         .withFailureHandler(onLoadFailure)
-        .getFormImportData();
+        .getFormImportData(null,true); // (week,auto) Second variable is "Auto" and will return the highest week form available 
     });
 
     /**
@@ -403,7 +403,7 @@
       google.script.run
         .withSuccessHandler(buildImportPanel) // The same handler will rebuild the UI
         .withFailureHandler(onLoadFailure)
-        .getFormImportData(selectedWeek);
+        .getFormImportData(selectedWeek,false);
     }
 
     function onLoadFailure(error) {
