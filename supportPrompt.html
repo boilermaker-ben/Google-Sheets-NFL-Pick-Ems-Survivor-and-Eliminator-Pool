@@ -11,13 +11,21 @@
     .section-header-big { font-size: 24px; color: #FFFFFF; font-weight: 700; flex: 1; }
     p { font-size: 14px; color: #333; line-height: 1.6; margin: 0 0 1em 0; }    
     p:last-child { margin-bottom: 0; }
-    a { color: #013369; font-weight: 600; text-decoration: none; }    a:hover { text-decoration: underline; }
+    a { color: #013369; font-weight: 600; text-decoration: none; }
+    a:hover { text-decoration: underline; }
     .button-section { padding: 16px; background-color: #f8f9fa; }
     .button-row { display: flex; gap: 10px; margin-top: 10px; }
-    .btn { flex: 1; padding: 8px 14px; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; font-weight: 600; color: white; /* Button text is white by default */ text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 8px; }    .btn:hover { text-decoration: none; /* No underline on button hover */ }
-    .btn-primary { background-color: #013369; }    .btn-primary:hover { background-color: #2067b3; }
-    .btn-secondary { background-color: #D50A0A; }    .btn-secondary:hover { background-color: #ff3d3d; }
-    .btn-coffee {   background-color: #FFDD00;   color: #000000; }    .btn-coffee:hover {   background-color: #FFEA62; }    .icon {   width: 16px;   height: 16px;   fill: currentColor; }
+    .btn { flex: 1; padding: 8px 14px; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; font-weight: 600; color: white; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 8px; }
+    .btn:hover { text-decoration: none; }
+    .btn-primary { background-color: #013369; }
+    .btn-primary:hover { background-color: #2067b3; }
+    .btn-secondary { background-color: #D50A0A; }
+    .btn-secondary:hover { background-color: #ff3d3d; }
+    .btn-coffee { font-size: 11px; font-weight: 550; background-color: #FFDD00; color: #000000; }
+    .btn-coffee:hover { background-color: #FFEA62; }
+    .btn-venmo { font-size: 11px; font-weight: 550; background-color: #008CFF; color: #000000; }
+    .btn-venmo:hover { background-color: #6EBDFF; } 
+    .icon { width: 16px;   height: 16px; fill: currentColor; }
   </style>
 </head>
 <body>
@@ -29,7 +37,7 @@
     <div>Get Help</div>
   </div>
   <div class="card-section">
-    <p>I aim to be responsive, but I have a wife, five young kiddos, and a full-time job that keep me busy. Your best bet for help is one of the options below.</p>
+    <p>I aim to be responsive, but I have a wife, five young kiddos (sixth on the way!), and a full-time job that keep me busy. Your best bet for help is one of the options below. Suggestions for improvement welcome too!</p>
     <div class="button-row">
       <a href="mailto:benpowerscreative@gmail.com?subject=Football%20Pool%20Help" target="_blank" class="btn btn-secondary">
         <svg class="icon" viewBox="0 0 24 24"><path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>
@@ -43,22 +51,29 @@
   </div>
 
   <div class="card-header-text-only">
-    <div>Support the Project</div>
+    <div>Support My Work</div>
   </div>
   <div class="card-section">
     <p>If you've enjoyed using this tool, that's what I'm most excited about. If you're feeling generous, you can support my efforts below.</p>
-    <a href="https://buymeacoffee.com/benpowers" target="_blank" class="btn btn-coffee">
-      <svg class="icon" viewBox="0 0 24 24"><path d="M2 19h18v2H2zM20 3H4v10c0 2.21 1.79 4 4 4h6c2.21 0 4-1.79 4-4v-3h2c1.11 0 2-.89 2-2V5c0-1.11-.89-2-2-2zm-2 5h-2V5h2v3zM4 19h16v2H4z"/></svg>
-      Buy Me a Coffee
-    </a>
+    <div class="button-row">
+      <a href="https://buymeacoffee.com/benpowers" target="_blank" class="btn btn-coffee">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M2 19h18v2H2zM20 3H4v10c0 2.21 1.79 4 4 4h6c2.21 0 4-1.79 4-4v-3h2c1.11 0 2-.89 2-2V5c0-1.11-.89-2-2-2zm-2 5h-2V5h2v3zM4 19h16v2H4z"/></svg>
+        Buy me coffee or kids pizza
+      </a>
+      <a href="https://venmo.com/benpowerscreative" target="_blank" class="btn btn-venmo">
+        <svg class="icon" viewBox="0 0 24 24">
+          <path d="M19.87 2.23a7.13 7.13 0,0,1 1.03 3.9c0 4.86-4.15 11.17-7.5 15.6H6.96L3.87 3.29L9.61 2.65l1.64 13.12c1.52-2.5 3.4-6.38 3.4-9.04A7.26 7.26 0,0,0 14 3.47Z"/>
+        </svg>
+        Chip in with Venmo
+      </a>
+    </div>
   </div>
 
   <div class="card-header-text-only">
     <div>Original File Link</div>
   </div>
   <div class="card-section">
-    <p>Need to make a fresh copy? You can find the original template file here:<br>
-    <a href="https://docs.google.com/spreadsheets/d/12ZV1sEuEw4J-giEuWhY_rly11Gk6jFfWQOgfeAPA_JU/edit?usp=sharing" target="_blank">Original File Link</a></p>
+    <p>Need to recreate your pool? Get a fresh copy of <a href="https://docs.google.com/spreadsheets/d/12ZV1sEuEw4J-giEuWhY_rly11Gk6jFfWQOgfeAPA_JU/edit?usp=sharing" target="_blank">the original template file.</a></p>
   </div>
   
 </body>
