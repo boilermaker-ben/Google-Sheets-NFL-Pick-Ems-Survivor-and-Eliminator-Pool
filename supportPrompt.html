@@ -9,6 +9,7 @@
     .card-header-text-only { background-color: #5E5E5E; color: white; font-weight: 700; padding: 18px 16px; text-align: left; }
     .card-section { padding: 16px; border-bottom: 1px solid #E8EAED; }
     .section-header-big { font-size: 24px; color: #FFFFFF; font-weight: 700; flex: 1; }
+    .version-badge { position: absolute; top: 8px; right: 12px; font-size: 10px; font-weight: 500; color: rgba(255, 255, 255, 0.7); letter-spacing: 0.5px; }
     p { font-size: 14px; color: #333; line-height: 1.6; margin: 0 0 1em 0; }    
     p:last-child { margin-bottom: 0; }
     a { color: #013369; font-weight: 600; text-decoration: none; }
@@ -31,6 +32,7 @@
 <body>
   <div class="card-header-top">
     <div class="section-header-big">Help & Support</div>
+    <div class="version-badge" id="version">v...</div>
   </div>
 
   <div class="card-header-text-only">
@@ -75,6 +77,25 @@
   <div class="card-section">
     <p>Need to recreate your pool? Get a fresh copy of <a href="https://docs.google.com/spreadsheets/d/12ZV1sEuEw4J-giEuWhY_rly11Gk6jFfWQOgfeAPA_JU/edit?usp=sharing" target="_blank">the original template file.</a></p>
   </div>
-  
+  <script>    
+    document.addEventListener('DOMContentLoaded', function() {
+      google.script.run
+        .withSuccessHandler(displayVersion)
+        .withFailureHandler(onLoadFailure)
+        .getSupportPromptInfo();
+    });
+
+    function displayVersion(data) {
+      console.log('Version data received:', data);
+      if (data && data.version) {
+        document.getElementById('version').textContent = 'v' + data.version;
+      }
+    };
+
+    function onLoadFailure(error) {
+      console.error('Could not load version information:', error);
+      document.getElementById('version').textContent = 'v?';
+    }
+  </script>
 </body>
 </html>
