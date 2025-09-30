@@ -2847,32 +2847,34 @@ function updateSheetsWithApiOutcomes(ss, week, completedGames, gamePlan) {
       }
     }
     if (config.tiebreakerInclude) {
-      if (formsData[week].gamePlan.games.length == completedGames.length) {
-        const tiebreakerMatchup = completedGames[completedGames.length-1]
-        let score = parseInt(tiebreakerMatchup.awayScore) + parseInt(tiebreakerMatchup.homeScore);
+      const tiebreakerMatchup = Object.keys(weeklySheetMap).reduce((a, b) => weeklySheetMap[a] > weeklySheetMap[b] ? a : b);
+      const tiebreakerMatchupDetails = completedGames.find(game => game.shortName === tiebreakerMatchup);
+      if (tiebreakerMatchupDetails) {
+        const score = parseInt(tiebreakerMatchupDetails.awayScore) + parseInt(tiebreakerMatchupDetails.homeScore);
+        Logger.log(`⚖️ Tiebreaker matchup ${tiebreakerMatchup}; ${tiebreakerMatchupDetails.winner} won, combined score of ${score}`);
         if (score) {
           let weeklySheetTiebreakerRange = ss.getRangeByName(`${LEAGUE}_TIEBREAKER_${week}_OUTCOME`);
           if (weeklySheetTiebreakerRange) {
             weeklySheetTiebreakerRange.setValue(score);
-            Logger.log(`👔 Successfully placed tiebreaker value using the designated tiebreaker outcome named range for week ${week}.`)
+            Logger.log(`👔 Successfully placed combined score of ${score} from the ${tiebreakerMatchup} tiebreaker matchup (✔️ week ${week} named range used).`);
           } else {
             let weeklySheetGroupTiebreakerRange = ss.getRangeByName(`${LEAGUE}_TIEBREAKER_${week}`); // If the outcome cell isn't established
             weeklySheetTiebreakerRange = weeklySheetGroupTiebreakerRange.getSheet().getRange(weeklySheetGroupTiebreakerRange.getLastRow()+3,weeklySheetGroupTiebreakerRange.getColumn());
             if (weeklySheetTiebreakerRange) {
               weeklySheetTiebreakerRange.setValue(score);
-              Logger.log(`👔 Successfully placed tiebreaker value using the tiebreaker column (fallback) for week ${week}.`)
+              Logger.log(`👔 Successfully placed combined score of ${score} from the ${tiebreakerMatchup} tiebreaker matchup (❗ week ${week} fallback tiebreaker column used).`);
             }
           }
         } else {
-          Logger.log(`❗👔 Found a tiebreaker score of ${score} but was unable to place it`);
-          ss.toast(`👔 Found a tiebreaker score of ${score} but was unable to place it`,`❗ TIEBREAKER NOT PLACED`);
+          Logger.log(`❗👔 Found a tiebreaker score of ${score} for the ${tiebreakerMatchup} game, but was unable to place it`);
+          ss.toast(`👔 Found a tiebreaker score of ${score} for the ${tiebreakerMatchup} game, but was unable to place it`,`❗ TIEBREAKER NOT PLACED`);
         }
       } else {
-        Logger.log(`⏩ Games for the week was not equal to the total games on the week, skipping tiebreaker for now.`)
-        ss.toast(`Games for the week was not equal to the total games on the week, skipping tiebreaker for now.`,`⏩ TIEBREAKER NOT AVAILABLE`)
+        Logger.log(`⏩ Tiebreaker matchup for week ${week} of ${tiebreakerMatchup} incomplete, skipping tiebreaker for now.`)
+        ss.toast(`Tiebreaker matchup for week ${week} of ${tiebreakerMatchup} incomplete, skipping tiebreaker for now.`,`⏩ TIEBREAKER NOT AVAILABLE`);
       }
     } else {
-      Logger.log(`👔 No tiebreaker configured for the pool, skipping for now.`)
+      Logger.log(`👔 No tiebreaker configured for the pool.`);
     }
   }
 
