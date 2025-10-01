@@ -1,7 +1,7 @@
-const VERSION = '1.0.1';
+const VERSION = '1.0.2';
 /** GOOGLE SHEETS FOOTBALL PICK 'EMS, SURVIVOR, & ELIMINATOR TOOL | 2025 Edition
  * Script Library for League Creator & Management Platform
- * 09/30/2025
+ * 10/01/2025
  * 
  * Created by Ben Powers
  * ben.powers.creative@gmail.com
@@ -5598,8 +5598,8 @@ function onEditTrigger(e) {
       const potentialWeek = parseInt(match[1], 10);
       
       // Check if the edited cell is within one of the outcome named ranges
-      const outcomeRange = ss.getRangeByName(`${LEAGUE}_PICKEMS_OUTCOMES_${potentialWeek}`);
-      const marginRange = ss.getRangeByName(`${LEAGUE}_PICKEMS_OUTCOMES_${potentialWeek}_MARGIN`);
+      const outcomeRange = ss.getRangeByName(`${LEAGUE}_PICKEM_OUTCOMES_${potentialWeek}`);
+      const marginRange = ss.getRangeByName(`${LEAGUE}_PICKEM_OUTCOMES_${potentialWeek}_MARGIN`);
       
       // Check if the edited range is within either of these named ranges.
       // This is a more robust check than comparing A1 notations.
@@ -5622,7 +5622,7 @@ function onEditTrigger(e) {
   }
 
   // --- If all checks pass, call the heavy lifter ---
-  Logger.log(`🔄 Change detected for Week ${week}. Processing scores...`);
+  Logger.log(`🔀 Change detected for Week ${week}. Processing scores...`);
   
   try {
     evalSurvElimStatus(week, sheetName);
@@ -5646,7 +5646,7 @@ function onEditTrigger(e) {
 }
 
 /**
- * [THE DEFINITIVE HEAVY LIFTER] Evaluates and updates Survivor and Eliminator statuses for a given week.
+ * Evaluates and updates Survivor and Eliminator statuses for a given week.
  *
  * @param {number} week The week number to process.
  * @param {string} sourceSheetName The name of the sheet that triggered the edit.
@@ -5669,9 +5669,9 @@ function evalSurvElimStatus(week, sourceSheetName) {
     const masterMarginsRange = ss.getRangeByName(`${LEAGUE}_OUTCOMES_${week}_MARGIN`);
 
     // This is a simple, direct sync.
-    masterOutcomesRange.setValues(weeklyOutcomesRange.getValues());
-    masterMarginsRange.setValues(weeklyMarginsRange.getValues());
-    Logger.log(`Synced outcomes from '${weeklySheet.getName()}' to the master OUTCOMES sheet.`);
+    masterOutcomesRange.setValues(weeklyOutcomesRange.getValues()[0].map(value => [value]));
+    masterMarginsRange.setValues(weeklyMarginsRange.getValues()[0].map(value => [value]));
+    Logger.log(`🔄 Synced outcomes from '${weeklySheet.getName()}' to the master OUTCOMES sheet.`);
   }
 
   // --- Step 2: Gather Official Outcomes ---
@@ -5680,7 +5680,7 @@ function evalSurvElimStatus(week, sourceSheetName) {
   
   const gamePlan = formsData[week]?.gamePlan;
   if (!gamePlan || !gamePlan.games) {
-    throw new Error(`Could not find a valid gamePlan with games for Week ${week}.`);
+    throw new Error(`⚠️ Could not find a valid gamePlan with games for Week ${week}.`);
   }
 
   // const matchups = gamePlan.games.map(g => `${g.awayTeam} @ ${g.homeTeam}`);
