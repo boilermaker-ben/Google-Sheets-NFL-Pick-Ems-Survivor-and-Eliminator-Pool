@@ -1,7 +1,7 @@
-const VERSION = '1.0.2';
+const VERSION = '1.0.3';
 /** GOOGLE SHEETS FOOTBALL PICK 'EMS, SURVIVOR, & ELIMINATOR TOOL | 2025 Edition
  * Script Library for League Creator & Management Platform
- * 10/01/2025
+ * 10/03/2025
  * 
  * Created by Ben Powers
  * ben.powers.creative@gmail.com
@@ -119,7 +119,7 @@ function timezoneCheck(ui,docProps) {
   if (tzProp == null) {
     let timeZonePrompt = ui.alert(`🕐 TIMEZONE`,`The timezone you're currently using is ${tz}.\n\nIs this correct?`, ui.ButtonSet.YES_NO);
     if ( timeZonePrompt != 'YES') {
-      ui.alert(`🛠 FIX TIMEZONE`, `Follow these steps to change your projects time zone:\n\n1. Go to the "Extensions" > "Apps Script" menurn2. Select the gear icon on the left menurn3. Use the drop-down to select the correct timezonern4. Close the "Apps Script" editor and return to the sheetrn5. Restart the script through the "Picks" menu`, ui.ButtonSet.OK);
+      ui.alert(`🛠 FIX TIMEZONE`, `Follow these steps to change your projects time zone:\n\n1. Go to the "Extensions" > "Apps Script" menu\n2. Select the gear icon on the left menu\n3. Use the drop-down to select the correct timezone\n4. Close the "Apps Script" editor and return to the sheet\n5. Restart the script through the "Picks" menu`, ui.ButtonSet.OK);
       return false;
     } else if ( timeZonePrompt == 'YES') {
       docProps.setProperty('tz',tz);
@@ -2855,11 +2855,13 @@ function updateSheetsWithApiOutcomes(ss, week, completedGames, gamePlan) {
       }
     }
     if (config.tiebreakerInclude) {
-      const tiebreakerMatchup = Object.keys(weeklySheetMap).reduce((a, b) => weeklySheetMap[a] > weeklySheetMap[b] ? a : b);
+      const tiebreaker = formsData[week].gamePlan.games[formsData[week].gamePlan.games.length - 1];
+      const tiebreakerMatchup = `${tiebreaker.awayTeam} @ ${tiebreaker.homeTeam}`;
+      Logger.log(`⚖️ From the forms data for week ${week}, the final matchup for use as a tiebreaker is ${tiebreakerMatchup}. Checking for outcome availability...`)
       const tiebreakerMatchupDetails = completedGames.find(game => game.shortName === tiebreakerMatchup);
       if (tiebreakerMatchupDetails) {
         const score = parseInt(tiebreakerMatchupDetails.awayScore) + parseInt(tiebreakerMatchupDetails.homeScore);
-        Logger.log(`⚖️ Tiebreaker matchup ${tiebreakerMatchup}; ${tiebreakerMatchupDetails.winner} won, combined score of ${score}`);
+        Logger.log(`🔥 ${tiebreakerMatchupDetails.winner} won the matchup, combined score of ${score}`);
         if (score) {
           let weeklySheetTiebreakerRange = ss.getRangeByName(`${LEAGUE}_TIEBREAKER_${week}_OUTCOME`);
           if (weeklySheetTiebreakerRange) {
