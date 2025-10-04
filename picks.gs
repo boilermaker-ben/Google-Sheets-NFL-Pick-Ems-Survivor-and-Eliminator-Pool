@@ -3480,12 +3480,12 @@ function templateCreationPrompt(ss,ui) {
 
     let response = ui.alert(
       '🎨 Customize Form Theme (One Time Only)',
-      'Before creating your first weekly form, would you like to open the template to customize the colors and header image?',
+      `Each week's form will utilize this template file to generate a fresh form.\n\nBefore creating your first weekly form, would you like to open the template to customize the header image and colors?`,
       ui.ButtonSet.YES_NO
     );
     
     if (response === ui.Button.YES) {
-      showLinkDialog(templateForm.getEditUrl(), '🎨 Template Customization', 'Open Your Template',`Once you've optionally updated the header image and color palette, restart the form creation function.\n\nNote: changing the header image should automatically modify the color palette.`);
+      showLinkDialog(templateForm.getEditUrl(), '🎨 Template Customization', 'Form Template',`\nOnly modify the header image and theme colors of the form. Once modified, close the form and return here to restart the form builder tool.\n\nNote: changing the header image should automatically modify the color palette.`);
     }
   } catch (err) {
     if (err.message.includes("CANCELED_BY_USER")) {
