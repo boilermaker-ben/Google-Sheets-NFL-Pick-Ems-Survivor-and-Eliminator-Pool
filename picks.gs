@@ -3479,7 +3479,7 @@ function templateCreationPrompt(ss,ui) {
     if (!templateForm) return;
 
     let response = ui.alert(
-      'Customize Theme (One Time Only)',
+      '🎨 Customize Form Theme (One Time Only)',
       'Before creating your first weekly form, would you like to open the template to customize the colors and header image?',
       ui.ButtonSet.YES_NO
     );
