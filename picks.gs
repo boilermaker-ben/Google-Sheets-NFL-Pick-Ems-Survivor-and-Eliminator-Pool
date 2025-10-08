@@ -1355,14 +1355,16 @@ function createNewMember(name, isPaid, config, joinWeek) {
     eO: null
   };
 
-  // --- [THE CRUCIAL FIX] ---
-  // Now, set the initial number of lives for the week they are joining.
-  // This value will be pushed onto the end of the padded array.
-  if (config.survivorInclude && joinWeek >= config.survivorStartWeek) {
+  // Append starting lives (or 1 as fallback) to the array IF the start week is the same as the join week, otherwise add 0
+  if (joinWeek == (config.survivorStartWeek || 1)) {
     newMember.sL.push(parseInt(config.survivorLives, 10) || 1);
+  } else {
+    newMember.sL.push(0);
   }
-  if (config.eliminatorInclude && joinWeek >= config.eliminatorStartWeek) {
+  if (joinWeek == (config.eliminatorStartWeek || 1)) {
     newMember.eL.push(parseInt(config.eliminatorLives, 10) || 1);
+  } else {
+    newMember.eL.push(0);
   }
   
   return newMember;
