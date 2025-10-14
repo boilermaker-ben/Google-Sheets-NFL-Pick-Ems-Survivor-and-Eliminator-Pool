@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    body { font-family: 'Montserrat', Arial, sans-serif; padding: 0; margin: 0; background-color: #FFFFFF; }
+    .container { padding: 0 10px; margin-top: 10px; }
+    .column { font-size: 12px; margin-bottom: 10px; }
+    .column ul { margin-top: 8px; }
+    ul { margin: 0; padding-left: 0; list-style-type: none; }
+    li { margin-bottom: 8px; }
+    .button-row { display: flex; gap: 8px; }
+    .btn { flex: 1; padding: 8px 10px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; font-weight: 600; }
+    .btn-primary { background-color: #013369; color: white; }
+    .btn-primary:hover { background-color: #2067b3; }
+    .btn-primary:disabled { background-color: #ccc; cursor: not-allowed; }
+    .btn-secondary { background-color: #D50A0A; color: white; }
+    .btn-secondary:hover { background-color: #ff3d3d; }
+    #loading-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(255, 255, 255, 0.85); display: flex; justify-content: center; align-items: center; z-index: 100; }
+    .spinner { border: 5px solid #f3f3f3; border-top: 5px solid #013369; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    .hidden { display: none !important; }
+    .dropdown-select { width: 25%; padding: 2px 2px; border: 2px solid #ff913d; border-radius: 4px; font-size: 12px; background-color: white; cursor: pointer; appearance: none; -webkit-appearance: none; -moz-appearance: none; background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath fill='%23666' d='M4 6l4 4 4-4z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; background-size: 16px; padding-right: 40px; max-width: 110px; }
+    .dropdown-row { display: flex; justify-content: space-between; align-items: center; padding: 3px 0; min-height: 25px; }
+    .completed-column { background-color: #e6f4ea; border: 1px solid #c8e6c9; padding: 8px; border-radius: 4px; }
+    .active-column { background-color: #d7e7f7; border: 1px solid #8eb0d1; padding: 8px; border-radius: 4px; }
+    .pregame-column { background-color: #fff0f0; border: 1px solid #ffdddd; padding: 8px; border-radius: 4px; }
+    .other-column { background-color: #fef3e1; border: 1px solid #ffe0b2; padding: 8px 15px; border-radius: 4px; margin-top: 15px; }
+    .matchup-display { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 5px; }
+    .matchup-display > .team-cell:first-child { justify-self: end; }
+    .matchup-display > .team-cell:last-child { justify-self: start; }
+    .team-cell { font-size: 11px; display: inline-flex; align-items: center; padding: 4px 8px; border-radius: 4px; font-weight: bold; color: white; text-align: left; }
+    .team-name { flex-grow: 0; }
+    .team-score { font-size: 10px; font-weight: 500; opacity: 0.8; margin-left: 5px; }
+    .vs-separator { font-weight: 600; color: #555; font-size: 12px; }
+    .team-cell.winner { outline: 2px solid #ff913d; outline-offset: 1px; box-shadow: 0 0 10px rgba(255, 145, 61, 0.7); }
+    .card-header-top { background-color: #013369; color: white; font-weight: 700; padding: 8px 15px; text-align: left; }
+    .card-section { padding: 10px 12px; border-bottom: 1px solid #E8EAED; }
+    .button-section { padding: 16px; }
+    #status-footer { padding: 10px 15px; font-weight: 600; text-align: center; border-bottom: 1px solid #E8EAED; transition: all 0.3s ease; }
+    .tiebreaker-complete { color: #196901; font-weight: 600; }
+    .tiebreaker-pending { color: #ed6700; font-weight: 600; } 
+    #tiebreaker-content { font-size: 12px }
+  </style>
+</head>
+<body>
+  <div id="loading-overlay"> <div class="spinner"></div> </div>
+  
+  <!-- New <form> tag wraps all visible content for consistency -->
+  <form id="scoreImportForm">
+    <div class="card-header-top">
+      <div class="dropdown-row">
+        <span>📆 Select Week</span>
+        <select id="week-select" class="dropdown-select" disabled> <option>Loading...</option> </select>
+      </div>
+    </div>
+
+    <div class="container">
+      <div id="completed-column" class="column completed-column hidden"> <strong>✅ Completed</strong> <ul id="completed-list"></ul> </div>
+      <div id="active-column" class="column active-column hidden"> <strong>⏳ In Progress</strong> <ul id="active-list"></ul> </div>
+      <div id="pregame-column" class="column pregame-column hidden"> <strong>🚫 Not Started</strong> <ul id="pregame-list"></ul> </div>
+    </div>
+    
+    <div id="tiebreaker-section" class="hidden">
+      <div class="card-header-top" style="padding: 12px 15px;">
+        ⚖️ Tiebreaker
+      </div>
+      <div id="tiebreaker-content" class="card-section"></div>
+    </div>
+
+    <div id="other-games-section" class="other-column hidden"> <strong>⚪ Other Statuses</strong> <ul id="other-list"></ul> </div>
+    
+    <div id="status-footer" class="hidden"></div>
+    
+    <div class="button-section">
+      <div class="button-row">
+        <button type="button" class="btn btn-secondary" onclick="google.script.host.close()">Cancel</button>
+        <button type="button" class="btn btn-primary" id="import-btn" disabled>Submit</button>
+      </div>
+    </div>
+  </form>
+
+  <script>
+    let selectedWeek = 1;
+    let completedGames = [];
+    let fullAnalysisData = {};
+    let leagueData = {}; // To store the fetched league/team data
+    let allFormsData = {};
+    let tiebreakerInclude = false;
+
+    document.addEventListener('DOMContentLoaded', function() {
+      google.script.run
+        .withSuccessHandler(initializeDialog)
+        .withFailureHandler(showError)
+        .getScoreImportData();
+    });
+
+    function initializeDialog(data) {
+      fullAnalysisData = data.analysis;
+      leagueData = data.leagueData || {};
+      allFormsData = data.formsData || {};
+      tiebreakerInclude = data.tiebreakerInclude;
+
+      const weekSelect = document.getElementById('week-select');
+      weekSelect.innerHTML = '';
+      const availableWeeks = Object.keys(fullAnalysisData).sort((a, b) => a - b);
+
+      if (availableWeeks.length === 0) {
+        weekSelect.innerHTML = '<option disabled>No data</option>';
+        showError({ message: "No game data could be found." });
+        return;
+      }
+
+      availableWeeks.forEach(week => {
+        const option = document.createElement('option');
+        option.value = week;
+        option.textContent = week;
+        weekSelect.appendChild(option);
+      });
+
+      weekSelect.disabled = false;
+      weekSelect.addEventListener('change', e => updateDisplayForWeek(e.target.value));
+      
+      const initialWeek = data.week || availableWeeks[availableWeeks.length - 1];
+      weekSelect.value = initialWeek;
+      updateDisplayForWeek(initialWeek);
+      completedGames = [];
+      document.getElementById('loading-overlay').classList.add('hidden');
+    }
+
+    function updateDisplayForWeek(weekNumber) {
+      const weekData = fullAnalysisData[weekNumber];
+      if (!weekData) return;
+      
+      const categories = {
+        complete: { listId: 'completed-list', colId: 'completed-column' },
+        active:   { listId: 'active-list',   colId: 'active-column' },
+        pregame:  { listId: 'pregame-list',  colId: 'pregame-column' }
+      };
+
+      let totalGames = 0;
+      let completedCount = 0;
+
+      // Populate lists and hide/show columns
+      for (const status in categories) {
+        const games = weekData[status] || [];
+        totalGames += games.length;
+        if (status === 'complete') completedCount = games.length;
+        
+        const listElement = document.getElementById(categories[status].listId);
+        const colElement = document.getElementById(categories[status].colId);
+
+        listElement.innerHTML = games.map(game => `<li>${createMatchupHtml(game, status)}</li>`).join('');
+        colElement.classList.toggle('hidden', games.length === 0);
+      }
+
+      // Update the dynamic header
+      updatePanelHeader(completedCount, totalGames);
+
+      if (tiebreakerInclude) updateTiebreakerDisplay(weekNumber); 
+
+      // Handle postponed/unknown games
+      const otherGames = [ ...(weekData.postponed || []), ...(weekData.unknown || []) ];
+      const otherSection = document.getElementById('other-games-section');
+      if (otherGames.length > 0) {
+        document.getElementById('other-list').innerHTML = otherGames.map(game => `<li>${createMatchupHtml(game, 'other')}</li>`).join('');
+        otherSection.classList.remove('hidden');
+      } else {
+        otherSection.classList.add('hidden');
+      }
+
+      // Update import button state
+      const importBtn = document.getElementById('import-btn');
+      importBtn.disabled = completedCount === 0;
+      importBtn.textContent = completedCount > 0 ? `Submit` : 'No Scores to Import';
+    }
+
+    function updatePanelHeader(completed, total) {
+      const header = document.getElementById('status-footer');
+      if (!header) return;
+
+      // Make sure the header is visible if there are games
+      header.classList.toggle('hidden', total === 0);
+      
+      if (total === 0) {
+        // We hide it, but this is a fallback message if needed
+        header.textContent = `No Matchups Found`;
+        header.style.backgroundColor = '#fff0f0'; // Light red
+        header.style.color = '#D50A0A';         // Dark red
+      } else if (completed === total) {
+        header.textContent = `All ${total} Outcomes Decided`;
+        header.style.backgroundColor = '#e6f4ea'; // Light green
+        header.style.color = '#196901';         // Dark green
+      } else if (completed === 0) {
+        header.textContent = `No Completed Games Yet`;
+        header.style.backgroundColor = '#f8f9fa'; // Default light gray
+        header.style.color = '#333';              // Dark text
+      } else {
+        header.textContent = `${completed} of ${total} Games Complete`;
+        header.style.backgroundColor = '#d7e7f7'; // Light blue
+        header.style.color = '#013369';         // Dark blue
+      }
+    }
+
+    function updateTiebreakerDisplay(weekNumber) {
+      const section = document.getElementById('tiebreaker-section');
+      const content = document.getElementById('tiebreaker-content');
+      section.classList.add('hidden'); // Always hide by default
+
+      const weekForm = allFormsData[weekNumber];
+      if (!weekForm || !weekForm.gamePlan || !weekForm.gamePlan.games || weekForm.gamePlan.games.length === 0) {
+        return;
+      }
+
+      const gamePlanGames = weekForm.gamePlan.games;
+      const tiebreakerGamePlan = gamePlanGames[gamePlanGames.length - 1];
+      const tiebreakerShortName = `${tiebreakerGamePlan.awayTeam} @ ${tiebreakerGamePlan.homeTeam}`;
+
+      const weekAnalysis = fullAnalysisData[weekNumber];
+      if (!weekAnalysis) return;
+
+      const awayData = leagueData[tiebreakerGamePlan.awayTeam] || { mascot: '' };
+      const homeData = leagueData[tiebreakerGamePlan.homeTeam] || { mascot: '' };
+      
+      let tiebreakerHtml = '';
+      let statusClass = 'tiebreaker-pending'; // Default to orange
+
+      const tiebreakerResult = weekAnalysis.complete?.find(game => game.shortName === tiebreakerShortName);
+      const tiebreakerActive = weekAnalysis.active?.find(game => game.shortName === tiebreakerShortName);
+
+      if (tiebreakerResult) {
+        const combinedScore = tiebreakerResult.homeScore + tiebreakerResult.awayScore;
+        statusClass = 'tiebreaker-complete'; // Change to green
+        tiebreakerHtml = `✅ <strong>${tiebreakerGamePlan.awayTeam} ${awayData.mascot}</strong> at <strong>${tiebreakerGamePlan.homeTeam} ${homeData.mascot}</strong> combined score: <strong>${combinedScore}</strong>`;
+      } else if (tiebreakerActive) {
+        tiebreakerHtml = `⏳ <strong>${tiebreakerGamePlan.awayTeam} ${awayData.mascot}</strong> at <strong>${tiebreakerGamePlan.homeTeam} ${homeData.mascot}</strong> is underway...`;
+      } else {
+        tiebreakerHtml = `🚫 <strong>${tiebreakerGamePlan.awayTeam} ${awayData.mascot}</strong> at <strong>${tiebreakerGamePlan.homeTeam} ${homeData.mascot}</strong> not yet started.`;
+      }
+
+      content.innerHTML = tiebreakerHtml;
+      content.className = `card-section ${statusClass}`; // Set content and color class
+      section.classList.remove('hidden'); // Show the entire section
+    }
+
+    function createMatchupHtml(game, status) {
+      const [awayAbbr, homeAbbr] = game.shortName.split(' @ ');
+      const awayData = leagueData[awayAbbr] || { mascot: '🏈', colors: ['#999', '#fff'] };
+      const homeData = leagueData[homeAbbr] || { mascot: '🏈', colors: ['#666', '#fff'] };
+      const homeBg = (homeData.colors[1]?.toUpperCase() === '#FFFFFF') ? homeData.colors[2] || homeData.colors[0] : homeData.colors[1] || homeData.colors[0];
+
+      let awayWinnerClass = '';
+      let homeWinnerClass = '';
+      if (status === 'complete') {
+        completedGames.push(game);
+      }
+      if (status === 'complete' && game.winner && game.winner !== 'TIE') {
+        if (game.winner === awayAbbr) {
+          awayWinnerClass = ' winner';
+        } else if (game.winner === homeAbbr) {
+          homeWinnerClass = ' winner';
+        }
+      }
+
+      const scoreDisplay = (status === 'pregame') ? '' : `<span class="team-score">${game.awayScore}</span>`;
+      const homeScoreDisplay = (status === 'pregame') ? '' : `<span class="team-score">${game.homeScore}</span>`;
+
+      const awayCell = `
+        <span class="team-cell${awayWinnerClass}" style="background-color: ${awayData.colors[0]}; color: ${awayData.colors[1]};">
+          ${!config.hideEmojis ? awayData.mascot : ''}&nbsp;
+          <span class="team-name">${awayAbbr}</span>
+          ${scoreDisplay}
+        </span>`;
+        
+      const homeCell = `
+        <span class="team-cell${homeWinnerClass}" style="background-color: ${homeBg}; color: ${homeData.colors[0]};">
+          ${!config.hideEmojis ? homeData.mascot : ''}&nbsp;
+          <span class="team-name">${homeAbbr}</span>
+          ${homeScoreDisplay}
+        </span>`;
+      
+      return `<div class="matchup-display">${awayCell}<span class="vs-separator">   at   </span>${homeCell}</div>`;
+    }
+
+    document.getElementById('import-btn').addEventListener('click', function() {
+      document.getElementById('loading-overlay').classList.remove('hidden');
+      this.disabled = true;
+      this.textContent = 'Importing...';
+      selectedWeek = document.getElementById('week-select').value;
+      console.log(`🔄 Submitting ${completedGames.length} game outcomes for week ${selectedWeek}.`);
+      google.script.run
+        .withSuccessHandler(onSubmitSuccess)
+        .withFailureHandler(showError)
+        .updateSheetsWithApiOutcomes(null, selectedWeek, completedGames, allFormsData);
+    });
+
+    function onSubmitSuccess(response) {
+      alert(response.message);
+      console.log(`✅ Submission successful: Recorded results from ${completedGames.length} games for week ${selectedWeek}`);
+      google.script.host.close();
+    }
+
+    function showError(error) {
+      document.getElementById('loading-overlay').classList.add('hidden');
+      alert('An error occurred: ' + error.message);
+    }
+    
+    // This is a placeholder for the config object referenced in your other file.
+    // If you need to hide emojis, you would manage that through a similar config.
+    const config = {
+      hideEmojis: false 
+    };
+  </script>
+</body>
+</html>
