@@ -1,7 +1,7 @@
-const VERSION = '1.0.4';
+const VERSION = '1.0.5';
 /** GOOGLE SHEETS FOOTBALL PICK 'EMS, SURVIVOR, & ELIMINATOR TOOL | 2025 Edition
  * Script Library for League Creator & Management Platform
- * 10/07/2025
+ * 10/14/2025
  * 
  * Created by Ben Powers
  * ben.powers.creative@gmail.com
@@ -16,33 +16,35 @@ const VERSION = '1.0.4';
  * make a copy and try running the Picks menu option
  * 
  * ------------------------------------------------------------
- * MENU OPTIONS WITH FUNCTION EXPLANATIONS:
+ * 🏈 PICKS MENU OPTIONS WITH FUNCTION EXPLANATIONS:
  * 
- * Configuration - set up the specs for your pool
+ * ⚙️ Configuration - set up the specs for your pool
  * 
- * MEMBERS:
- * Member Manager - enter member names, rearrange, mark paid, revive (if using survivor/eliminator), and remove
- * Member Rename - rename a member in the sheet and update back-end name (note: this won't update the name on the form, which could cause problems, do this mid-week)
- * FORMS:
- * Form Builder - make a new form with all sorts of customization
- * Form Manager - review existing forms, turn on and off trigger to record logging, review specs of the form, copy links, etc. Also preview response count
- * Form Import - import picks for any week that has a form (only do this when you're ready to import). Should prompt to only bring in passed weeks if desired
+ * 👥 MEMBERS:
+ *   👤 Member Manager - enter member names, rearrange, mark paid, revive (if using survivor/eliminator), and remove
+ *   ✏️ Member Rename - rename a member in the sheet and update back-end name (note: this won't update the name on the form, which could cause problems, do this mid-week)
+ * 📂 FORMS:
+ *   📝 Form Builder - make a new form with all sorts of customization
+ *   📥Form Import - import picks for any week that has a form (only do this when you're ready to import). Should prompt to only bring in passed weeks if desired
+ *   📋 Form Manager - review existing forms, turn on and off trigger to record logging, review specs of the form, copy links, etc. Also preview response count
  * -----------
- * UTILITIES:
- * Fetch Scores - bring in NFL outcomes to the sheet
- * Fetch NFL Data - update the schedule data, should bring in new spreads
- * Update Spread Data - attempt to pull spreads for week, may need to wait to get updated data
- * Update Formulas - should refresh formulas on all sheets that have named ranges
- * AUTOMATION:
- * Spread Auto-Fetch Panel - lets you set a time for the schedule data (and spreads) to automatically be udpated
- * Enable Trigger - required for processing updates to Survivor/Eliminator evals
- * Disable Trigger - remove if causing issues or want to run without it for a while
+ * 🔄 Fetch Scores - bring in NFL outcomes to the sheet
+ * 🧰UTILITIES:
+ *   📅 Update NFL Data - update the schedule data, should bring in new spreads
+ *   📊 Update Spread Data - attempt to pull spreads for week, may need to wait to get updated data
+ *   🧮 Update Formulas - should refresh formulas on all sheets that have named ranges
+ *   ✅ Update Outcomes Sheet Validations - tool to fix any issues with the data validation fields
+ *   🔽 Deploy Sheets - helps create all additional sheets for weekly pick 'em tracking
+ * 🧙 AUTOMATION:
+ *   📡 Spread Auto-Fetch Panel - lets you set a time for the schedule data (and spreads) to automatically be udpated
+ *   ✔️ Enable 👑&💀 Trigger - required for processing updates to Survivor/Eliminator evals
+ *   ❌ Disable 👑&💀 Trigger - remove if causing issues or want to run without it for a while
  * ------------
- * Help & Support - opens an HTML pop-up that has a link to send me an email and this project hosted on GitHub
+ * ❔ Help & Support - opens an HTML pop-up that has a link to send me an email and this project hosted on GitHub
  * 
  * If you're feeling generous and would like to support my work,
  * here's a link to support my wife, five kiddos, and me:
- * https://www.buymeacoffee.com/benpowers
+ * https://www.buymeacoffee.com/benpowers or https://venmo.com/benpowerscreative
  * 
  * Thanks for checking out the script!
  * 
@@ -56,34 +58,45 @@ function onOpen() {
   // Check a specific property to see if the first-run initialization is complete.
   const docProps = PropertiesService.getDocumentProperties();
   const isInitialized = docProps.getProperty('init') === 'true';
-  const config = JSON.parse(docProps.getProperty('configuration'));
   if (isInitialized) {
+    const config = JSON.parse(docProps.getProperty('configuration'));
+    let contest = false;
+    if (config.survivorInclude || config.eliminatorInclude) {
+      contest = true;
+      survElimIcons = config.survivorInclude && config.eliminatorInclude ? '👑&💀' : config.survivorInclude ? '👑' : config.eliminatorInclude ? '💀' : false;
+      survElimString = config.survivorInclude && config.eliminatorInclude ? 'Survivor/Eliminator' : config.survivorInclude ? 'Survivor' : config.eliminatorInclude ? 'Eliminator' : '';
+    }
     const ui = SpreadsheetApp.getUi();
     let menu = ui.createMenu('🏈 Picks')
       .addItem('⚙️ Configuration', 'launchConfiguration');
     if (docProps.getProperty('configuration')) {
-      menu.addSubMenu(ui.createMenu('👥 Members')
-        .addItem('👤 Member Manager', 'launchMemberPanel')
-        .addItem('✏️ Rename a Member','showRenamePanel'));
-      menu.addSubMenu(ui.createMenu('📝 Forms')
-        .addItem('🛠 Form Builder', 'launchFormBuilder')
+      let subMenu = ui.createMenu('👥 Members');
+      subMenu.addItem('👤 Member Manager', 'launchMemberPanel');
+      if (contest) subMenu.addItem(`${survElimIcons} ${survElimString} Manager`,'launchSurvElimPanel');
+      subMenu.addItem('✏️ Rename a Member','showRenamePanel');
+      menu.addSubMenu(subMenu);
+      menu.addSubMenu(ui.createMenu('📂 Forms')
+        .addItem('📝 Form Builder', 'launchFormBuilder')
         .addItem('📥 Form Import', 'launchFormImport')
-        .addItem('🗃 Form Manager', 'launchFormManager'));
+        .addItem('📋 Form Manager', 'launchFormManager'));
     }
+    
     if (docProps.getProperty('forms')) {
       menu.addSeparator()
+      .addItem(`🔄 Fetch Scores`,'launchApiOutcomeImport')
       menu.addSubMenu(ui.createMenu('🧰 Utilities')
-        .addItem('📊 Fetch Scores','launchApiOutcomeImport')
-        .addItem('📅 Update ' + LEAGUE + ' Data', 'fetchSchedule')
-        .addItem('⏰ Update Spread Data','fetchLatestSpreadsForWeek')
+        .addItem(`📅 Update ${LEAGUE} Data`, 'fetchSchedule')
+        .addItem('📊 Update Spread Data','fetchLatestSpreadsForWeek')
         .addItem('🧮 Update Formulas', 'allFormulasUpdate')
-        .addItem('🗂 Deploy Sheets','setupSheets'));
-      let icons = config.survivorInclude && config.eliminatorInclude ? '👑&💀' : config.survivorInclude ? '👑' : '💀';
-      // let string = config.survivorInclude && config.eliminatorInclude ? 'Survivor/Eliminator' : config.survivorInclude ? 'Survivor' : 'Eliminator';
-      menu.addSubMenu(ui.createMenu('🧙 Automation')
-        .addItem('🔄 Spread Auto-Fetch Panel','showAutoFetchPanel')
-        .addItem(`✔️ Enable ${icons} Triggers`,'createOnEditTrigger')
-        .addItem(`❌ Disable ${icons} Triggers`,'deleteOnEditTrigger'));
+        .addItem('✅ Update Outcomes Sheet Validation','outcomesSheetUpdatePrompt')
+        .addItem('🔽 Deploy Sheets','setupSheets'));
+      let subMenu = ui.createMenu('🧙 Automation')
+        .addItem('📡 Spread Auto-Fetch Panel','showAutoFetchPanel');
+      if (contest) {
+        subMenu.addItem(`✔️ Enable ${survElimIcons} Triggers`,'createOnEditTrigger')
+          .addItem(`❌ Disable ${survElimIcons} Triggers`,'deleteOnEditTrigger');
+      }
+      menu.addSubMenu(subMenu);
     }
     menu.addSeparator()
       .addItem('❔ Help & Support','showSupportDialog')
@@ -92,12 +105,12 @@ function onOpen() {
   } else {
     const ui = fetchUi();
     if (!docProps.getProperty('tz')){
-      ui.alert(`🤗 WELCOME!`,`Thanks for checking out this Pick "Ems (🏈), Survivor (👑), and/or Eliminator (💀) script.\n\nBefore you get started, you'll need to allow the scripts to run and also check that your time zone is set correctly.`, ui.ButtonSet.OK);
+      ui.alert(`🤗 WELCOME!`,`Thanks for checking out this script-enabled\nsheet for running any combination of these pools:\n\n\u2003\u2003🔹 Pick 'Ems (🏈)\n\u2003\u2003🔹 Survivor (👑)\n\u2003\u2003🔹 Eliminator (💀)\n\nBefore you get started, you'll need to allow the scripts\nto run and ensure your time zone is set correctly.`, ui.ButtonSet.OK);
       timezoneCheck(ui,docProps);
+      ui.alert(`⏩ Next`,`Now run the "🟢 Initialize" script from\nthe "🏈 Picks" menu along the top bar.`, ui.ButtonSet.OK);
     } else {
-      ui.alert(`🤗 WELCOME\n\nThanks for checking out this Pick "Ems (🏈), Survivor (👑), and/or Eliminator (💀) script.\n\nBefore you get started, you'll need to allow the scripts to run if not already authorized and initialize the sheet.\n\nRun the "🟢 Initialize" script from the "🏈 Picks" menu along the top bar`, ui.ButtonSet.OK);
+      ui.alert(`🤗 WELCOME!`,`Thanks for checking out this script-enabled\nsheet for running any combination of these pools:\n\n\u2003\u2003🔹 Pick 'Ems (🏈)\n\u2003\u2003🔹 Survivor (👑)\n\u2003\u2003🔹 Eliminator (💀)\n\nBefore you get started, you'll need to allow the scripts\nto run if not already authorized and initialize the sheet.\n\nRun "🟢 Initialize" from the "🏈 Picks" menu along the top bar`, ui.ButtonSet.OK);
     }
-    ui.alert(`Next, run the "🟢 Initialize" script from the "Picks" menu along the top bar.`, ui.ButtonSet.OK);
     SpreadsheetApp.getUi()
       .createMenu('🏈 Picks')
       .addItem('🟢 Initialize', 'launchConfiguration')
@@ -119,7 +132,7 @@ function timezoneCheck(ui,docProps) {
   if (tzProp == null) {
     let timeZonePrompt = ui.alert(`🕐 TIMEZONE`,`The timezone you're currently using is ${tz}.\n\nIs this correct?`, ui.ButtonSet.YES_NO);
     if ( timeZonePrompt != 'YES') {
-      ui.alert(`🛠 FIX TIMEZONE`, `Follow these steps to change your projects time zone:\n\n1. Go to the "Extensions" > "Apps Script" menu\n2. Select the gear icon on the left menu\n3. Use the drop-down to select the correct timezone\n4. Close the "Apps Script" editor and return to the sheet\n5. Restart the script through the "Picks" menu`, ui.ButtonSet.OK);
+      ui.alert(`🩹 FIX TIMEZONE`, `Follow these steps to change your projects time zone:\n\n1. Go to the "Extensions" > "Apps Script" menu\n2. Select the gear icon on the left menu\n3. Use the drop-down to select the correct timezone\n4. Close the "Apps Script" editor and return to the sheet\n5. Restart the script through the "🏈 Picks" menu`, ui.ButtonSet.OK);
       return false;
     } else if ( timeZonePrompt == 'YES') {
       docProps.setProperty('tz',tz);
@@ -2218,7 +2231,7 @@ function fetchSchedule(ss,year,currentWeek,auto,overwrite) {
     }
     if (!overwrite && existing.hasOwnProperty(currentWeek)) {
       let ui = fetchUi();
-      let replaceAlert = ui.alert(`Found previous over/under and spread data for week ${currentWeek} in the existing NFL data. Would you like to overwright with new values?`, ui.ButtonSet.YES_NO_CANCEL);
+      let replaceAlert = ui.alert(`❗ PREVIOUS VALUES FOUND`,`Found previous over/under and spread data for week ${currentWeek} in the existing NFL data.\n\nWould you like to overwrite with new values?`, ui.ButtonSet.YES_NO_CANCEL);
       if (replaceAlert !== ui.Button.YES) {
         for (let a = 0; a < scheduleData.length; a++) {
           let dataWeek = scheduleData[a][0];
@@ -2682,54 +2695,77 @@ function fetchLogos(){
 // NFL OUTCOMES FUNCTIONS
 
 /**
+ * Creates and displays the custom HTML dialog for importing game scores.
+ * This should be attached to a menu item.
  * The main function to launch the automated outcome import process.
  * This should be called from a menu item like "Import Scores from Live Data".
  */
 function launchApiOutcomeImport() {
-  const ui = SpreadsheetApp.getUi();
   try {
-    const docProps = PropertiesService.getDocumentProperties();
-    const formsData = JSON.parse(docProps.getProperty('forms') || '{}');
-    
-    const apiData = JSON.parse(UrlFetchApp.fetch(SCOREBOARD).getContentText());
-    const apiEvents = apiData.events || [];
-    
-    const apiWeek = apiData.week.number;
-    const apiSeasonType = apiData.season.type; // 2 for regular, 3 for post
-    if (apiSeasonType == 3) apiWeek = apiWeek + REGULAR_SEASON;
-    
-    const gamePlan = formsData[apiWeek]?.gamePlan;
-    if (!gamePlan) {
-      throw new Error(`Could not find a game plan for the current API week (${apiWeek}). Please create the form for this week first.`);
-    }
-
-    const outcomeAnalysis = parseApiEvents(apiEvents, gamePlan);
-
-    let summary = (outcomeAnalysis.complete.length == 0 ? `Here is the current status of the games included in your slate this week ${apiWeek}\n\n`:`This will import outcomes for week ${apiWeek}.\n\n`);
-    summary += `✅ Games Finished: ${outcomeAnalysis.complete.length}\n`;
-    summary += `⏳ Games In Progress: ${outcomeAnalysis.active.length}\n`;
-    outcomeAnalysis.postponed.length > 0 ? summary += `🕘 Games Postponed: ${outcomeAnalysis.postponed.length}` : null;
-    summary += `🚫 Games Not Started: ${outcomeAnalysis.pregame.length}`;
-    outcomeAnalysis.unknown.length > 0 ? summary += `❓ Games Unknown: ${outcomeAnalysis.unknown.length} (no clear status, manual input recommended)` : null;
-    if (outcomeAnalysis.complete.length > 0) summary += "\n\nDo you want to import the results for the finished games now?";
-
-    const response = ui.alert(outcomeAnalysis.complete.length == 0 ? '⭕ No Completed Games Yet':'👍 Confirm Importing Games', summary, outcomeAnalysis.complete.length === 0 ? ui.ButtonSet.OK : ui.ButtonSet.YES_NO);
-
-    if (response === ui.Button.YES) {
-      const ss = SpreadsheetApp.getActiveSpreadsheet();
-      let result = updateSheetsWithApiOutcomes(ss, apiWeek, outcomeAnalysis.complete, gamePlan);
-      if (result) {
-        ui.alert('✔️ Success!', `Imported outcomes for ${outcomeAnalysis.complete.length} completed games for week ${apiWeek}.`,ui.ButtonSet.OK);
-        Logger.log(`✔️ Successfully imported outcomes for ${outcomeAnalysis.complete.length} completed games for week ${apiWeek}.`);
-      }
-    } else {
-      SpreadsheetApp.getActiveSpreadsheet().toast(`Import of week ${apiWeek} outcomes canceled by user.`,`🚫 IMPORT CANCELED`);
-      Logger.log('🚫 Import canceled by user.');
-    }
-
+    const html = HtmlService.createHtmlOutputFromFile('scoreImport')
+      .setTitle(`${LEAGUE} Outcome Fetch`) 
+      .setWidth(350);
+    SpreadsheetApp.getUi().showSidebar(html);
   } catch (err) {
-    ui.alert('Error', `An error occurred: ${err.message}`, ui.ButtonSet.OK);
-    Logger.log("launchApiOutcomeImport Error: " + err.stack);
+    const ui = SpreadsheetApp.getUi();
+    const docProps = PropertiesService.getDocumentProperties();
+    
+    // DEPRECATION NOTICE
+    Logger.log(`❗ Could not launch new outcome import screen, user likely doesn't have "scoreImport.html" file available.`);
+    Logger.log(`ERROR: ${err.stack}`);
+    const newImportToolAlert = docProps.getProperty('newImportToolAlert');
+    if (newImportToolAlert != "true") {
+      let newImportToolAlertMessage = ui.alert(`⚠️ DEPRECATION NOTICE`, `🆕 There's a new score import tool that can import previous week outcomes and scores. The existing score import tool will still work for the current week\n\n⭐ To update, please create a "scoreImport.html" using the content from either the template document or the GitHub project page.\n\n❌ "Cancel": Dismiss this notice\n✔️ "OK": Permanently hide this notice`, ui.ButtonSet.OK_CANCEL);
+      if (newImportToolAlertMessage == "OK") {
+        docProps.setProperty('newImportToolAlert',true);
+      }
+    }
+
+    // FORMER FUNCTION
+    try {
+      
+      const formsData = JSON.parse(docProps.getProperty('forms') || '{}');
+      
+      const apiData = JSON.parse(UrlFetchApp.fetch(SCOREBOARD).getContentText());
+      const apiEvents = apiData.events || [];
+      
+      const apiWeek = apiData.week.number;
+      const apiSeasonType = apiData.season.type; // 2 for regular, 3 for post
+      if (apiSeasonType == 3) apiWeek = apiWeek + REGULAR_SEASON;
+      
+      const gamePlan = formsData[apiWeek]?.gamePlan;
+      if (!gamePlan) {
+        throw new Error(`Could not find a game plan for the current API week (${apiWeek}). Please create the form for this week first.`);
+      }
+
+      const outcomeAnalysis = parseApiEvents(apiEvents, gamePlan);
+
+      let summary = (outcomeAnalysis.complete.length == 0 ? `Here is the current status of the games included in your slate this week ${apiWeek}\n\n`:`This will import outcomes for week ${apiWeek}.\n\n`);
+      summary += `✅ Games Finished: ${outcomeAnalysis.complete.length}\n`;
+      summary += `⏳ Games In Progress: ${outcomeAnalysis.active.length}\n`;
+      outcomeAnalysis.postponed.length > 0 ? summary += `🕘 Games Postponed: ${outcomeAnalysis.postponed.length}` : null;
+      summary += `🚫 Games Not Started: ${outcomeAnalysis.pregame.length}`;
+      outcomeAnalysis.unknown.length > 0 ? summary += `❓ Games Unknown: ${outcomeAnalysis.unknown.length} (no clear status, manual input recommended)` : null;
+      if (outcomeAnalysis.complete.length > 0) summary += "\n\nDo you want to import the results for the finished games now?";
+
+      const response = ui.alert(outcomeAnalysis.complete.length == 0 ? '⭕ No Completed Games Yet':'👍 Confirm Importing Games', summary, outcomeAnalysis.complete.length === 0 ? ui.ButtonSet.OK : ui.ButtonSet.YES_NO);
+
+      if (response === ui.Button.YES) {
+        const ss = SpreadsheetApp.getActiveSpreadsheet();
+        let result = updateSheetsWithApiOutcomes(ss, apiWeek, outcomeAnalysis.complete, formsData, true);
+        if (result) {
+          ui.alert('✔️ Success!', `Imported outcomes for ${outcomeAnalysis.complete.length} completed games for week ${apiWeek}.`,ui.ButtonSet.OK);
+          Logger.log(`✔️ Successfully imported outcomes for ${outcomeAnalysis.complete.length} completed games for week ${apiWeek}.`);
+        }
+      } else {
+        SpreadsheetApp.getActiveSpreadsheet().toast(`Import of week ${apiWeek} outcomes canceled by user.`,`🚫 IMPORT CANCELED`);
+        Logger.log('🚫 Import canceled by user.');
+      }
+
+    } catch (err) {
+      ui.alert('Error', `An error occurred: ${err.message}`, ui.ButtonSet.OK);
+      Logger.log("launchApiOutcomeImport Error: " + err.stack);
+    }
   }
 }
 
@@ -2793,19 +2829,175 @@ function parseApiEvents(apiEvents, gamePlan) {
 }
 
 /**
+ * Tool for fetching historic outcomes if new API week of scoreboard has advanced, may replace SCOREBOARD fetching
+ * Parses the new proTeams array from the API, categorizes games based on
+ * percentComplete, and filters/extracts relevant outcome data by cross-referencing
+ * against ALL gamePlans in formsData.
+ *
+ * @param {Array} apiProTeams - The 'proTeams' array from the new API response.
+ * @param {Object} formsData - The object containing all authoritative gamePlans keyed by week number.
+ * @returns {Object} An object containing categorized game outcomes.
+ */
+function parseAllApiEvents(apiProTeams, formsData) {
+  let docProps;
+  if (!formsData) docProps = PropertiesService.getDocumentProperties();
+
+  formsData = formsData || JSON.parse(docProps.getProperty('forms'));
+  
+  apiProTeams = apiProTeams || JSON.parse(UrlFetchApp.fetch(`${schedulePrefix}${fetchYear()}${scheduleSuffix}`).getContentText()).settings.proTeams || [];
+
+  // 1. Create a map for Team ID to Abbreviation (e.g., {11: "Ind"})
+  const teamIdMap = {};
+  apiProTeams.forEach(team => {
+    if (team.abbrev != 'FA') teamIdMap[team.id] = team.abbrev.toUpperCase();
+  });
+  
+  const getStatus = (game) => {
+    if (game.percentComplete === 0) return 'pregame';
+    if (game.percentComplete === 100) return 'complete';
+    if (game.percentComplete > 0) return 'active';
+    if (game.postponed || (game.postponed == 'true') && game.percentComplete == 0) return 'postponed';
+    Logger.log(JSON.stringify(game));
+    Logger.log(game);
+    return 'unknown';
+  };
+  
+  const analysis = {};
+  // 2. Collect all valid matchups from ALL game plans (all weeks) for filtering
+  const allGamePlanMatchups = new Set();
+  // Iterate through all week properties in formsData
+  Object.values(formsData).forEach(formData => {
+    if (formData && formData.gamePlan && formData.gamePlan.games) {
+      formData.gamePlan.games.forEach(g => {
+        // The expected format is "AWAY_ABBREV @ HOME_ABBREV"
+        allGamePlanMatchups.add(`${g.awayTeam} @ ${g.homeTeam}`);
+      });
+    }
+  });
+
+  // Keep track of games already processed to avoid duplicates
+  const processedGameIds = new Set();
+
+  // 3. Iterate through all games across all teams and weeks
+  apiProTeams.forEach(team => {
+    const proGamesByPeriod = team.proGamesByScoringPeriod;
+    
+    // Iterate over each scoring period (week)
+    Object.keys(proGamesByPeriod).forEach(scoringPeriodId => {
+      // scoringPeriodId is a string, e.g., "1", "2"
+      
+      const games = proGamesByPeriod[scoringPeriodId];
+      
+      // Iterate over each game in the period (usually one)
+      games.forEach(game => {
+        
+        // Skip if we've already processed this unique game ID
+        if (processedGameIds.has(game.id)) return;
+        processedGameIds.add(game.id);
+
+        const homeAbbrev = teamIdMap[game.homeProTeamId];
+        const awayAbbrev = teamIdMap[game.awayProTeamId];
+
+        // If team ID resolution fails, skip (shouldn't happen with valid data)
+        if (!homeAbbrev || !awayAbbrev) return; 
+
+        // Construct the event name for cross-referencing
+        const eventName = `${awayAbbrev} @ ${homeAbbrev}`;
+
+        // 4. Cross-reference against the collective game plan
+        if (allGamePlanMatchups.has(eventName)) {
+          if (!analysis[scoringPeriodId]) {
+            analysis[scoringPeriodId] = {
+              pregame: [],
+              active: [],
+              postponed: [],
+              complete: [],
+              unknown: []
+            };
+          }
+
+          const status = getStatus(game);
+
+          const gameData = {
+            date: game.date,
+            shortName: eventName,
+            homeScore: game.homeScore,
+            awayScore: game.awayScore,
+            winner: null
+          };
+
+          if (status === 'complete') {
+            gameData.winner = (gameData.homeScore > gameData.awayScore) ? homeAbbrev : awayAbbrev;
+            gameData.loser = (gameData.homeScore < gameData.awayScore) ? homeAbbrev : awayAbbrev;
+            if (gameData.homeScore === gameData.awayScore) {
+                gameData.winner = 'TIE';
+                gameData.loser = 'TIE';
+            }
+            gameData.margin = Math.abs(gameData.homeScore - gameData.awayScore);
+            if (scoringPeriodId == 5) {
+              Logger.log(JSON.stringify(gameData));
+            }
+          }
+
+          if (analysis[scoringPeriodId][status]) {
+            analysis[scoringPeriodId][status].push(gameData);
+          } else {
+            analysis[scoringPeriodId]['unknown'].push(gameData); // Fallback for safety
+          }
+
+        }
+      });
+    });
+  });
+
+  Object.keys(analysis).forEach(scoringPeriodId => {
+    Object.keys(analysis[scoringPeriodId]).forEach(status => {
+      analysis[scoringPeriodId][status].sort((a, b) => a.date - b.date);
+    });
+  });
+
+  return analysis;
+}
+
+function getScoreImportData() {
+  const apiProTeams = JSON.parse(UrlFetchApp.fetch(`${schedulePrefix}${fetchYear()}${scheduleSuffix}`).getContentText()).settings.proTeams || [];
+  if (!apiProTeams) {
+    SpreadsheetApp.getActiveSpreadsheet().toast(`Error fetching API data, canceling...`,`API ERROR`);
+    throw new Error("Could not load API data.");
+  }
+  const docProps = PropertiesService.getDocumentProperties();
+  const formsData = JSON.parse(docProps.getProperty('forms'));
+  const tiebreakerInclude = JSON.parse(docProps.getProperty('configuration')).tiebreakerInclude;
+  const analysis = parseAllApiEvents(apiProTeams, formsData)
+  const apiWeek = fetchWeek(null, true);
+  return {
+    analysis: analysis,
+    formsData: formsData,
+    week: apiWeek,
+    tiebreakerInclude: tiebreakerInclude,
+    leagueData: LEAGUE_DATA
+  }
+}
+
+
+/**
  * Takes the parsed API outcomes and writes them to the
  * user-facing weekly sheet and the master NFL_OUTCOMES sheet.
  */
-function updateSheetsWithApiOutcomes(ss, week, completedGames, gamePlan) {
+function updateSheetsWithApiOutcomes(ss, week, completedGames, formsData, booleanOutput) {
+  ss = ss || fetchSpreadsheet();
   if (completedGames.length === 0) {
-    SpreadsheetApp.getActiveSpreadsheet().toast('No completed games to import.');
+    SpreadsheetApp.getActiveSpreadsheet().toast('⭕ No completed games to import.');
     return;
   }
-
   const docProps = PropertiesService.getDocumentProperties();
   const config = JSON.parse(docProps.getProperty('configuration')) || {};
-  const formsData = JSON.parse(docProps.getProperty('forms')) || {};
-
+  
+  formsData = formsData || JSON.parse(docProps.getProperty('forms')) || {};
+  if (!formsData || formsData.hasOwnProperty('games')) {
+    formsData = JSON.parse(docProps.getProperty('forms'));
+  }
+  
   let errorMessage = '';
 
   const weeklySheet = ss.getSheetByName(`${weeklySheetPrefix}${week}`);
@@ -2941,11 +3133,15 @@ function updateSheetsWithApiOutcomes(ss, week, completedGames, gamePlan) {
     }
   }
   if (errorMessage.length > 0) {
-    const ui = fetchUi();
-    ui.alert(`Outcome Import Issue`, `${errorMessage}\n\nTry again later or reach out for support.\n\nPicks ${(config.pickemsInclude && config.pickemsAts) || (config.survivorInclude && config.survivorAts) || (config.eliminatorInclude && config.eliminatorAts) ? 'and margins ' : ''} can always be manually entered.`, ui.ButtonSet.OK);
-    return false;
+    if (booleanOutput) {
+      const ui = fetchUi();
+      ui.alert(`⚠️ Outcome Import Issue`, `${errorMessage}\n\nTry again later or reach out for support.\n\nPicks ${(config.pickemsInclude && config.pickemsAts) || (config.survivorInclude && config.survivorAts) || (config.eliminatorInclude && config.eliminatorAts) ? 'and margins ' : ''} can always be manually entered.`, ui.ButtonSet.OK);  
+      return false; // Used for deprecated version
+    }
+    return {"message":`⚠️ Outcome Import Issue: ${errorMessage}\n\nTry again later or reach out for support.\n\nPicks ${(config.pickemsInclude && config.pickemsAts) || (config.survivorInclude && config.survivorAts) || (config.eliminatorInclude && config.eliminatorAts) ? 'and margins ' : ''} can always be manually entered.`}
   } else {
-    return true;
+    if (booleanOutput) return true; // Used for deprecated version
+    return {"message":`✅ SUCCESS!\n\nImported outcomes for ${completedGames.length} complete games for week ${week}.`}
   }
 }
 
@@ -6689,6 +6885,60 @@ function outcomesSheet(ss) {
 }
 
 
+/**
+ * UPDATE OUTCOMES SHEET NAMED RANGES BASED ON FORM WITH PROMPT
+ * 
+ * Allows user input as a utility to fix broken or outdated data ranges
+ * 
+ */
+function outcomesSheetUpdatePrompt() {
+  const ss = fetchSpreadsheet();
+  const ui = fetchUi();
+  
+  let outcomesSheet = ss.getSheetByName(`${LEAGUE}_OUTCOMES`);
+  if (!outcomesSheet) {
+    Logger.log(`⚠️ No ${LEAGUE}_OUTCOMES sheet found...`);
+    ss.toast(`No ${LEAGUE}_OUTCOMES sheet found...`,`⚠️ ERROR`);
+    if (ui.prompt(`❗ NO ${LEAGUE}_OUTCOMES SHEET FOUND`,`The sheet needed for this function to operate on was not found. Create the ${LEAGUE}_OUTCOMES sheet now?`, ui.ButtonSet.OK_CANCEL) == 'OK') {
+      outcomesSheet();
+    } else {
+      Logger.log(`🚫 Outcomes sheet update function canceled by user. No OUTCOMES sheet present.`)
+      return null;
+    }
+  }
+  
+  const weeks = Array.from({ length: WEEKS }, (_, index) => index + 1).filter(week => !WEEKS_TO_EXCLUDE.includes(week));
+  let weekPrompt = ui.prompt(`📅 SUBMIT WEEK NUMBER`,`Enter a week number for which to rebuild ${LEAGUE}_OUTCOMES sheet column validation.\n\n⚠️ CAUTION: This function should be unnecessary if you've imported the weeks' picks. Be advised that this function will erase outcomes for the week provided in the ${LEAGUE}_OUTCOMES sheet.\n\nAvailable entries to select from: ${weeks.join(', ')}`,ui.ButtonSet.OK_CANCEL);
+  let value, emojiString, invalid = true;
+  while (weekPrompt.getSelectedButton() == 'OK' && invalid) {
+    value = parseInt(weekPrompt.getResponseText());
+    if (weeks.indexOf(value) >= 0) {
+      emojiString = value > 10 ? numberMap[Math.floor(value/10)] + numberMap[value - Math.floor(value/10)*10] : numberMap[value];
+      ss.toast(`Submitted week value of ${value} to rebuild outcomes for.`,emojiString);
+      Logger.log(`${emojiString} You submitted a valid entry of ${value}`);
+      invalid = false;
+    } else {
+      Logger.log(`❗ You submitted an invalid entry of ${weekPrompt.getResponseText()}`);
+      weekPrompt = ui.prompt(`📅 RE-SUBMIT WEEK NUMBER`,`Please try again. Available entries to select from: ${weeks.join(', ')}`,ui.ButtonSet.OK_CANCEL);
+    }
+  }
+  if (invalid) {
+    ss.toast(`Canceled OUTCOMES sheet update by user (selected the "Cancel" button)`,`🚫 CANCELED`);
+    Logger.log(`🚫 Canceled OUTCOMES sheet update by user (selected the "Cancel" button)`);
+    return null;
+  }
+
+  let confirm = ui.alert(emojiString,`You submitted a value of ${value}, proceed with rebuild of this week's formatting within the ${LEAGUE}_OUTCOMES sheet?`,ui.ButtonSet.YES_NO);
+  if (confirm == 'YES') {
+    outcomesSheetUpdate(ss,value,null,null);
+    ss.toast(`Successfully updated ${LEAGUE}_OUTCOMES sheet with data validation and coloration for week ${value}.`,`🎉 SUCCESS!`);
+    Logger.log(`🎉 Successfully updated ${LEAGUE}_OUTCOMES sheet with data validation and coloration for week ${value}.`);
+  } else {
+    ss.toast(`Update of week ${value} OUTCOMES sheet columns canceled by user.`,`🚫 CANCELED`);
+    Logger.log(`🚫 Canceled OUTCOMES sheet update by user. Deferred confirmation of script.`);
+  }
+}
+
 /** 
  * UPDATE OUTCOMES - Updates the data validation, color scheme, and matchups for a specific week on the winners sheet
  * 
@@ -6717,7 +6967,7 @@ function outcomesSheetUpdate(ss,week,config,gamePlan) {
   }
   gamePlan = gamePlan || JSON.parse(docProps.getProperty('forms'))[week].gamePlan || {};
   config = config || JSON.parse(docProps.getProperty('configuration')) || {};
-
+  
   const contests = gamePlan.games;
   
   // Clears data validation and notes
@@ -6853,7 +7103,6 @@ function outcomesSheetUpdate(ss,week,config,gamePlan) {
     }
   }
 }
-
 
 /** 
  * TOTAL Sheet Creation / Adjustment
@@ -8688,4 +8937,3 @@ function getRandomInt(min, max) {
       max = Math.floor(max);
       return Math.floor(Math.random() * (max - min + 1)) + min;
 }
-
