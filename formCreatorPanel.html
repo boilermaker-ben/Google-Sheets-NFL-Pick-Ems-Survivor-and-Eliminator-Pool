@@ -776,7 +776,7 @@
       google.script.run
         .withSuccessHandler(onFetchSpreadsSuccess)
         .withFailureHandler(onDataFetchFailure) // Can reuse the general failure handler
-        .fetchLatestSpreadsForWeek(selectedWeek);
+        .fetchLatestSpreadsForWeek(false);
     }
 
     /**
