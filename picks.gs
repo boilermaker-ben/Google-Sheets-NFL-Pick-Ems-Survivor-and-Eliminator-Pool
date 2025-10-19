@@ -1,7 +1,7 @@
-const VERSION = '1.0.6';
+const VERSION = '1.0.7';
 /** GOOGLE SHEETS FOOTBALL PICK 'EMS, SURVIVOR, & ELIMINATOR TOOL | 2025 Edition
  * Script Library for League Creator & Management Platform
- * 10/14/2025
+ * 10/19/2025
  * 
  * Created by Ben Powers
  * ben.powers.creative@gmail.com
@@ -3087,7 +3087,7 @@ function updateSheetsWithApiOutcomes(ss, week, completedGames, formsData, boolea
   ss = ss || fetchSpreadsheet();
   if (completedGames.length === 0) {
     SpreadsheetApp.getActiveSpreadsheet().toast('⭕ No completed games to import.');
-    return;
+    return false;
   }
   const docProps = PropertiesService.getDocumentProperties();
   const config = JSON.parse(docProps.getProperty('configuration')) || {};
