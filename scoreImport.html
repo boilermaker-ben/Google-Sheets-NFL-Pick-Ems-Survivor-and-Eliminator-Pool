@@ -124,7 +124,6 @@
       const initialWeek = data.week || availableWeeks[availableWeeks.length - 1];
       weekSelect.value = initialWeek;
       updateDisplayForWeek(initialWeek);
-      completedGames = [];
       document.getElementById('loading-overlay').classList.add('hidden');
     }
 
@@ -140,7 +139,8 @@
 
       let totalGames = 0;
       let completedCount = 0;
-
+      completedGames = [];
+      
       // Populate lists and hide/show columns
       for (const status in categories) {
         const games = weekData[status] || [];
@@ -295,7 +295,11 @@
     });
 
     function onSubmitSuccess(response) {
-      alert(response.message);
+      try {
+        alert(response.message);
+      } catch (err) {
+        alert(`An error occured in processing the alert, but the results submitted successfully | ERROR: ${err.stack}`);
+      }
       console.log(`✅ Submission successful: Recorded results from ${completedGames.length} games for week ${selectedWeek}`);
       google.script.host.close();
     }
