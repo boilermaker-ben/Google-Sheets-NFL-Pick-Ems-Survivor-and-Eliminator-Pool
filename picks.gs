@@ -1,7 +1,7 @@
-const VERSION = '1.0.7';
+const VERSION = '1.0.8';
 /** GOOGLE SHEETS FOOTBALL PICK 'EMS, SURVIVOR, & ELIMINATOR TOOL | 2025 Edition
  * Script Library for League Creator & Management Platform
- * 10/19/2025
+ * 10/29/2025
  * 
  * Created by Ben Powers
  * ben.powers.creative@gmail.com
@@ -2267,132 +2267,179 @@ function fetchSchedule(ss,year,currentWeek,auto,overwrite) {
  * Updates the spread and over/under data.
  * If all games in the current week are completed, it automatically fetches data for the next week.
  *
- * @param {boolean} headless - If true, runs without user prompts.
+* @param {boolean} headless - If true, runs without user prompts.
+ * @param {number} [targetWeek] - Optional. A specific week number to fetch data for, bypassing auto-detection.
  */
-function fetchLatestSpreadsForWeek(headless) {
-  const ss = fetchSpreadsheet();
-  let ui;
-  if (!headless) ui = fetchUi();
+function fetchLatestSpreadsForWeek(headless, targetWeek) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ui = headless ? null : SpreadsheetApp.getUi();
 
   const sheet = ss.getSheetByName(LEAGUE);
 
   if (!sheet) {
-    if (!headless) {
+    if (ui) {
       ui.alert('⚠️ Error', `"${LEAGUE}" schedule sheet not found, bringing in schedule data now. Re-run this script to fetch spreads after ${LEAGUE} sheet creation has completed.`, ui.ButtonSet.OK);
-      fetchSchedule(ss)
+      fetchSchedule(ss); // Assumes fetchSchedule is available to build the sheet
     } else {
-      Logger.log(`❗ Attempted to fetch current spreads in headless mode and was unable to find the ${LEAGUE} schedule sheet.`)
+      Logger.log(`❗ Attempted to fetch current spreads in headless mode and was unable to find the ${LEAGUE} schedule sheet.`);
       return;
     }
   }
 
   try {
-    // --- Step 1: Fetch the default scoreboard to determine the current state ---
-    const initialResponse = UrlFetchApp.fetch(SCOREBOARD);
-    let dataToProcess = JSON.parse(initialResponse.getContentText());
-    
-    let currentWeek = dataToProcess.week.number;
-    let weekToUpdate = currentWeek;
-    let year = dataToProcess.season.year;
-    let allGamesCompleted = false;
+    let weekToUpdate;
+    let year;
+    let dataToProcess;
 
-    // --- Step 2: Check if all games in the current week are completed ---
-    if (dataToProcess.events && dataToProcess.events.length > 0) {
-      allGamesCompleted = dataToProcess.events.every(event => 
-        event.status.type.completed === true
-      );
-    }
-
-    // --- Step 3: If all games are done, fetch data for the NEXT week ---
-    if (allGamesCompleted) {
-      if (!headless) ss.toast(`Week ${currentWeek} is complete. Checking for next week's data...`,`⏩ CHECKING WEEK ${currentWeek+1}`);
-      weekToUpdate = currentWeek + 1;
-      
-      const nextWeekResponse = UrlFetchApp.fetch(`${SCOREBOARD}?week=${weekToUpdate}`);
-      dataToProcess = JSON.parse(nextWeekResponse.getContentText());
-      // The year might roll over, so we get it from the new payload
-    }
-
-    // --- Step 4: Proceed with the determined week's data (either current or next) ---
-    const timeFetched = new Date();
-    const spreadsAvailable = dataToProcess.events && dataToProcess.events.some(event => 
-      event.competitions[0].odds && event.competitions[0].odds.length > 0
-    );
-
-    let proceed = false;
-    if (headless) {
-      Logger.log(`👻 HEADLESS MODE: Target week is ${weekToUpdate} of the ${year} season. Spreads are ${spreadsAvailable ? 'available' : 'unavailable'}.`);
-      if (spreadsAvailable) {
-        proceed = true;
-      }
+    if (targetWeek) {
+      // If a specific week is provided, use it directly
+      weekToUpdate = targetWeek;
+      if (!headless) ss.toast(`Checking for data in Week ${weekToUpdate}...`, `🎯 Targeting Week ${weekToUpdate}`);
+      const response = UrlFetchApp.fetch(`${SCOREBOARD}?week=${weekToUpdate}`);
+      dataToProcess = JSON.parse(response.getContentText());
+      year = dataToProcess.season.year;
     } else {
-      let alertMessage = `${spreadsAvailable ? 'Fetched' : 'Attempted to fetch'} spreads from week ${weekToUpdate}.`;
-      if (allGamesCompleted) {
-        alertMessage = `All games in week ${currentWeek} are complete.\n\n${alertMessage}`;
-      }
-      alertMessage += `\n\nSpread data is ${spreadsAvailable ? 'available, import now?' : 'unavailable. Exiting...'}`;
+      // --- Auto-detection logic ---
+      const initialResponse = UrlFetchApp.fetch(SCOREBOARD);
+      dataToProcess = JSON.parse(initialResponse.getContentText());
       
-      const userResponse = ui.alert('📊 SPREAD UPDATE', alertMessage, spreadsAvailable ? ui.ButtonSet.YES_NO : ui.ButtonSet.OK);
-      if (userResponse == ui.Button.YES) {
-        proceed = true;
+      let currentWeek = dataToProcess.week.number;
+      weekToUpdate = currentWeek;
+      year = dataToProcess.season.year;
+
+      const allGamesCompleted = dataToProcess.events && dataToProcess.events.length > 0 && 
+                                dataToProcess.events.every(event => event.status.type.completed === true);
+
+      if (allGamesCompleted) {
+        if (!headless) ss.toast(`Week ${currentWeek} is complete. Targeting next week...`, `⏩ Week ${currentWeek + 1}`);
+        weekToUpdate = currentWeek + 1;
+        const nextWeekResponse = UrlFetchApp.fetch(`${SCOREBOARD}?week=${weekToUpdate}`);
+        dataToProcess = JSON.parse(nextWeekResponse.getContentText());
       }
     }
 
-    if (proceed && spreadsAvailable) {
-      Logger.log(`🔄 Updating spreads for Week ${weekToUpdate}...`);
-      if (!headless) ss.toast(`Updating spreads for Week ${weekToUpdate}...`, '🔄 IN PROGRESS');
-      const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-      const columnIndices = {
-        week: headers.indexOf('week'),
-        awayTeam: headers.indexOf('awayTeam'),
-        homeTeam: headers.indexOf('homeTeam'),
-        overUnder: headers.indexOf('overUnder'),
-        spread: headers.indexOf('spread'),
-        spreadAutoFetched: headers.indexOf('spreadAutoFetched'),
-        timeFetched: headers.indexOf('timeFetched')
-      };
-
-      const allData = sheet.getDataRange().getValues();
-      let updatesMade = 0;
-
-      for (let i = 1; i < allData.length; i++) {
-        // Find rows in the sheet that match the week we are targeting for the update
-        if (allData[i][columnIndices.week] == weekToUpdate) {
-          const sheetAwayTeam = allData[i][columnIndices.awayTeam];
-          const sheetHomeTeam = allData[i][columnIndices.homeTeam];
-
-          const event = dataToProcess.events.find(e => {
-            const apiAwayTeam = e.competitions[0].competitors.find(c => c.homeAway === 'away').team.abbreviation;
-            const apiHomeTeam = e.competitions[0].competitors.find(c => c.homeAway === 'home').team.abbreviation;
-            return sheetAwayTeam === apiAwayTeam && sheetHomeTeam === apiHomeTeam;
-          });
-
-          if (event && event.competitions[0].odds && event.competitions[0].odds.length > 0) {
-            const odds = event.competitions[0].odds[0];
-            sheet.getRange(i + 1, columnIndices.overUnder + 1).setValue(odds.overUnder);
-            sheet.getRange(i + 1, columnIndices.spread + 1).setValue(odds.details);
-            sheet.getRange(i + 1, columnIndices.spreadAutoFetched + 1).setValue(headless ? 1 : 0);
-            sheet.getRange(i + 1, columnIndices.timeFetched + 1).setValue(timeFetched);
-            updatesMade++;
-          }
+    // --- Filter Games by Day based on user's 'config' property ---
+    let originalEventCount = dataToProcess.events.length;
+    let daySettings = null;
+    try {
+      const configString = PropertiesService.getUserProperties().getProperty('config');
+      if (configString) {
+        const config = JSON.parse(configString);
+        if (config && config.matchupCustomization && config.matchupCustomization.days) {
+          daySettings = config.matchupCustomization.days;
+          Logger.log(`🔎 Found day settings in config: ${JSON.stringify(daySettings)}`);
         }
       }
+    } catch (e) {
+      Logger.log(`⚠️ Could not parse 'config' user property. Proceeding without filtering | Error: ${e.stack}`);
+      daySettings = null;
+    }
+
+    if (daySettings) {
+      const dayMap = { 0: 'includeSun', 1: 'includeMon', 2: 'includeTue', 3: 'includeWed', 4: 'includeThu', 5: 'includeFri', 6: 'includeSat' };
+      dataToProcess.events = dataToProcess.events.filter(event => {
+        const gameDay = new Date(event.date).getDay();
+        const settingKey = dayMap[gameDay];
+        return daySettings.hasOwnProperty(settingKey) && daySettings[settingKey] === true;
+      });
+      Logger.log(`📅 Filtered games from ${originalEventCount} to ${dataToProcess.events.length} based on config.`);
+    }
+
+    // --- Safety Check and User Confirmation Logic ---
+    const allRelevantGamesPending = dataToProcess.events && dataToProcess.events.length > 0 &&
+                                    dataToProcess.events.every(event => event.status.type.state === 'pre');
+    
+    let proceed = false;
+    const spreadsAvailable = dataToProcess.events.some(event => event.competitions[0].odds);
+    
+    if (headless) {
+      proceed = spreadsAvailable && allRelevantGamesPending;
+      if (!allRelevantGamesPending) Logger.log(`⚠️ HEADLESS ABORT: Not all games in Week ${weekToUpdate} are pending.`);
+    } else {
+      if (!spreadsAvailable) {
+        const nextWeekResponse = ui.alert('⭕ No Data', `Spread data is not yet available for Week ${weekToUpdate}.\n\nDo you want to check for next week's data (Week ${weekToUpdate + 1})?`, ui.ButtonSet.YES_NO);
+        if (nextWeekResponse === ui.Button.YES) {
+          fetchLatestSpreadsForWeek(false, weekToUpdate + 1);
+        }
+        return;
+      }
+
+      if (allRelevantGamesPending) {
+        const response = ui.alert('❔ Confirm Update', `Spread data is available for ${dataToProcess.events.length} games in Week ${weekToUpdate}.\n\nDo you want to import/update this data?`, ui.ButtonSet.YES_NO);
+        if (response === ui.Button.YES) {
+          proceed = true;
+        } else if (response === ui.Button.NO) {
+          const checkNextWeek = ui.alert('Check Next Week?', `Would you like to check for spread data in Week ${weekToUpdate + 1} instead?`, ui.ButtonSet.YES_NO);
+          if (checkNextWeek === ui.Button.YES) {
+            fetchLatestSpreadsForWeek(false, weekToUpdate + 1);
+          }
+          return;
+        }
+      } else {
+        const response = ui.alert(
+          '⚠️ Week in Progress!', 
+          `Some games for Week ${weekToUpdate} have already started or are complete. Spreads may be outdated.\n\nForce an update with available data anyway?`, 
+          ui.ButtonSet.YES_NO_CANCEL
+        );
+        if (response === ui.Button.YES) {
+          proceed = true;
+        } else if (response === ui.Button.NO) {
+          const checkNextWeek = ui.alert('Check Next Week?', `Would you like to check for spread data in Week ${weekToUpdate + 1} instead?`, ui.ButtonSet.YES_NO);
+          if (checkNextWeek === ui.Button.YES) {
+            fetchLatestSpreadsForWeek(false, weekToUpdate + 1);
+          }
+          return;
+        }
+      }
+    }
+
+    // --- Perform Update if Proceed is True ---
+    if (proceed) {
+       if (ui) ss.toast(`Updating spreads for Week ${weekToUpdate}...`, '🔄 IN PROGRESS');
+      
+      const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+      const columnIndices = {
+        week: headers.indexOf('week'), awayTeam: headers.indexOf('awayTeam'), homeTeam: headers.indexOf('homeTeam'),
+        overUnder: headers.indexOf('overUnder'), spread: headers.indexOf('spread'),
+        spreadAutoFetched: headers.indexOf('spreadAutoFetched'), timeFetched: headers.indexOf('timeFetched')
+      };
+      
+      const allData = sheet.getDataRange().getValues();
+      let updatesMade = 0;
+      const timeFetched = new Date();
+
+      dataToProcess.events.forEach(event => {
+        if (event.competitions[0].odds && event.competitions[0].odds.length > 0) {
+          const apiAwayTeam = event.competitions[0].competitors.find(c => c.homeAway === 'away').team.abbreviation;
+          const apiHomeTeam = event.competitions[0].competitors.find(c => c.homeAway === 'home').team.abbreviation;
+
+          for (let i = 1; i < allData.length; i++) {
+            if (allData[i][columnIndices.week] == weekToUpdate && allData[i][columnIndices.awayTeam] === apiAwayTeam && allData[i][columnIndices.homeTeam] === apiHomeTeam) {
+              const odds = event.competitions[0].odds[0];
+              sheet.getRange(i + 1, columnIndices.overUnder + 1).setValue(odds.overUnder);
+              sheet.getRange(i + 1, columnIndices.spread + 1).setValue(odds.details);
+              sheet.getRange(i + 1, columnIndices.spreadAutoFetched + 1).setValue(headless ? 1 : 0);
+              sheet.getRange(i + 1, columnIndices.timeFetched + 1).setValue(timeFetched);
+              updatesMade++;
+              break;
+            }
+          }
+        }
+      });
 
       SpreadsheetApp.flush();
-
-      Logger.log(`✅ Spread data updated for ${updatesMade} games in Week ${weekToUpdate}.`);
-      if (!headless) ss.toast(`Spread data updated for ${updatesMade} games in Week ${weekToUpdate}.`,`✅ UPDATED SPREADS`);
-    } else if (proceed && !spreadsAvailable) {
-      Logger.log(`⭕ No spread data available to import for Week ${weekToUpdate}.`);
-      if (!headless) ss.toast(`No spread data available to import for Week ${weekToUpdate}.`,`⭕ MISSING SPREADS`);
-    } else {
-      Logger.log(`🚫 Update canceled.`);
-      if (!headless) ss.toast('🚫 Update canceled.');
+      const successMsg = `Spread data updated for ${updatesMade} games in Week ${weekToUpdate}.`;
+      Logger.log(`✅ ${successMsg}`);
+      if (ui) ss.toast(successMsg, `✅ UPDATED SPREADS`, 60);
+    } else if (!headless) {
+      const cancelMsg = `Update for Week ${weekToUpdate} cancelled or no data available.`;
+      Logger.log(`🚫 ${cancelMsg}`);
+      if (ui) ss.toast(cancelMsg, `🚫 CANCELED`, 60);
     }
 
   } catch (err) {
-    Logger.log(`❌ Error for week ${week} in fetchLatestSpreadsForWeek | ${err.stack}`);
-    if (!headless) ss.toast(`Failed to fetch data for week ${week}. See logs for details.`, '❌ SPREAD ERROR', 10);
+    Logger.log(`❌ Error in fetchLatestSpreadsForWeek | ${err.stack}`);
+    if (ui) ui.alert('An error occurred. Please check the logs for details.');
   }
 }
 
