@@ -1,7 +1,7 @@
-const VERSION = '1.0.8';
+const VERSION = '1.0.9';
 /** GOOGLE SHEETS FOOTBALL PICK 'EMS, SURVIVOR, & ELIMINATOR TOOL | 2025 Edition
  * Script Library for League Creator & Management Platform
- * 10/29/2025
+ * 01/07/2026
  * 
  * Created by Ben Powers
  * ben.powers.creative@gmail.com
@@ -25,7 +25,7 @@ const VERSION = '1.0.8';
  *   ✏️ Member Rename - rename a member in the sheet and update back-end name (note: this won't update the name on the form, which could cause problems, do this mid-week)
  * 📂 FORMS:
  *   📝 Form Builder - make a new form with all sorts of customization
- *   📥Form Import - import picks for any week that has a form (only do this when you're ready to import). Should prompt to only bring in passed weeks if desired
+ *   📥 Form Import - import picks for any week that has a form (only do this when you're ready to import). Should prompt to only bring in passed weeks if desired
  *   📋 Form Manager - review existing forms, turn on and off trigger to record logging, review specs of the form, copy links, etc. Also preview response count
  * -----------
  * 🔄 Fetch Scores - bring in NFL outcomes to the sheet
@@ -61,10 +61,12 @@ function onOpen() {
   if (isInitialized) {
     const config = JSON.parse(docProps.getProperty('configuration'));
     let contest = false;
-    if (config.survivorInclude || config.eliminatorInclude) {
-      contest = true;
-      survElimIcons = config.survivorInclude && config.eliminatorInclude ? '👑&💀' : config.survivorInclude ? '👑' : config.eliminatorInclude ? '💀' : false;
-      survElimString = config.survivorInclude && config.eliminatorInclude ? 'Survivor/Eliminator' : config.survivorInclude ? 'Survivor' : config.eliminatorInclude ? 'Eliminator' : '';
+    if (config) {
+      if (config.survivorInclude || config.eliminatorInclude) {
+        contest = true;
+        survElimIcons = config.survivorInclude && config.eliminatorInclude ? '👑&💀' : config.survivorInclude ? '👑' : config.eliminatorInclude ? '💀' : false;
+        survElimString = config.survivorInclude && config.eliminatorInclude ? 'Survivor/Eliminator' : config.survivorInclude ? 'Survivor' : config.eliminatorInclude ? 'Eliminator' : '';
+      }
     }
     const ui = SpreadsheetApp.getUi();
     let menu = ui.createMenu('🏈 Picks')
@@ -2159,15 +2161,19 @@ function fetchSchedule(ss,year,currentWeek,auto,overwrite) {
 
   Object.keys(missingMatchups).forEach(week => {
     if (missingMatchups[week].count == matchupsPerWeek[week-1]) {
-      Object.keys(existing[week]).forEach(matchup => {
-        if (!existing[week][matchup].placed) {
-          scheduleData[missingMatchups[week].rows[0]] = existing[week][matchup].row;
-          existing[week][matchup].placed = true;
-          missingMatchups[week].rows.splice(0,1);
-        } else {
-          Logger.log(`Already placed week ${week} matchup of ${matchup}.`);
-        }
-      });
+      try {
+        Object.keys(existing[week]).forEach(matchup => {
+          if (!existing[week][matchup].placed) {
+            scheduleData[missingMatchups[week].rows[0]] = existing[week][matchup].row;
+            existing[week][matchup].placed = true;
+            missingMatchups[week].rows.splice(0,1);
+          } else {
+            Logger.log(`Already placed week ${week} matchup of ${matchup}.`);
+          }
+        });
+      } catch (err) {
+        Logger.log(`🔎 Unable to find any data week ${week} entry matchups, skipping...`);
+      }
     } else {
       let emptyRows = [];
       let knownMatchups = [];
@@ -2273,7 +2279,6 @@ function fetchSchedule(ss,year,currentWeek,auto,overwrite) {
 function fetchLatestSpreadsForWeek(headless, targetWeek) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const ui = headless ? null : SpreadsheetApp.getUi();
-
   const sheet = ss.getSheetByName(LEAGUE);
 
   if (!sheet) {
@@ -2452,6 +2457,7 @@ function runWeeklyFetch() {
   Logger.log("Weekly auto-fetch trigger is running...");
   fetchLatestSpreadsForWeek(true); // Run in headless mode to avoid prompts, delays  
 }
+
 
 
 // NFL GAMES - output by week input and in array format: [date,day,hour,minute,dayName,awayTeam,homeTeam,awayTeamLocation,awayTeamName,homeTeamLocation,homeTeamName]
@@ -3779,7 +3785,7 @@ function launchFormBuilder() {
     if (response === ui.Button.YES) {
       try {
         // Run the fetchSchedule function with the specified parameters
-        showToast(`Fetching ${LEAGUE} schedule, this may take a moment...`, 'In Progress');
+        ss.toast(`Fetching ${LEAGUE} schedule, this may take a moment...`, '🔄 In Progress');
         // Let the function auto-detect the year and current week, set auto=false, overwrite=true
         fetchSchedule(ss, null, null, false, true); 
         ss.toast('Schedule data imported successfully!', '✅ SCHEDULE DATA IMPORTED');
@@ -4346,8 +4352,9 @@ function buildFormFromGamePlan(gamePlan) {
         .setValidation(nameValidation); // Validation is with constants at beginning of document
     }
     if (firstWeek || week == 1) {
-      welcomeHeader = form.addSectionHeaderItem()
-        .setTitle(`👋 Welcome to the ${config.year} ${LEAGUE} season!`)
+      const text = week >= 19 ? `👋 Welcome to the ${config.year} ${LEAGUE} playoffs!` : `👋 Welcome to the ${config.year} ${LEAGUE} season!`
+      welcomeHeader = form.addSectionHeaderItem()  
+        .setTitle(text);
       if (config.welcomeLetter) {
         welcomeHeader.setHelpText(config.welcomeLetter);
       }
@@ -7178,6 +7185,7 @@ function outcomesSheetUpdate(ss,week,config,gamePlan) {
     }
     end++;
   }
+
   sheet.getRange(startRow,margins.getColumn(),contests.length,1).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(Array.from({ length: 46 }, (_, index) => index), true).build());
   
   let allRules = rulesToKeep.concat(newRules);
@@ -7249,6 +7257,7 @@ function outcomesSheetUpdate(ss,week,config,gamePlan) {
     }
   }
 }
+
 
 /** 
  * TOTAL Sheet Creation / Adjustment
