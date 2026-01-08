@@ -619,8 +619,8 @@ function showAuthorizationCard() {
             google.script.host.close();
           }
 
-          function onAuthorizationFailure(error) {
-            alert('Authorization failed or was canceled. Please try again. Error: ' + error.message);
+          function onAuthorizationFailure(err) {
+            alert('Authorization failed or was canceled. Please try again. Error: ' + err.message);
           }
         </script>
       </body>
@@ -640,7 +640,7 @@ function triggerAuthorizationFlow() {
   PropertiesService.getDocumentProperties().setProperty('init', 'true');
   
   // By setting this property, the next time onOpen runs, it will create the real menu.
-  Logger.log('Script has been successfully initialized and authorized for this document.');
+  Logger.log(`✅ Script has been successfully initialized and authorized for this document.`);
   onOpen();
 }
 
@@ -777,11 +777,11 @@ function processConfigurationSubmission(formObject) {
       try {
         const forms = JSON.parse(docProps.getProperty('forms'));
         if (!forms) {
-          Logger.log('No forms exist for removing a new user from');
+          Logger.log(`⭕ No forms exist for removing a new user from`);
         } else {
           let maxWeek = Math.max(...Object.keys(data).map(key => parseInt(key)));
           removeNewUserQuestion(maxWeek);
-          Logger.log('Removed new user from most recent form');
+          Logger.log(`❌ Removed new user from most recent form`);
         }
       }
       catch (err) {
@@ -793,9 +793,9 @@ function processConfigurationSubmission(formObject) {
     
     return { success: true, data: configToSave };
 
-  } catch (error) {
-    Logger.log('Error in processConfigurationSubmission:', error);
-    throw new Error('Failed to create configuration: ' + error.toString());
+  } catch (err) {
+    Logger.log(`Error in processConfigurationSubmission: ${err.stack}`);
+    throw new Error(`❗ Failed to create configuration: ${err.toString()}`);
   }
 }
 
@@ -831,7 +831,7 @@ function fetchProperties(name) {
  */
 function saveProperties(name,object) {
   if (!object || typeof object !== 'object' || Object.keys(object).length === 0) {
-    Logger.log('saveProperties was called with an invalid or empty object. No properties were set.');
+    Logger.log(`❗ saveProperties was called with an invalid or empty object. No properties were set.`);
     return; // Exit the function if there's nothing to set.
   }
   const propString = JSON.stringify(object);
@@ -889,20 +889,20 @@ function fetchConfiguration(provideTemplate) {
         return props;
       }
     } else {
-      Logger.log('No existing configuration sidebar data, presenting template object');
+      Logger.log(`⭕ No existing configuration sidebar data, presenting template object`);
     }
-  } catch (error) {
-    Logger.log('Failed to retrieve configuration sidebar data:', error);
+  } catch (err) {
+    Logger.log(`❌ Failed to retrieve configuration sidebar data: ${err.stack}`);
   }
   let placeholder = {pickemsInclude:true,tiebreakerInclude:true};
   if (provideTemplate) {
     try {
       placeholder.year = fetchYear(true);
     } catch (err) {
-      Logger.log(`Issue fetching year during the placeholder configuration creation within fetchConfiguration(provideTemplate) call: ${err.stack}`);
+      Logger.log(`⚠️ Issue fetching year during the placeholder configuration creation within fetchConfiguration(provideTemplate) call: ${err.stack}`);
       placeholder.year = '2025';
     }
-    Logger.log('Returning placeholder: ' + JSON.stringify(placeholder));
+    Logger.log(`↩️ Returning placeholder: ${JSON.stringify(placeholder)}`);
     return placeholder;
   } else {
     SpreadsheetApp.getUi().alert('No configuration found, starting configuration process...');
@@ -912,7 +912,7 @@ function fetchConfiguration(provideTemplate) {
 
 /**
  * Retrieves all necessary data for the configuration sidebar on load.
- * Now includes a calculated message about Sunday kickoff times.
+ * Includes a calculated message about Sunday kickoff times.
  */
 function fetchConfigurationSidebarData() {
   try {
@@ -921,26 +921,25 @@ function fetchConfigurationSidebarData() {
     config.week = fetchWeek();
     const scriptTimeZone = Session.getScriptTimeZone();
     const formattedTime = Utilities.formatDate(new Date(), scriptTimeZone, "h:mm a',' EEE, MMM d");
-    // --- [NEW LOGIC] Calculate the local kickoff time ---
+    // Calculate the local kickoff time
     let kickoffMessage = '';
     try {
-      // 1. Create a reference Date object for 1:00 PM in New York (Eastern Time).
+      // Create a reference Date object for 1:00 PM in New York (Eastern Time).
       // We use Utilities.parseDate for a reliable way to create a date in a specific timezone.
       // The date itself doesn't matter, only the time and zone.
       const kickoffTimeET = Utilities.parseDate("13:00", "America/New_York", "HH:mm");
 
-      // 2. Format that same moment in time for the user's detected scriptTimeZone.
+      // Format that same moment in time for the user's detected scriptTimeZone.
       // 'h a' will format as "10 AM", "1 PM", etc.
       const localKickoffTime = Utilities.formatDate(kickoffTimeET, scriptTimeZone, "h a");
 
-      // 3. Construct the helpful message.
+      // Construct the helpful message.
       kickoffMessage = `Sunday ${LEAGUE} games will show a ${localKickoffTime} kickoff.`;
 
-    } catch (e) {
-      Logger.log("Could not calculate local kickoff time. Error: " + e.toString());
-      kickoffMessage = "Could not calculate local kickoff time.";
+    } catch (err) {
+      Logger.log(`❌ Could not calculate local kickoff time. ${err.stack}`);
+      kickoffMessage = `❌ Could not calculate local kickoff time.`;
     }
-    // --- End of new logic ---
     const obj = {
       properties: config,
       league: LEAGUE,
@@ -961,8 +960,8 @@ function fetchConfigurationSidebarData() {
         kickoffMessage: kickoffMessage
       }
     };
-  } catch (error) {
-    Logger.log('Error preparing config sidebar data:', error);
+  } catch (err) {
+    Logger.log(`⚠️ Error preparing config sidebar data: ${err.stack}`);
     return {
       properties: {pickemsInclude: true},
       league: LEAGUE,
@@ -1002,7 +1001,7 @@ function checkDocumentConfiguration() {
 
     ui.alert(str,ui.ButtonSet.OK);
   } catch (err) {
-    Logger.log('Failed to retrieve members sidebar data:' + err.stack);
+    Logger.log(`❌ Failed to retrieve members sidebar data: ${err.stack}`);
     return { properties: {} };
   }
 }
@@ -1019,7 +1018,7 @@ function showSupportDialog() {
 
 // Returns version to help and support popup to quickly review version by users
 function getSupportPromptInfo() {
-  Logger.log(`Returning support prompt info, version: ${VERSION}`);
+  Logger.log(`↩️ Returning support prompt info, version: ${VERSION}`);
   return {
     version: VERSION
   };
@@ -1185,9 +1184,9 @@ function processReviveMember(data) {
       updatedMemberData: memberData // Send the fresh data back
     };
 
-  } catch (error) {
-    Logger.log(`Error in processReviveMember: `, error);
-    throw new Error(`Failed to process revive: ${error.message}`);
+  } catch (err) {
+    Logger.log(`⚠️ Error in "processReviveMember": ${err.stack}`);
+    throw new Error(`⚠️ Failed to process revive: ${err.message}`);
   }
 }
 
@@ -1202,20 +1201,18 @@ function getMembersSidebarData() {
   try {
     const docProps = PropertiesService.getDocumentProperties();
 
-    // 1. Fetch the member data as before.
+    // Fetch the member data
     const members = JSON.parse(docProps.getProperty('members')) || { order: [], details: {} }; // Ensure a default object
 
-    // 2. Fetch the main configuration
+    // Fetch the main configuration
     const config = JSON.parse(docProps.getProperty('configuration')) || {}; // Ensure a default object
 
-    // 3. Calculate the new boolean flag based on the required conditions.
-    // This will be false if either setting is false or doesn't exist.
+    // Calculate the new boolean flag based on the required conditions
+    // This will be false if either setting is false or doesn't exist
     const showReviveSurvivorButtons = (config.survivorInclude === true && config.survivorRevives === true);
     const showReviveEliminatorButtons = (config.eliminatorInclude === true && config.eliminatorRevives === true);
 
-    // Find a way to fold in createLivesString() to create visual of lives
-
-    // 4. Return a single, bundled object with all the data the client needs.
+    // Return a single, bundled object with all the data the client needs
     return {
       week: fetchWeek() || 1,
       memberData: members,
@@ -1223,8 +1220,8 @@ function getMembersSidebarData() {
       showReviveEliminatorButtons: showReviveEliminatorButtons
     };
 
-  } catch (error) {
-    Logger.log('Error preparing member panel data:', error);
+  } catch (err) {
+    Logger.log(`⚠️ Error preparing member panel data: ${err.stack}`);
     // Return a safe, default structure in case of any error.
     return {
       week: fetchWeek() || 1,
@@ -1270,10 +1267,10 @@ function processMemberSubmission(clientData) {
     const docProps = PropertiesService.getDocumentProperties();
     const config = JSON.parse(docProps.getProperty('configuration'));
     let addedNames = [];
-    // 1. Fetch the "before" state.
+    // Fetch the "before" state
     const serverData = fetchProperties('members') || { memberOrder: [], members: {} };
 
-    // 2. Process the "after" state from the client, finalizing IDs.
+    // Process the "after" state from the client, finalizing IDs
     const finalData = { memberOrder: [], members: {} };
     let currentWeek;
     clientData.memberOrder.forEach(id => {
@@ -1283,7 +1280,6 @@ function processMemberSubmission(clientData) {
         const permanentId = generateUniqueId();
         finalData.memberOrder.push(permanentId);
         currentWeek = currentWeek || fetchWeek() || 1;
-        // --- [THE FIX] Call the new helper to create the member object ---
         finalData.members[permanentId] = createNewMember(
           memberDetails.name,
           memberDetails.paid,
@@ -1291,10 +1287,10 @@ function processMemberSubmission(clientData) {
           currentWeek
         );
       } else {
-        // This is an existing member. Keep their permanent ID.
+        // This is an existing member. Keep their permanent ID
         finalData.memberOrder.push(id);
         
-        // Merge the old data with any new changes (like the 'paid' status).
+        // Merge the old data with any new changes (like the 'paid' status)
         const existingData = serverData.members[id] || {};
         finalData.members[id] = {
           ...existingData, // Keep all old data (lives, revives, etc.)
@@ -1304,8 +1300,8 @@ function processMemberSubmission(clientData) {
       }
     });
     
-    // 3. Perform Deletion Logic (This part is simplified)
-    // Find any IDs that were in the original serverData but are NOT in the new finalData.
+    // Perform Deletion Logic (This part is simplified)
+    // Find any IDs that were in the original serverData but are NOT in the new finalData
     const initialIds = serverData.memberOrder || [];
     const finalIds = finalData.memberOrder;
     const deletedIds = initialIds.filter(id => !finalIds.includes(id));
@@ -1317,22 +1313,22 @@ function processMemberSubmission(clientData) {
         });
     }
 
-    // 4. Identify Additions (for future use): Names in the new list not in the old one.
+    // Identify Additions (for future use): Names in the new list not in the old one.
     if (addedNames.length > 0) {
-      Logger.log("Adding new members:", addedNames);
-      // In the future, you could call an `addMemberToSheet(name)` function here.
+      Logger.log(`Adding new members: ${addedNames}`);
+      // Could call an `addMemberToSheet(name)` function here
     }
     
-    //memberAddForm(addedNames);
+    // memberAddForm(addedNames);
     
-    // 5. Save the new, final, authoritative state.
+    // Save the new, final, authoritative state
     saveProperties('members', finalData);
     
     return { success: true, message: 'Members updated successfully!' };
 
-  } catch (error) {
-    Logger.log("Error processing member submission:", error);
-    throw new Error("Failed to update members. " + error.toString());
+  } catch (err) {
+    Logger.log(`⚠️ Error processing member submission: ${err.stack}`);
+    throw new Error(`⚠️ Failed to update members. ${err.toString()}`);
   }
 }
 
@@ -1436,9 +1432,9 @@ function processRenameSubmission(data) {
   // --- 4. Run the function to update the name on all user-facing sheets ---
   // This function still works perfectly. It finds all instances of the old name
   // and replaces them with the new one.
-  Logger.log('Renaming sheet member names...');
+  Logger.log(`✏️ Renaming sheet member names...`);
   renameMemberInSheet(oldName, newName);
-  Logger.log('Renaming database sheet member names...');
+  Logger.log(`✏️ Renaming database sheet member names...`);
   renameMemberInDatabaseSheet(oldName, newName);
 
   return { success: true, message: `Successfully renamed "${oldName}" to "${newName}".` };
@@ -1501,8 +1497,8 @@ function fetchMembers() {
 
     return names;
 
-  } catch (error) {
-    Logger.log("Error in getMemberNames: " + error.toString());
+  } catch (err) {
+    Logger.log(`⚠️ Error in getMemberNames: ${err.stack}`);
     return []; // Always return an array, even on failure.
   }
 }
@@ -1542,7 +1538,7 @@ function renameMemberInDatabaseSheet(oldName, newName) {
   try {
     const dbSheet = getDatabaseSheet(); // Your existing helper to get the backend Spreadsheet
     if (!dbSheet) {
-      Logger.log("Database sheet not found, skipping rename operation there.");
+      Logger.log(`❌ Database sheet not found, skipping rename operation there.`);
       return;
     }
 
@@ -1574,17 +1570,17 @@ function renameMemberInDatabaseSheet(oldName, newName) {
       });
     });
     
-    Logger.log(`Successfully performed rename operations for "${oldName}" in the backend database sheet.`);
+    Logger.log(`✅ Successfully performed rename operations for "${oldName}" in the backend database sheet.`);
 
-  } catch (error) {
-    // We log this as a warning because the primary rename (in properties) succeeded.
-    // This is a secondary cleanup task.
-    console.warn(`Could not complete rename in the database sheet for "${oldName}". Error: ${error.toString()}`);
+  } catch (err) {
+    // Primary rename (in properties) succeeded
+    // This is a secondary cleanup task
+    Logger.log(`⚠️ Could not complete rename in the database sheet for "${oldName}". ${err.stack}`);
   }
 }
 
 /**
- * NEEDS WORK - Looks for form for the week, checks what members are listed within the "eligible" entrants and adds new ones
+ * Looks for form for the week, checks what members are listed within the "eligible" entrants and adds new ones
  * 
  * @param {array} names of new players to add
  * @param {integer} week number to review
@@ -1639,8 +1635,8 @@ function memberAddForm(names,week){
             nameQuestion.asListItem().setChoices(choices);
           }
           catch (err) {
-            ss.toast('Issue locating survivor start question, you may need to add member manually');
-            Logger.log(`memberAdd error: ${err.stack}`);
+            ss.toast(`Issue locating survivor start question, you may need to add member manually`,`❗ ISSUE`);
+            Logger.log(`⚠️ Error with "memberAdd": ${err.stack}`);
           }
         } else {
           try {
@@ -1648,28 +1644,28 @@ function memberAddForm(names,week){
               if (names[a] == 'New User') {
                 newChoice = nameQuestion.asListItem().createChoice(names[a],newUserPage);
                 choices.unshift(newChoice);
-                Logger.log(`New user "${names[a]}" is redirected to the "${newUserPage.getTitle()}" Form page`);
+                Logger.log(`↪️ New user "${names[a]}" is redirected to the "${newUserPage.getTitle()}" Form page`);
               } else {
                 newChoice = nameQuestion.asListItem().createChoice(names[a],FormApp.PageNavigationType.SUBMIT);
                 choices.unshift(newChoice);
-                Logger.log(`New user "${names[a]}" is redirected to the submit Form page`);
+                Logger.log(`↪️ New user "${names[a]}" is redirected to the submit Form page`);
               }
             }
             nameQuestion.asListItem().setChoices(choices);
           }
           catch (err) {
             ss.toast('Issue locating submit form value, you may need to add member manually');
-            Logger.log(`memberAdd error: ${err.stack}`);
+            Logger.log(`⚠️ Error with "memberAdd": ${err.stack}`);
           }
         }
       }
     } else {
-      Logger.log(`No form created yet for week ${week}, skipping addition of ${names} to form.`);
+      Logger.log(`⏭ No form created yet for week ${week}, skipping addition of ${names} to form.`);
     }
   }
   catch (err) {
-    Logger.log(err.stack);
-    ss.toast(`Unable to add ${names} to the form.`);
+    Logger.log(`⚠️ Error with "memberAdd": ${err.stack}`);
+    ss.toast(`Unable to add ${names} to the form.`,`⚠️ ERROR ADDING MEMBER(S) TO FORM`);
   }
 }
 
@@ -1698,18 +1694,18 @@ function fetchYear(apiPull) {
   }
   let success = false;
   if (apiPull) {
-    Logger.log(`API Pull requested to fetch year`);
+    Logger.log(`📡 API Pull requested to fetch year`);
   } else {
-    Logger.log('No year currently recorded for league, fetching from ESPN API...')
+    Logger.log(`❌ No year currently recorded for league, fetching from ESPN API...`)
   }
   try {
     year = JSON.parse(UrlFetchApp.fetch(SCOREBOARD).getContentText()).season.year.toString();
     if (year) {
       yearInvalid = !yearRegEx.test(year);
       if (yearInvalid) {
-        Logger.log(`API WARNING: Year value of "${year}" pulled from API but was not a valid year, moving on to manual submission`);
+        Logger.log(`⚠️ API WARNING: Year value of "${year}" pulled from API but was not a valid year, moving on to manual submission`);
       } else {
-        Logger.log(`API SUCCESS: Pulled year value of "${year}" from season information from ESPN API`)
+        Logger.log(`✅ API SUCCESS: Pulled year value of "${year}" from season information from ESPN API`)
         success = true;
       }        
     }
@@ -1737,14 +1733,14 @@ function fetchYear(apiPull) {
     }
   }
   if (!yearInvalid) {
-    Logger.log('Storing year value in "configuration" property...')
+    Logger.log(`✏️ Storing year value in "configuration" property...`)
     config.year = year;
     try {
       saveProperties('configuration',config);
-      Logger.log(`SUCCESS: Stored year key of "${year}" within the document properties.`)
+      Logger.log(`✅ SUCCESS: Stored year key of "${year}" within the document properties.`)
       return (parseInt(year).toFixed(0));
     } catch (err) {
-      Logger.log(`ERROR: Issue storing year key: ${err.stack}`);
+      Logger.log(`⚠️ ERROR: Issue storing year key: ${err.stack}`);
       return null;
     }
   } else {
@@ -1793,7 +1789,7 @@ function fetchWeek(negative,current) {
     }
   }
   catch (err) {
-    Logger.log('ESPN API has an issue right now' + err.stack);
+    Logger.log(`⚠️ ESPN API has an issue right now ${err.stack}`);
     return null;
   }
 }
@@ -1814,7 +1810,7 @@ function fetchTeamsESPN(year) {
     return objTeams;
   }
   catch (err) {
-    Logger.log('ESPN API has an issue right now');
+    Logger.log(`⚠️ ESPN API has an issue right now: ${err.stack}`);
   }  
 }
 
@@ -2263,7 +2259,7 @@ function fetchSchedule(ss,year,currentWeek,auto,overwrite) {
     sheet.hideSheet();
   }
   catch (err){
-    // Logger.log('fetchSchedule hiding: Couldn\'t hide sheet as no other sheets exist');
+    // Logger.log(`❗ fetchSchedule hiding: Couldn't hide sheet as no other sheets exist`);
   }
   ss.toast(`Imported all ${LEAGUE} schedule data`);
 }
@@ -2283,7 +2279,7 @@ function fetchLatestSpreadsForWeek(headless, targetWeek) {
 
   if (!sheet) {
     if (ui) {
-      ui.alert('⚠️ Error', `"${LEAGUE}" schedule sheet not found, bringing in schedule data now. Re-run this script to fetch spreads after ${LEAGUE} sheet creation has completed.`, ui.ButtonSet.OK);
+      ui.alert(`⚠️ Error`, `"${LEAGUE}" schedule sheet not found, bringing in schedule data now. Re-run this script to fetch spreads after ${LEAGUE} sheet creation has completed.`, ui.ButtonSet.OK);
       fetchSchedule(ss); // Assumes fetchSchedule is available to build the sheet
     } else {
       Logger.log(`❗ Attempted to fetch current spreads in headless mode and was unable to find the ${LEAGUE} schedule sheet.`);
@@ -2454,7 +2450,7 @@ function fetchLatestSpreadsForWeek(headless, targetWeek) {
  * It provides the correct parameters to your main fetchSchedule function.
  */
 function runWeeklyFetch() {
-  Logger.log("Weekly auto-fetch trigger is running...");
+  Logger.log(`🔄 Weekly auto-fetch trigger is running...`);
   fetchLatestSpreadsForWeek(true); // Run in headless mode to avoid prompts, delays  
 }
 
@@ -2539,269 +2535,6 @@ function fetchMatchups() {
   return data;
 }
 
-// NFL ACTIVE WEEK SCORES - script to check and pull down any completed matches and record them to the weekly sheet
-function recordWeeklyScores(){
-  
-  const docProps = PropertiesService.getDocumentProperties();
-  const config = JSON.parse(docProps.getProperty('configuration')) || {};
-  const formsData = JSON.parse(docProps.getProperty('forms')) || {};
-  const outcomes = fetchWeeklyScores();
-  if (outcomes[0] > 0) {
-    const week = outcomes[0];
-    const games = outcomes[1];
-    const completed = outcomes[2];
-    const remaining = outcomes[3];
-    const data = outcomes[4];
-
-    const done = (games == completed);
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const ui = SpreadsheetApp.getUi();
-
-    const pickemsInclude = config.pickemsInclude;
-    const survivorInclude = config.survivorInclude;
-    const eliminatorInclude = config.eliminatorInclude;
-    const tiebreakerInclude = config.tiebreakerInclude;
-    let outcomesRecorded = [];
-    let range;
-    let alert = 'CANCEL';
-    if (done) {
-      let text = 'WEEK ' + week + ' COMPLETE\r\n\r\nMark all game outcomes';
-      if (pickemsInclude) {
-        text = text + ' and tiebreaker?';
-      } else {
-        text = text + '?';
-      }
-      alert = ui.alert(text, ui.ButtonSet.OK_CANCEL);
-    } else if (remaining == 1) {
-      alert = ui.alert('WEEK ' + week + ' INCOMPLETE\r\n\r\nRecord completed game outcomes?\r\n\r\n(There is one undecided game)\r\n\r\n', ui.ButtonSet.OK_CANCEL);
-    } else if (remaining > 0 && remaining != games){
-      alert = ui.alert('WEEK ' + week + ' INCOMPLETE\r\n\r\nRecord completed game outcomes?\r\n\r\n(There are ' + remaining + ' undecided games remaining)\r\n\r\n', ui.ButtonSet.OK_CANCEL);
-    } else if (remaining == games) {
-      ui.alert('WEEK ' + week + ' NOT YET STARTED\r\n\r\nNo game outcomes to record.\r\n\r\n', ui.ButtonSet.OK);
-    }
-    if (alert == 'OK') {
-      if (pickemsInclude) {
-        let sheet,matchupRange,matchups,cols,outcomeRange,outcomesRecorded,marginRange,marginRecorded,writeRange;
-        try {
-          sheet = ss.getSheetByName(weeklySheetPrefix+week);
-          matchupRange = ss.getRangeByName(LEAGUE + '_'+week);
-          matchups = matchupRange.getValues().flat();
-          outcomeRange = ss.getRangeByName(LEAGUE + '_PICKEM_OUTCOMES_'+week);
-          outcomesRecorded = outcomeRange.getValues().flat();
-          marginRange = ss.getRangeByName(LEAGUE + '_PICKEM_OUTCOMES_'+week+'MARGIN');
-          outcomesRecorded = outcomeRange.getValues().flat();
-          if (tiebreakerInclude) {
-            cols = matchups.length+1; // Adds one more column for tiebreaker value
-          } else {
-            cols = matchups.length;
-          }
-          writeRange = sheet.getRange(outcomeRange.getRow(),outcomeRange.getColumn(),1,cols);
-          writeMarginRange = sheet.getRange(marginRange.getRow(),marginRange.getColumn(),1,cols);
-        }
-        catch (err) {
-          const text = '❗ Issue with fetching weekly sheet or named ranges on weekly sheet, recreating now.';
-          Logger.log(text + ' | ERROR: ' + err.stack);
-          ss.toast(text,'MISSING WK' + week + ' SHEET');
-          let displayEmpty = true;
-          if (config?.hideNonParticipants) displayEmpty = !config.hideNonParticipants;
-          weeklySheet(ss,week,config,null,memberData,displayEmpty);
-        }
-        let regex = new RegExp('[A-Z]{2,3}','g');
-        let arr = [];
-        for (let a = 0; a < matchups.length; a++){
-          let game = matchups[a].match(regex);
-          let away = game[0];
-          let home = game[1];
-          let outcome;        
-          try {
-            outcome = [];
-            for (let b = 0; b < data.length; b++) {
-              if (data[b][0] == away  && data[b][1] == home) {
-                outcome = data[b];
-              }
-            }
-            if (outcome.length <= 0) {
-              throw new Error ('No game data for game at index ' + (a+1) + ' with teams given as ' + away + ' and ' + home);
-            }
-            //outcome = data.filter(game => game[0] == away && game[1] == home)[0];
-            if (outcome[2] == away || outcome[2] == home) {
-              if (regex.test(outcome[2])) {
-                arr.push(outcome[2]);
-              } else {
-                arr.push(outcomesRecorded[a]);
-              }
-            } else if (outcome[2] == 'TIE') {
-              let writeCell = sheet.getRange(outcomeRange.getRow(),outcomeRange.getColumn()+a);
-              let rules = SpreadsheetApp.newDataValidation().requireValueInList([away,home,'TIE'], true).build();
-              writeCell.setDataValidation(rules);
-            } else {
-              arr.push(outcomesRecorded[a]);
-            }
-          }
-          catch (err) {
-            Logger.log('No game data for ' + away + '@' + home);
-            arr.push(outcomesRecorded[a]);
-          }
-          if (tiebreakerInclude) {
-            try {
-              if (a == (matchups.length - 1)) {
-                if (outcome.length <= 0) {
-                  throw new Error('No tiebreaker yet');
-                }
-                arr.push(outcome[3]); // Appends tiebreaker to end of array
-              }
-            }
-            catch (err) {
-              Logger.log('No tiebreaker yet');
-              let tiebreakerCell = ss.getRangeByName(LEAGUE + '_TIEBREAKER_'+week);
-              let tiebreaker = sheet.getRange(tiebreakerCell.getRow()-1,tiebreakerCell.getColumn()).getValue();
-              arr.push(tiebreaker);
-            }
-          }
-        }
-        writeRange.setValues([arr]);
-      } else if (survivorInclude || eliminatorInclude) {
-        games = formsData[week].gamePlan.games;
-        if (!games) {
-          const text = `⚠️ Issue fetching gamePlan information for week ${week}, aborting recording of outcomes for OUTCOMES sheet`;
-          Logger.log(text)
-          ss.toast(text,'NO GAMEPLAN');
-        } else {
-          range = ss.getRangeByName(LEAGUE + '_OUTCOMES_'+week);
-          outcomesRecorded = range.getValues().flat();
-          let arr = [];
-          for (let a = 0; a < away.length; a++) {
-            arr.push([null]);
-            for (let b = 0; b < data.length; b++) {
-              if (data[b][0] == away[a] && data[b][1] == home[a]) {
-                if (data[b][2] != null  && (outcomesRecorded[a] == null || outcomesRecorded[a] == '')) {
-                  arr[a] = [data[b][2]];  
-                } else {
-                  arr[a] = [outcomesRecorded[a]];
-                }
-              }
-            }        
-          }
-          range.setValues(arr);
-        }
-      }
-    }
-    const finishText = `✅ Recorded ${completed} game outcomes successfully`;
-    Logger.log(finishText);
-    ss.toast(finishText,'SUCCESS');
-  } else {
-    const nothing = `⛔ No outcomes to record, exiting...`
-    Logger.log(nothing);
-    ss.toast(nothing,`NO DATA`)
-  }
-}
-
-
-
-
-// NFL OUTCOMES - Records the winner and combined tiebreaker for each matchup on the NFL sheet
-function fetchWeeklyScores(){
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const ui = SpreadsheetApp.getUi();
-  let obj = {};
-  try{
-    obj = JSON.parse(UrlFetchApp.fetch(SCOREBOARD));
-  }
-  catch (err) {
-    Logger.log(err.stack);
-    ui.alert('ESPN API isn\'t responding currently, try again in a moment.',ui.ButtonSet.OK);
-    throw new Error('ESPN API issue, try later');
-  }
-  const season = obj.season.type;
-  obj.leagues[0].calendar.forEach(entry => {
-    if (entry.value == season) {
-      weeks = entry.entries.length;
-    }
-  });
-  
-  if (Object.keys(obj).length > 0) {
-    let games = obj.events;
-    Logger.log('weeks ' + weeks + ' and games ' + games);
-    let week = obj.week.number;
-    let year = obj.season.year;
-    Logger.log(JSON.stringify(obj));
-    // Checks if preseason, if not, pulls in score data
-    if (season == 1) {
-      Logger.log('Regular season not yet started.\r\n\r\n Currently preseason is still underway.');
-      week = week - (weeks + 1);
-    //   return [0,null,null,null,null];
-    } else if (season == 3) { // If in post-season, will add total weeks to output array
-      week = week + REGULAR_SEASON;
-    }
-
-
-    let teams = [];
-
-    // Get value for TNF being included
-    let tnfInclude = true;
-    try{
-      tnfInclude = ss.getRangeByName('TNF_PRESENT').getValue();
-    }
-    catch (err) {
-      Logger.log('Your version doesn\'t have the TNF feature configured, add a named range "TNF_PRESENT" "somewhere on a blank CONFIG sheet cell (hidden by default) with a value TRUE or FALSE to include');
-    }
-
-    // Get existing matchup data for comparison to scores (only for TNF exclusion)
-    let data = [];
-    if (!tnfInclude) {
-      try {
-        data = ss.getRangeByName(LEAGUE).getValues();
-      }
-      catch (err) {
-        ss.toast('No NFL data, importing now');
-        fetchSchedule(ss,year);
-        data = ss.getRangeByName(LEAGUE).getValues();
-      }
-      for (let a = 0; a < data.length; a++) {
-        if (data[a][0] == week && (tnfInclude || (!tnfInclude && data[a][2] >= 0))) {
-          teams.push(data[a][6]);
-          teams.push(data[a][7]);
-        }
-      }
-    }
-    // Loop through games provided and creates an array for placing
-    let all = [];
-    let count = 0;
-    let away, awayScore,home, homeScore,tiebreaker,winner,competitors;
-    for (let a = 0; a < games.length; a++){
-      let outcomes = [];
-      awayScore = '';
-      homeScore = '';
-      tiebreaker = '';
-      winner = '';
-      competitors = games[a].competitions[0].competitors;
-      away = (competitors[1].homeAway == 'away' ? competitors[1].team.abbreviation : competitors[0].team.abbreviation);
-      home = (competitors[0].homeAway == 'home' ? competitors[0].team.abbreviation : competitors[1].team.abbreviation);
-      if (games[a].status.type.completed) {
-        if (tnfInclude || (!tnfInclude && (teams.indexOf(away) >= 0 || teams.indexOf(home) >= 0))) {
-          count++;
-          awayScore = parseInt(competitors[1].homeAway == 'away' ? competitors[1].score : competitors[0].score);
-          homeScore = parseInt(competitors[0].homeAway == 'home' ? competitors[0].score : competitors[1].score);
-          tiebreaker = awayScore + homeScore;
-          winner = (competitors[0].winner ? competitors[0].team.abbreviation : (competitors[1].winner ? competitors[1].team.abbreviation : 'TIE'));
-          outcomes.push(away,home,winner,tiebreaker);
-          all.push(outcomes);
-        }
-      }      
-    }
-    // Sets info variables for passing back to any calling functions
-    let remaining = games.length - count;
-    let completed = games.length - remaining;
-
-    // Outputs total matches, how many completed, and how many remaining, and all matchups with outcomes decided;
-    Logger.log([week,games.length,completed,remaining,all]);
-    return [week,games.length,completed,remaining,all];
-  } else {
-    Logger.log('ESPN API returned no games');
-    ui.alert('ESPN API didn\'t return any game information. Try again later and make sure you\'re checking while the season is active',ui.ButtonSet.OK);
-  }
-}
-
 // LEAGUE LOGOS - Saves URLs to logos to a Document Property variable named "logos" {CURRENTLY UNUSED}
 function fetchLogos(){
   let obj = {};
@@ -2810,9 +2543,9 @@ function fetchLogos(){
     obj = JSON.parse(UrlFetchApp.fetch(SCOREBOARD));
   }
   catch (err) {
-    Logger.log(err.stack);
-    ui.alert('ESPN API isn\'t responding currently, try again in a moment.',ui.ButtonSet.OK);
-    throw new Error('ESPN API issue, try later');
+    Logger.log(`⚠️ Fetch Logo error: ${err.stack}`);
+    ui.alert(`⚠️ ESPN API ISSUE`,`The API for fetching logos isn't responding currently, try again in a moment.`,ui.ButtonSet.OK);
+    throw new Error('⚠️ ESPN API issue, try later');
   }
   
   if (Object.keys(obj).length > 0) {
@@ -2827,7 +2560,6 @@ function fetchLogos(){
       logos[teamOne] = teamOneLogo;
       logos[teamTwo] = teamTwoLogo;
     }
-    Logger.log(logos);
     const docProps = PropertiesService.getDocumentProperties();
     try {
       let logoProp = docProps.getProperty('logos');
@@ -2837,7 +2569,7 @@ function fetchLogos(){
       }
     }
     catch (err) {
-      Logger.log('Error fetching logo object, creating one now');
+      Logger.log(`⚠️ Error fetching logo object, creating one now`);
       docProps.setProperty('logos',JSON.stringify(logos));
     }
   }
@@ -2859,65 +2591,10 @@ function launchApiOutcomeImport() {
       .setWidth(350);
     SpreadsheetApp.getUi().showSidebar(html);
   } catch (err) {
-    const ui = SpreadsheetApp.getUi();
-    const docProps = PropertiesService.getDocumentProperties();
-    
     // DEPRECATION NOTICE
-    Logger.log(`❗ Could not launch new outcome import screen, user likely doesn't have "scoreImport.html" file available.`);
-    Logger.log(`ERROR: ${err.stack}`);
-    const newImportToolAlert = docProps.getProperty('newImportToolAlert');
-    if (newImportToolAlert != "true") {
-      let newImportToolAlertMessage = ui.alert(`⚠️ DEPRECATION NOTICE`, `🆕 There's a new score import tool that can import previous week outcomes and scores. The existing score import tool will still work for the current week\n\n⭐ To update, please create a "scoreImport.html" using the content from either the template document or the GitHub project page.\n\n❌ "Cancel": Dismiss this notice\n✔️ "OK": Permanently hide this notice`, ui.ButtonSet.OK_CANCEL);
-      if (newImportToolAlertMessage == "OK") {
-        docProps.setProperty('newImportToolAlert',true);
-      }
-    }
-
-    // FORMER FUNCTION
-    try {
-      
-      const formsData = JSON.parse(docProps.getProperty('forms') || '{}');
-      
-      const apiData = JSON.parse(UrlFetchApp.fetch(SCOREBOARD).getContentText());
-      const apiEvents = apiData.events || [];
-      
-      const apiWeek = apiData.week.number;
-      const apiSeasonType = apiData.season.type; // 2 for regular, 3 for post
-      if (apiSeasonType == 3) apiWeek = apiWeek + REGULAR_SEASON;
-      
-      const gamePlan = formsData[apiWeek]?.gamePlan;
-      if (!gamePlan) {
-        throw new Error(`Could not find a game plan for the current API week (${apiWeek}). Please create the form for this week first.`);
-      }
-
-      const outcomeAnalysis = parseApiEvents(apiEvents, gamePlan);
-
-      let summary = (outcomeAnalysis.complete.length == 0 ? `Here is the current status of the games included in your slate this week ${apiWeek}\n\n`:`This will import outcomes for week ${apiWeek}.\n\n`);
-      summary += `✅ Games Finished: ${outcomeAnalysis.complete.length}\n`;
-      summary += `⏳ Games In Progress: ${outcomeAnalysis.active.length}\n`;
-      outcomeAnalysis.postponed.length > 0 ? summary += `🕘 Games Postponed: ${outcomeAnalysis.postponed.length}` : null;
-      summary += `🚫 Games Not Started: ${outcomeAnalysis.pregame.length}`;
-      outcomeAnalysis.unknown.length > 0 ? summary += `❓ Games Unknown: ${outcomeAnalysis.unknown.length} (no clear status, manual input recommended)` : null;
-      if (outcomeAnalysis.complete.length > 0) summary += "\n\nDo you want to import the results for the finished games now?";
-
-      const response = ui.alert(outcomeAnalysis.complete.length == 0 ? '⭕ No Completed Games Yet':'👍 Confirm Importing Games', summary, outcomeAnalysis.complete.length === 0 ? ui.ButtonSet.OK : ui.ButtonSet.YES_NO);
-
-      if (response === ui.Button.YES) {
-        const ss = SpreadsheetApp.getActiveSpreadsheet();
-        let result = updateSheetsWithApiOutcomes(ss, apiWeek, outcomeAnalysis.complete, formsData, true);
-        if (result) {
-          ui.alert('✔️ Success!', `Imported outcomes for ${outcomeAnalysis.complete.length} completed games for week ${apiWeek}.`,ui.ButtonSet.OK);
-          Logger.log(`✔️ Successfully imported outcomes for ${outcomeAnalysis.complete.length} completed games for week ${apiWeek}.`);
-        }
-      } else {
-        SpreadsheetApp.getActiveSpreadsheet().toast(`Import of week ${apiWeek} outcomes canceled by user.`,`🚫 IMPORT CANCELED`);
-        Logger.log('🚫 Import canceled by user.');
-      }
-
-    } catch (err) {
-      ui.alert('Error', `An error occurred: ${err.message}`, ui.ButtonSet.OK);
-      Logger.log("launchApiOutcomeImport Error: " + err.stack);
-    }
+    const ui = SpreadsheetApp.getUi();
+    Logger.log(`⚠️ Could not launch new outcome import screen, user likely doesn't have "scoreImport.html" file available: ${err.stack}`);
+    let newImportToolAlertMessage = ui.alert(`⚠️ DEPRECATION NOTICE`, `🆕 There's a new score import tool that can import previous week outcomes and scores.\n\n⭐ To update, please create a "scoreImport.html" using the content from either the template document or the GitHub project page, then try running again.`, ui.ButtonSet.OK_CANCEL);
   }
 }
 
@@ -3368,8 +3045,8 @@ function outcomeDataValidationMapping(week, formsData, namedRangeName) {
       return false;
     }
     
-  } catch (error) {
-    Logger.log(`⚠️ Error validating named range: ${error.message}`);
+  } catch (err) {
+    Logger.log(`⚠️ Error validating named range: ${err.stack}`);
     return false;
   }
 }
@@ -3447,10 +3124,9 @@ function getFormDashboardData() {
       templateId: templateId, // Future use in formManager panel
       overallResponseRate: totalPossibleResponses > 0 ? (totalResponses / totalPossibleResponses) : 0      
     };
-  } catch (error) {
-    Logger.log("Error in getFormDashboardData: ", error);
-    // Ensure we throw an error that the client can parse
-    throw new Error("Could not load form data. " + error.message);
+  } catch (err) {
+    Logger.log(`⚠️ Error in getFormDashboardData: ${err.stack}`);
+    throw new Error(`⚠️ Could not load form data. ${err.message}`);
   }
 }
 
@@ -3478,9 +3154,9 @@ function toggleFormStatus(formId) {
     setFormSubmitTrigger(formId, newState);
     
     return { success: true, newStatus: newState, newSyncStatus: newState };
-  } catch (error) {
-    Logger.log(`Failed to toggle status for form ${formId}:`, error);
-    throw new Error(`Could not update form status. ${error.message}`);
+  } catch (err) {
+    Logger.log(`⚠️ Failed to toggle status for form ${formId}: ${err.stack}`);
+    throw new Error(`⚠️ Could not update form status. ${err.message}`);
   }
   
 }
@@ -3538,10 +3214,10 @@ function setFormSubmitTrigger(formId, shouldBeEnabled) {
     SpreadsheetApp.getActiveSpreadsheet().toast(toastMessage,toastTitle);
 
     return { success: true, newStatus: shouldBeEnabled };
-  } catch (error) {
-    Logger.log(`⚠️ Failed to set trigger for form ${formId}:`, error);
-    SpreadsheetApp.getActiveSpreadsheet().toast(`Error: ${error.message}`, '❌ FAILED', 10);
-    throw new Error(`⚠️ Could not update trigger. ${error.message}`);
+  } catch (err) {
+    Logger.log(`⚠️ Failed to set trigger for form ${formId}: ${err.stack}`);
+    SpreadsheetApp.getActiveSpreadsheet().toast(`Error: ${err.message}`, '❌ FAILED', 10);
+    throw new Error(`⚠️ Could not update trigger. ${err.message}`);
   }
 }
 
@@ -3611,7 +3287,7 @@ function setOneTimeFormLockTrigger(formId, gamePlan) {
   });
 
   if (!earliestKickoff || earliestKickoff < new Date()) {
-    Logger.log("Cannot set form lock trigger: earliest kickoff is in the past.");
+    Logger.log(`⚠️ Cannot set form lock trigger: earliest kickoff is in the past.`);
     return;
   }
 
@@ -3628,8 +3304,8 @@ function setOneTimeFormLockTrigger(formId, gamePlan) {
   const metadata = { formId: formId, week: gamePlan.week };
   PropertiesService.getDocumentProperties().setProperty('triggerMeta_' + triggerId, JSON.stringify(metadata));
 
-  Logger.log(`Scheduled one-time form lock for ${earliestKickoff.toLocaleString()} with trigger ID ${triggerId}`);
-  SpreadsheetApp.getActiveSpreadsheet().toast(`Form will automatically lock at first kickoff.`);
+  Logger.log(`🔏 Scheduled one-time form lock for ${earliestKickoff.toLocaleString()} with trigger ID ${triggerId}`);
+  SpreadsheetApp.getActiveSpreadsheet().toast(`Form will automatically lock at first kickoff.`,`🔏 AUTO LOCK ENABLED`);
 }
 
 /**
@@ -3660,8 +3336,8 @@ function getWeekFromFormId(formId) {
 
 /**
  * onFormSubmit trigger will call this function
- * It's a simple wrapper that determines the week and calls our main sync function.
- * @param {Object} e The event object passed by the onFormSubmit trigger.
+ * Wrapper that determines the week and calls our main sync function.
+ * @param {Object} e: The event object passed by the onFormSubmit trigger.
  */
 function handleFormSubmit(e) {
   try {
@@ -3683,7 +3359,7 @@ function handleFormSubmit(e) {
 
     // 3. Fallback to parsing the title if the lookup fails (optional but safe).
     if (!week) {
-      Logger.log(`Could not find form ID ${submittedFormId} in the 'forms' property. Falling back to parsing title.`);
+      Logger.log(`🔎 Could not find form ID ${submittedFormId} in the 'forms' property. Falling back to parsing title.`);
       const formTitle = form.getTitle();
       const weekMatch = formTitle.match(/Week (\d+)/);
       if (weekMatch && weekMatch[1]) {
@@ -3693,23 +3369,21 @@ function handleFormSubmit(e) {
 
     // 4. If we have a week, run the main sync function.
     if (week) {
-      Logger.log(`Form submit detected for Week ${week}. Running sync...`);
+      Logger.log(`🔄 Form submit detected for Week ${week}. Running sync...`);
       // Run our main, robust sync function.
       syncFormResponses(week);
     } else {
-      // This is a critical error, as we couldn't identify the form.
-      Logger.log(`CRITICAL: Could not determine week for submitted form with ID: ${submittedFormId} and Title: "${form.getTitle()}". Sync aborted.`);
+      Logger.log(`⚠️ CRITICAL: Could not determine week for submitted form with ID: ${submittedFormId} and Title: "${form.getTitle()}". Sync aborted.`);
     }
-  } catch (error) {
+  } catch (err) {
     // Log any errors that occur during the sync process itself.
-    Logger.log(`An error occurred during the onFormSubmit sync: ${error.stack}`);
+    Logger.log(`⚠️ An error occurred during the onFormSubmit sync: ${err.stack}`);
   }
 }
 
 /**
- * [FULLY REVISED] The main controller for the form creation process.
- * Now includes a preliminary check for the existence of the LEAGUE schedule sheet
- * and prompts the user to fetch it if it's missing.
+ * Form creation process controller
+ * Includes a preliminary check for the existence of the LEAGUE schedule sheet, prompts the user to fetch it if it's missing.
  */
 function launchFormBuilder() {
   const ss = SpreadsheetApp.getActiveSpreadsheet(); // Get the spreadsheet object once
@@ -3719,11 +3393,11 @@ function launchFormBuilder() {
   // --- Check 1: Configuration ---
   if (!docProps.getProperty('configuration')) {
     Logger.log(`No configuration data present, please begin by configuring the pool`);
-    if (ui.alert(`Configuration Missing`, `No configuration data found...`, ui.ButtonSet.OK_CANCEL) === ui.Button.OK) {
+    if (ui.alert(`⚠️ Configuration Missing`, `No configuration data found...`, ui.ButtonSet.OK_CANCEL) === ui.Button.OK) {
       launchConfiguration();
     } else {
-      Logger.log('⛔ Form creation canceled due to no configuration found.');
-      ss.toast('Form creation canceled due to no configuration found.',`⛔ NO SCHEDULE DATA`);
+      Logger.log(`⛔ Form creation canceled due to no configuration found.`);
+      ss.toast(`Form creation canceled due to no configuration found.`,`⛔ NO SCHEDULE DATA`);
     }
     return;
   }
@@ -3762,7 +3436,7 @@ function launchFormBuilder() {
   const scheduleSheet = ss.getSheetByName(LEAGUE); // e.g., 'NFL'
   if (!scheduleSheet) {
     const response = ui.alert(
-      'Schedule Data Missing',
+      '⚠️ Schedule Data Missing',
       `The required '${LEAGUE}' schedule data sheet was not found. This is necessary to build the form matchups.\n\nWould you like to fetch and import the schedule data now?`,
       ui.ButtonSet.YES_NO
     );
@@ -3770,7 +3444,7 @@ function launchFormBuilder() {
     if (response === ui.Button.YES) {
       try {
         // Run the fetchSchedule function with the specified parameters
-        ss.toast(`Fetching ${LEAGUE} schedule, this may take a moment...`, '🔄 In Progress');
+        ss.toast(`Fetching ${LEAGUE} schedule, this may take a moment...`, '📡 SCHEDULE FETCH');
         // Let the function auto-detect the year and current week, set auto=false, overwrite=true
         fetchSchedule(ss, null, null, false, true); 
         ss.toast('Schedule data imported successfully!', '✅ SCHEDULE DATA IMPORTED');
@@ -3781,8 +3455,8 @@ function launchFormBuilder() {
       }
     } else {
       // User declined to fetch the data
-      Logger.log('⛔ Form creation canceled, schedule data is required and declined to be brought in.');
-      ss.toast('Form creation canceled, schedule data is required and declined to be brought in.',`⛔ NO SCHEDULE DATA`);
+      Logger.log(`⛔ Form creation canceled, schedule data is required and declined to be brought in.`);
+      ss.toast(`Form creation canceled, schedule data is required and declined to be brought in.`,`⛔ NO SCHEDULE DATA`);
       return;
     }
   }
@@ -3798,8 +3472,8 @@ function launchFormBuilder() {
       SpreadsheetApp.getUi().showModalDialog(htmlOutput, `Create Form${openEnrollment ? ' - Open Enrollment' : ''}`);
     }
   } catch (err) {
-    Logger.log(`Error starting form creation: ${err.stack}`);
-    ui.alert('An error occurred while launching the form builder.');
+    Logger.log(`⚠️ Error starting form creation: ${err.stack}`);
+    ui.alert(`An error occurred while launching the form builder.`,`⚠️ FORM BUILD ERROR`);
   }
 }
 
@@ -3810,12 +3484,12 @@ function templateCreationPrompt(ss,ui) {
   ui = ui || fetchUi();
   try {
     const templateForm = getTemplateForm();
-    Logger.log('📄 Template Form ' + templateForm.getId()) ;
+    Logger.log(`📄 Template Form ${templateForm.getId()}`);
     if (!templateForm) return;
 
     let response = ui.alert(
       '🎨 Customize Form Theme (One Time Only)',
-      `Each week's form will utilize this template file to generate a fresh form.\n\nBefore creating your first weekly form, would you like to open the template to customize the header image and colors?`,
+      `Each week's form will utilize this template file to generate a fresh form.\n\nBefore creating your first weekly form, would you like to customize the template?`,
       ui.ButtonSet.YES_NO
     );
     
@@ -3825,8 +3499,10 @@ function templateCreationPrompt(ss,ui) {
   } catch (err) {
     if (err.message.includes("CANCELED_BY_USER")) {
       ss.toast('Form creation canceled by user when running a form building operation',`⛔ FORM CREATION CANCELED`);
+      Logger.log(`⛔ Form creation canceled by user`);
     } else {
-      ui.alert('An unexpected error occurred: ' + err.message);
+      ui.alert(`An unexpected error occurred: ${err.message}`,`⚠️ FORM BUILD ERROR`);
+      Logger.log(`⚠️ Error occurred during form building process: ${err.stack}`);
     }
   }
 }
@@ -3857,8 +3533,8 @@ function fetchFormCreationData() {
       dayColor: dayColorsObj,
       dayColorBorder: dayColorsFilledObj
     };
-  } catch (error) {
-    Logger.log("A critical error occurred in fetchFormCreationData: ", error);
+  } catch (err) {
+    Logger.log(`⚠️ A critical error occurred in "fetchFormCreationData": ${err.stack}`);
     // Explicitly return a safe, default object on failure.
     return { 
       configuration: {}, 
@@ -3872,6 +3548,7 @@ function fetchFormCreationData() {
     };
   }
 }
+
 /**
  * Fetches, filters, and analyzes schedule data to create a
  * week-by-week data quality summary.
@@ -3895,7 +3572,7 @@ function analyzeScheduleData() {
     const overUnderCol = headers.indexOf('overUnder');
     const autoFetchedCol = headers.indexOf('spreadAutoFetched');
 
-    // 1. Filter data to relevant weeks and convert to objects
+    // Filter data to relevant weeks and convert to objects
     const matchups = data
       .filter(row => row[weekCol] >= 1) // Formerly used earliest week as input to this function and defaulted to next week after first game started
       .map(row => {
@@ -3913,7 +3590,7 @@ function analyzeScheduleData() {
 
     if (matchups.length === 0) return { available: true, matchups: [], validitySummary: {} };
 
-    // 2. Group matchups by week for analysis
+    // Group matchups by week for analysis
     const gamesByWeek = matchups.reduce((acc, game) => {
       const week = game.week;
       if (!acc[week]) acc[week] = [];
@@ -3921,7 +3598,7 @@ function analyzeScheduleData() {
       return acc;
     }, {});
 
-    // 3. Analyze each week's data to create the summary
+    // Analyze each week's data to create the summary
     const validitySummary = {};
     for (const week in gamesByWeek) {
       const weekGames = gamesByWeek[week];
@@ -3949,7 +3626,7 @@ function analyzeScheduleData() {
       validitySummary: validitySummary
     };
   } catch (e) {
-    Logger.log("Error in analyzeScheduleData: ", e);
+    Logger.log(`⚠️ Error in analyzeScheduleData: ${err.stack}`);
     return { available: false, matchups: [], validitySummary: {} };
   }
 }
@@ -3964,7 +3641,7 @@ function updateScheduleData(week, customData) {
     return; // Nothing to update
   }
   
-  Logger.log(`Applying ${Object.keys(customData).length} user overrides for Week ${week}.`);
+  Logger.log(`✏️ Applying ${Object.keys(customData).length} user overrides for Week ${week}.`);
   
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(LEAGUE); // e.g., 'NFL'
@@ -4007,10 +3684,10 @@ function updateScheduleData(week, customData) {
     }
   }
 
-  // If changes were made, write the entire data range back to the sheet.
+  // If changed, write the entire data range back to the sheet.
   if (changesMade > 0) {
     sheet.getDataRange().setValues(data);
-    Logger.log("Successfully updated the Schedule sheet.");
+    Logger.log(`✅ Successfully updated the Schedule sheet.`);
   }
 }
 
@@ -4025,7 +3702,7 @@ function createNewFormForWeek(gamePlan) {
   const ss = fetchSpreadsheet();
   const week = gamePlan.week;
   
-  // 1. Pre-flight Checks
+  // Preliminary Checks
   const docProps = PropertiesService.getDocumentProperties();
   const forms = JSON.parse(docProps.getProperty(`forms`)) || {};
   const config = JSON.parse(docProps.getProperty('configuration'));
@@ -4049,7 +3726,7 @@ function createNewFormForWeek(gamePlan) {
     }
   }
 
-  // 2. User Confirmation (if necessary)
+  // User Confirmation (if necessary)
   if (warnings.length > 0) {
     const message = warnings.join("\n") + "\n\nAre you sure you want to proceed?";
     const response = ui.alert(`⚠️ WARNING!`,message,ui.ButtonSet.YES_NO);
@@ -4059,7 +3736,7 @@ function createNewFormForWeek(gamePlan) {
   }
 
   try {
-    // 3. Prepare for Creation
+    // Prepare for Creation
     if (forms[week] && forms[week].formId) {
       try {
         DriveApp.getFileById(forms[week].formId).setTrashed(true);
@@ -4073,7 +3750,7 @@ function createNewFormForWeek(gamePlan) {
     Logger.log(`Failed to create form for week ${week}:`, err.stack);
     throw new Error(`Failed to create form: ${err.stack}`);
   }
-  // 4. Execute the "Worker"
+  // Execute the "Worker"
   const newFormDetails = buildFormFromGamePlan(gamePlan);
   try {
     if (newFormDetails.formId) {
@@ -4085,7 +3762,7 @@ function createNewFormForWeek(gamePlan) {
       gamePlan.survivorAts = config.survivorAts;
       gamePlan.eliminatorAts = config.eliminatorAts;
 
-      // 5. Save the new state
+      // Save the new state
       const newFormsData = {
         formId: newFormDetails.formId,
         editUrl: newFormDetails.editUrl,
@@ -4098,17 +3775,17 @@ function createNewFormForWeek(gamePlan) {
       forms[week] = newFormsData;
       forms[week].imported = false;
 
-      // 6. Storing properties
+      // Storing properties
       saveProperties('forms',forms);
       
-      // 7. Setting up synce for form
+      // Setting up synce for form
       try {
         setFormSubmitTrigger(newFormDetails.formId, true)
       } catch (err) {
         Logger.log(`⚠️ Could not set up trigger for new week ${week} form: ${err.stack}`);
       }
 
-      // 8. Setting up onEdit trigger if includes pool questions
+      // Setting up onEdit trigger if includes pool questions
       try {
         if (newFormDetails.survivorInclude || newFormDetails.eliminatorInclude) {
           createOnEditTrigger();
@@ -4123,10 +3800,10 @@ function createNewFormForWeek(gamePlan) {
 
       return { success: true, message: `✅ Successfully created form for week ${week}.` };
     } else {
-      Logger.log(`Encountered an error with the form creation during the 'buildFormFromGamePlan' function`);
+      Logger.log(`⚠️ Encountered an error with the form creation during the 'buildFormFromGamePlan' function`);
     }
   } catch (err) {
-    Logger.log(`Despite making a form, an error was encountered during wrap-up. | ERROR: ${err.stack}`);
+    Logger.log(`⚠️ Despite making a form, an error was encountered during wrap-up. | ERROR: ${err.stack}`);
   }
 }
 
@@ -4186,19 +3863,19 @@ function getDatabaseSheet() {
  * @returns {Form|null,boolean} The Form object, or null if the user cancels and a boolean if the form ID stored didn't work upon onset
  */
 function getTemplateForm() {
-  Logger.log('Beginning process to get template form...');
+  Logger.log(`▶️ Beginning process to get template form...`);
   const docProps = PropertiesService.getDocumentProperties();
   const templateId = docProps.getProperty('templateId');
   if (templateId) {
-    Logger.log('Found template id: ' + templateId);
+    Logger.log(`🔎 Found template id: ${templateId}`);
     try {
       const file = DriveApp.getFileById(templateId);
       if (file && !file.isTrashed()) {
-        Logger.log('Found an existing template file, attempting to open...');
+        Logger.log(`🔎 Found an existing template file, attempting to open...`);
         return FormApp.openById(templateId);
       }
     } catch (err) {
-      Logger.log(`Could not open template form with ID "${templateId}". ${err.stack}`);
+      Logger.log(`⚠️ Could not open template form with ID "${templateId}". ${err.stack}`);
       docProps.deleteProperty('templateId');
     }
   }
@@ -4212,7 +3889,7 @@ function getTemplateForm() {
   DriveApp.getFileById(newTemplateId).moveTo(formsFolder);
 
   docProps.setProperty('templateId', newTemplateId);
-  Logger.log(`Created new template form with ID: ${newTemplateId}`);
+  Logger.log(`🌟 Created new template form with ID: ${newTemplateId}`);
 
   return newTemplate;
 }
@@ -4411,7 +4088,7 @@ function buildFormFromGamePlan(gamePlan) {
         const sLS = config.survivorLives;
         const eLS = config.eliminatorLives;
         ss.toast(`Creating questions for members who are in both survivor and eliminator for week ${week}`,`👑&💀 SURVIVOR AND ELIMINATOR`);
-        Logger.log('👑&💀 Creating possible destinations for instances where both Survivor and Eliminator are both active')
+        Logger.log(`👑&💀 Creating possible destinations for instances where both Survivor and Eliminator are both active`)
         memberData.memberOrder.forEach(memberId => {
           const member = memberData.members[memberId];
           if (member) {
@@ -4487,16 +4164,16 @@ function buildFormFromGamePlan(gamePlan) {
     // Add 'New User' option if applicable
     if (!config.membershipLocked) {
       const text = 'Membership is unlocked--creating a new user question';
-      Logger.log('🔓 '+ text);
-      ss.toast(text,'🔓 MEMBERSHIP UNLOCKED')
+      Logger.log(`🔓 ${text}`);
+      ss.toast(text,`🔓 MEMBERSHIP UNLOCKED`)
       if (!singlePageForm) {
         const newUserPage = buildNewUserPage(ss, form, config, gamePlan, survivor, eliminator, survivorStart, eliminatorStart);
         nameChoices.unshift(nameQuestion.createChoice(('✏️ NEW USER'), newUserPage));
       }
     } else {
       const text = 'Membership is locked--no new user question added';
-      Logger.log('🔓 '+ text);
-      ss.toast(text,'🔒 MEMBERSHIP LOCKED')
+      Logger.log(`🔓 ${text}`);
+      ss.toast(text,`🔒 MEMBERSHIP LOCKED`)
     }
     
     if (!singlePageForm) { // If single page form there is only a text entry field and a submit button on bottom.
@@ -4504,14 +4181,14 @@ function buildFormFromGamePlan(gamePlan) {
         nameChoices.push(nameQuestion.createChoice("No members eligible", submitPage));
         form.setDescription(`⚠️ Warning: No members are currently eligible to make picks. Please check Member Management or unlock membership.`);
       } else {
-        Logger.log('📝 Setting Name Choices');
+        Logger.log(`📝 Setting Name Choices`);
         nameQuestion.setChoices(nameChoices);
         ss.toast('Set all choices for name question drop-down','📝 NAME CHOICES SET');
       }
     }
 
     // --- Final Touches ---
-    Logger.log('↩️ Returning information to form creation controller...');
+    Logger.log(`↩️ Returning information to form creation controller...`);
     ss.toast(`Returning information to form creation controller...`,`↩️ REROUTING DATA`);
     
     const formId = form.getId();
@@ -4613,7 +4290,7 @@ function formDatabaseLinking(week,form,databaseSheet,ss) {
     
       let newResponseSheet = null;
 
-      // Method 1: Find the sheet that wasn't there before
+      // Find the sheet that wasn't there before
       for (const sheet of updatedSheets) {
         if (!initialSheetNames.includes(sheet.getName())) {
           newResponseSheet = sheet;
@@ -4621,9 +4298,9 @@ function formDatabaseLinking(week,form,databaseSheet,ss) {
         }
       }
         
-      // Method 2: Fallback - look for sheets with "Form Responses" pattern
+      // Fallback - look for sheets with "Form Responses" pattern
       if (!newResponseSheet) {
-        Logger.log("Fallback: Looking for 'Form Responses' pattern...");
+        Logger.log(`⏮ Fallback: Looking for 'Form Responses' pattern...`);
         for (const sheet of updatedSheets) {
           if (sheet.getName().includes('Form Responses')) {
             // Check if this one is new by comparing against initial list
@@ -4636,10 +4313,10 @@ function formDatabaseLinking(week,form,databaseSheet,ss) {
       }
       if (!newResponseSheet) {
         // Debug: Show exactly what we found
-        Logger.log("DEBUG - Initial sheets: " + JSON.stringify(initialSheetNames));
-        Logger.log("DEBUG - Updated sheets: " + JSON.stringify(updatedSheetNames));
-        Logger.log("DEBUG - Difference: " + JSON.stringify(updatedSheetNames.filter(name => !initialSheetNames.includes(name))));
-        throw new Error("Could not identify the newly created response sheet.");
+        Logger.log(`DEBUG - Initial sheets: ${JSON.stringify(initialSheetNames)}`);
+        Logger.log(`DEBUG - Updated sheets: ${JSON.stringify(updatedSheetNames)}`);
+        Logger.log(`DEBUG - Difference: " ${JSON.stringify(updatedSheetNames.filter(name => !initialSheetNames.includes(name)))}`);
+        throw new Error(`⚠️ Could not identify the newly created response sheet.`);
       }
       Logger.log(`Found new response sheet: "${newResponseSheet.getName()}"`);
 
@@ -4682,7 +4359,7 @@ function formDatabaseLinking(week,form,databaseSheet,ss) {
       // return { status: 'failed' }
     }
   } else {
-    Logger.log('No form passed to database linking function, try again later');
+    Logger.log(`⭕ No form passed to database linking function, try again later`);
   }
 }
 
@@ -4729,7 +4406,7 @@ function addContestQuestion(form, contestType, member, isAts, startWeek, allTeam
  */
 function buildPickemQuestions(ss, form, gamePlan, config) {
   let tiebreakerMatchup;
-  Logger.log("🏈 Building Pick'em questions...");
+  Logger.log(`🏈 Building Pick'em questions...`);
   gamePlan.games.forEach(game => {
     let item = form.addMultipleChoiceItem();
     const evening = game.hour >= 17;
@@ -4909,7 +4586,8 @@ function checkFileExists(fileId) {
     } else {
       return false;
     }
-  } catch (error) {
+  } catch (err) {
+    Logger.log(`❗ "checkFileExists" did not locate a file for provided file ID ${fileId}`);
     return false; // Exception means file/folder doesn't exist or isn't accessible
   }
 }
@@ -4931,17 +4609,17 @@ function checkFolderExists(folderId) {
     } else {
       return false;
     }
-  } catch (error) {
+  } catch (err) {
+    Logger.log(`❗ "checkFolderExists" did not locate a folder for provided folder ID ${folderId}`);
     return false;
   }
 }
-
 
 function capitalize(str) {
   return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
-// Simple function to convert 24 hour entry into AM/PM string with minutes
+// Convert 24 hour entry into AM/PM string with minutes
 function formatTime(hour,minute) {
   const suffix = hour >= 12 ? 'PM' : 'AM';
   return `${hour > 12 ? hour - 12 : hour}:${minute < 10 ? '0' + minute : minute} ${suffix}`;
@@ -4980,9 +4658,8 @@ function updateScheduleData(ss,gamePlan) {
   const timeFetchedCol = headers.indexOf('timeFetched');
   const autoFetchedCol = headers.indexOf('spreadAutoFetched');
 
-  // --- [THE NEW LOGIC] ---
-  // 1. Create a fast lookup map of the sheet's data.
-  //    Key: "AWAY@HOME", Value: the row's index in the 'data' array.
+  // Create a fast lookup map of the sheet's data.
+  // Key: "AWAY@HOME", Value: the row's index in the 'data' array.
   const sheetDataMap = new Map();
   for (let i = 1; i < data.length; i++) {
     const row = data[i];
@@ -4994,7 +4671,7 @@ function updateScheduleData(ss,gamePlan) {
 
   let changesMade = 0;
   
-  // 2. Loop through the games from the INCOMING GAMEPLAN. This is our source of truth.
+  // Loop through the games from the INCOMING GAMEPLAN. This is our source of truth.
   gamePlan.games.forEach(game => {
     const gameId = `${game.awayTeam}@${game.homeTeam}`;
     
@@ -5017,7 +4694,7 @@ function updateScheduleData(ss,gamePlan) {
     }
   });
 
-  // 3. If any changes were made, write the entire updated data array back to the sheet.
+  // If any changes were made, write the entire updated data array back to the sheet.
   if (changesMade > 0) {
     dataRange.setValues(data);
     Logger.log(`Successfully updated the Schedule sheet with ${changesMade} game overrides.`);
@@ -5028,7 +4705,7 @@ function updateScheduleData(ss,gamePlan) {
 
 
 /**
- * [NEW] The main function to launch the "Auto-Fetch Settings" panel.
+ * The main function to launch the "Auto-Fetch Settings" panel.
  * This should be called from a menu item.
  */
 function showAutoFetchPanel() {
@@ -5039,7 +4716,7 @@ function showAutoFetchPanel() {
 }
 
 /**
- * [NEW] Fetches the details of the existing weekly fetch trigger, if it exists.
+ * Fetches the details of the existing weekly fetch trigger, if it exists.
  * This is called by the panel when it loads.
  * @returns {Object|null} An object with { day, hour } or null if no trigger is found.
  */
@@ -5059,7 +4736,7 @@ function getWeeklyFetchTrigger() {
 }
 
 /**
- * [NEW] Creates or updates the weekly time-based trigger.
+ * Creates or updates the weekly time-based trigger.
  * @param {Object} data An object with { day, hour }.
  */
 function setWeeklyFetchTrigger(data) {
@@ -5085,7 +4762,7 @@ function setWeeklyFetchTrigger(data) {
 }
 
 /**
- * [NEW] Deletes the weekly fetch trigger.
+ * Deletes the weekly fetch trigger.
  */
 function deleteWeeklyFetchTrigger() {
   let wasDeleted = false;
@@ -5109,7 +4786,7 @@ function deleteWeeklyFetchTrigger() {
 
 
 /**
- * [NEW] The main data-gathering function for the Import Picks panel.
+ * The main data-gathering function for the Import Picks panel.
  * This is called by the client-side script on load.
  */
 function getFormImportData(week,auto) {
@@ -5122,14 +4799,14 @@ function getFormImportData(week,auto) {
       week = week || Math.max(...Object.keys(formsData).map(key => parseInt(key)));
       Logger.log(week);
     }
-    // 1. Run sync first to get the latest respondent metadata.
+    // Run sync first to get the latest respondent metadata.
     let syncResult;
     try {
       syncResult = syncFormResponses(week);
     } catch (err) {
       Logger.log(`Week ${week} not created yet or unavailable, moving on to panel loading.`)
     }
-    // 2. Fetch the clean, final data needed for the panel.
+    // Fetch the clean, final data needed for the panel.
     const config = JSON.parse(docProps.getProperty('configuration'));
     
     const allCreatedWeeks = Object.keys(formsData).map(Number).sort((a,b) => a-b);
@@ -5148,15 +4825,15 @@ function getFormImportData(week,auto) {
       }
     }
 
-    // 3. Determine which games are upcoming.
+    // Determine which games are upcoming.
     const matchups = getInvalidPickMatchups();
     
-    // 4. Determine if a partial import should be offered.
+    // Determine if a partial import should be offered.
     const allMembersResponded = syncResult?.totalRespondents ? syncResult.totalRespondents === memberData.memberOrder.length : false;
     const isMembershipLocked = config.membershipLocked;
     const offerPartialImport = !(allMembersResponded && isMembershipLocked);
 
-    // 5. Bundle all data and return it to the client.
+    // Bundle all data and return it to the client.
     return {
       week: week,
       allCreatedWeeks: allCreatedWeeks || [],
@@ -5502,7 +5179,7 @@ function updateOutcomeSheetVisibility(config) {
  */
 function parseAllPicksFromSheet(sheet, memberData) {
   if (!sheet) {
-    Logger.log("parseAllPicksFromSheet was called with a null sheet. Returning empty object.");
+    Logger.log(`⭕ "parseAllPicksFromSheet" was called with a null sheet. Returning empty object.`);
     return {};
   }
   
@@ -5517,7 +5194,7 @@ function parseAllPicksFromSheet(sheet, memberData) {
   // --- Find critical column indexes using our robust helper ---
   const { nameCol, newNameCol } = findNameColumns(headers);
   if (nameCol === -1) {
-    Logger.log("CRITICAL: Could not find a 'Select Your Name' column. Cannot parse picks.");
+    Logger.log(`⚠️ CRITICAL: Could not find a 'Select Your Name' column. Cannot parse picks.`);
     return {};
   }
 
@@ -5621,25 +5298,10 @@ function getInvalidPickMatchups() {
     }
     return pastGames;
   } catch (err) {
-    Logger.log("Could not fetch scoreboard data: " + err.toString());
+    Logger.log(`⚠️ Could not fetch scoreboard data: ${err.stack}`);
     return []; // Return an empty array on failure
   }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /**
  * Populates a contest sheet (Survivor or Eliminator) with the latest picks for a given week.
@@ -5871,31 +5533,30 @@ function createOnEditTrigger() {
 function deleteOnEditTrigger() {
   let triggerDeleted = false;
 
-  // 1. Get all triggers for the current project.
+  // Get all triggers for the current project.
   const allTriggers = ScriptApp.getProjectTriggers();
 
-  // 2. Loop through the triggers to find the specific one we want to delete.
+  // Loop through the triggers to find the specific one we want to delete.
   for (const trigger of allTriggers) {
-    // We identify our trigger by the name of the function it is set to call.
+    // Identify trigger by the name of the function it is set to call.
     if (trigger.getHandlerFunction() === 'onEditTrigger') {
       
-      // 3. If we find it, delete it.
+      // If found, delete it.
       ScriptApp.deleteTrigger(trigger);
       triggerDeleted = true;
       
-      // We break the loop because we assume there's only one.
-      // Even if there were duplicates, this would safely delete the first one it finds.
+      // Break the loop; assume there's only one.
       break; 
     }
   }
 
-  // 4. Provide clear feedback to the user.
+  // Provide clear feedback to the user.
   if (triggerDeleted) {
     SpreadApp.getUi().alert('Success', 'The automatic score processing trigger has been successfully removed.', SpreadsheetApp.getUi().ButtonSet.OK);
-    Logger.log("Automatic onEdit trigger was successfully deleted.");
+    Logger.log(`❌ Automatic onEdit trigger was successfully deleted.`);
   } else {
     SpreadApp.getUi().alert('Info', 'No automatic score processing trigger was found to delete.', SpreadsheetApp.getUi().ButtonSet.OK);
-    Logger.log("No onEdit trigger was found to delete.");
+    Logger.log(`⭕ No onEdit trigger was found to delete.`);
   }
 }
 
@@ -6224,62 +5885,6 @@ function calculateAtsResult(pick, winner, loser, margin, spread) {
   }
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /**
  * Wrapper function to call the sync process from the spreadsheet menu.
  */
@@ -6297,12 +5902,12 @@ function syncCurrentWeekResponses() {
 }
 
 /**
- * [DEFINITIVE CONTROLLER] Orchestrates the entire process of fetching, de-duplicating,
+ * Orchestrates the entire process of fetching, de-duplicating,
  * and processing form responses to update the 'members' and 'forms' properties.
  */
 function syncFormResponses(week) {
-  // --- 1. SETUP ---
-  Logger.log('Getting things ready to import for week ' + week);
+  // SETUP 
+  Logger.log(`🟩 Getting things ready to import for week ${week}`);
   week = week || fetchWeek();
   const docProps = PropertiesService.getDocumentProperties();
   const config = JSON.parse(docProps.getProperty('configuration'));
@@ -6311,21 +5916,21 @@ function syncFormResponses(week) {
   const responseSheet = getDatabaseSheet().getSheetByName(`WK${week}`);
   
   if (!responseSheet) {
-    Logger.log(`No response sheet found for WK${week}.`);
-    return { success: true, message: `No response sheet exists for Week ${week}.`, newMembers: 0, totalRespondents: 0 };
+    Logger.log(`⭕ No response sheet found for WK${week}.`);
+    return { success: true, message: `⭕ No response sheet exists for Week ${week}.`, newMembers: 0, totalRespondents: 0 };
   }
   
   const data = responseSheet.getDataRange().getValues();
   if (data.length < 2) {
-    Logger.log(`No responses found in sheet for WK${week}.`);
-    return { success: true, message: `No responses to sync for Week ${week}.`, newMembers: 0, totalRespondents: 0 };
+    Logger.log(`⭕ No responses found in sheet for WK${week}.`);
+    return { success: true, message: `⭕ No responses to sync for Week ${week}.`, newMembers: 0, totalRespondents: 0 };
   }
 
   const headers = data.shift();
   const { nameCol, newNameCol } = findNameColumns(headers);
   const newUserAnswerRegex = /new user/i;
   
-  // --- 2. DE-DUPLICATE RESPONSES ("Last Submission Wins") ---
+  // DE-DUPLICATE RESPONSES (Latest Submission Used) ---
   const latestSubmissions = {};
   data.forEach(row => {
     const name = newUserAnswerRegex.test(row[nameCol]) ? row[newNameCol] : row[nameCol];
@@ -6335,7 +5940,7 @@ function syncFormResponses(week) {
   });
   const finalResponseRows = Object.values(latestSubmissions);
 
-  // --- 3. PROCESS NEW MEMBERS ---
+  // PROCESS NEW MEMBERS
   const nameToIdMap = {};
   for (const id in memberData.members) {
     nameToIdMap[memberData.members[id].name.toLowerCase()] = id;
@@ -6348,7 +5953,7 @@ function syncFormResponses(week) {
     
     if (newUserAnswerRegex.test(submitterChoice) && newUserName) {
       const nameKey = newUserName.trim().toLowerCase();
-      // If their name is NOT in our official map, they are a new member.
+      // If their name is NOT in official map, consider user a new member.
       if (!nameToIdMap[nameKey]) {
         const permanentId = generateUniqueId();
         
@@ -6366,7 +5971,7 @@ function syncFormResponses(week) {
     }
   });
 
-  // --- 4. UPDATE RESPONDENT LIST IN 'forms' OBJECT ---
+  // UPDATE RESPONDENT LIST IN 'forms' OBJECT ---
   const respondentIds = finalResponseRows.map(row => {
     const submitterChoice = row[nameCol];
     const newUserName = (newNameCol > -1) ? row[newNameCol] : '';
@@ -6391,7 +5996,7 @@ function syncFormResponses(week) {
 
   formsData[week].imported = false;
 
-  // --- 5. SAVE UPDATED DATA ---
+  // SAVE UPDATED DATA ---
   saveProperties('members', memberData);
   saveProperties('forms', formsData);
 
@@ -6561,8 +6166,8 @@ function generateUniqueId() {
 function resetSpreadsheet() {
   const ui = SpreadsheetApp.getUi();
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  Logger.log('Return to spreadsheet for prompts');
-  let prompt = ui.alert('Reset spreadsheet and delete all data?', ui.ButtonSet.YES_NO);
+  Logger.log(`↩️ Return to spreadsheet for prompts`);
+  let prompt = ui.alert(`❗ RESET?`,'Reset spreadsheet and delete all data?', ui.ButtonSet.YES_NO);
   if (prompt == 'YES') {
     
     let promptTwo = ui.alert('Are you sure? This would be very difficult to recover from.',ui.ButtonSet.YES_NO);
@@ -6812,7 +6417,7 @@ function openUrl(url,week){
 // This is a back-end and unused script, these variables aren't isolated to the sheet/script but used by the form/sheet connection when triggering onSubmit calls
 function viewUserProperties() {
   let userProperties = PropertiesService.getUserProperties().getProperties();
-  Logger.log('User Properties:');
+  Logger.log(`User Properties:`);
   for (let key in userProperties) {
     Logger.log(key + ': ' + userProperties[key]);
   }
@@ -7575,7 +7180,7 @@ function mnfSheet(ss,memberData) {
   sheet.setTabColor(generalTabColor);
   const weeks = Array.from({ length: WEEKS }, (_, index) => index + 1).filter(week => !WEEKS_TO_EXCLUDE.includes(week));
 
-  Logger.log('Checking for Monday games, if any');
+  Logger.log(`📡 Checking for Monday games, if any`);
   let data = ss.getRangeByName(LEAGUE).getValues();
   let text = '0';
   let result = text.repeat(weeks.length);
@@ -8192,7 +7797,7 @@ function summarySheetFormulas(headers,sheet,totalMembers,ss) {
       }
     }
   }
-  Logger.log('Updated formulas and ranges for summary sheet');
+  Logger.log(`🧮 Updated formulas and ranges for summary sheet`);
 }
 
 // TOT / RANK / PCT / MNF Combination formula for sum/average per player row
@@ -8238,7 +7843,7 @@ function overallMainFormulas(weeks,sheet,totalMembers,str,avgRow) {
   if (avgRow) {
     if (sheet.getSheetName() == 'MNF') {
       // Instance of MNF sheet, where sheet needs to have data for quantity of MNF games
-      Logger.log('Checking for Monday games, if any');
+      Logger.log(`📡 Checking for Monday games, if any`);
       let data = SpreadsheetApp.getActiveSpreadsheet().getRangeByName(LEAGUE).getValues();
       let text = '0';
       let result = text.repeat(weeks.length);
@@ -8356,7 +7961,7 @@ function weeklySheet(ss,week,config,forms,memberData,displayEmpty,rebuild) {
   if (totalMembers <= 0) {
     let ui = SpreadsheetApp.getUi();
     ui.alert(`⚠️ MEMBER ISSUE`, `There was an issue fetching the members to create the weekly sheet, make sure you've used the "Member Management" panel or waited for first submissions of the form before creating this sheet`,ui.ButtonSet.OK);
-    Logger.log('⚠️ Error fetching members to create weekly sheet');
+    Logger.log(`⚠️ Error fetching members to create weekly sheet`);
     return null;
   }
 
@@ -9316,20 +8921,20 @@ function weeklySheet(ss,week,config,forms,memberData,displayEmpty,rebuild) {
 
   // RESTORE STATE: If we successfully scraped data, repopulate it now.
   if (rebuild && existingData && newMatchupMap) {
-    Logger.log('🔄 Restoring preserved data into new sheet structure...');
+    Logger.log(`🔄 Restoring preserved data into new sheet structure...`);
     remapAndRepopulateData(ss, week, existingData, newMatchupMap, members.map(m => m[0]));
     ss.toast(`✅ Data successfully restored for week ${week}.`, 'SUCCESS');
   } else if (existingData && !newMatchupMap) {
-      Logger.log('⚠️ ERROR: Scraped old data but failed to get a new game map. Data could not be restored.');
-      ss.toast('ERROR: Could not restore data.', '⚠️ ERROR');
+      Logger.log(`⚠️ ERROR: Scraped old data but failed to get a new game map. Data could not be restored.`);
+      ss.toast(`ERROR: Could not restore data.`, `⚠️ ERROR`);
   }
 
   // Adds tab colors
   weeklySheetTabColors(ss,week,rebuild && existingData && newMatchupMap); 
 
-  const text = `✅ Completed creation of pick 'ems week ${week} sheet.`;
-  Logger.log(text)
-  ss.toast(text,'SUCCESS');
+  const text = `Completed creation of pick 'ems week ${week} sheet.`;
+  Logger.log(`✅ $(text)`);
+  ss.toast(text,`✅ SUCCESS`);
   return sheet;
 }
 
@@ -9422,7 +9027,7 @@ function getExistingWeeklySheetData(ss, week, forms) {
     const picksRange = ss.getRangeByName(`${LEAGUE}_PICKS_${week}`);
     
     if (!namesRangeStart || !picksRange) {
-      Logger.log('⚠️ Essential NAMES or PICKS named range not found. Cannot preserve data.');
+      Logger.log(`⚠️ Essential NAMES or PICKS named range not found. Cannot preserve data.`);
       return null;
     }
 
@@ -9436,24 +9041,24 @@ function getExistingWeeklySheetData(ss, week, forms) {
     const tiebreakerRange = ss.getRangeByName(`${LEAGUE}_TIEBREAKER_${week}`);
     if (tiebreakerRange) {
       tiebreakers = tiebreakerRange.getValues();
-      Logger.log('⚖️ Tiebreaker range found; preserving tiebreakers.');
+      Logger.log(`⚖️ Tiebreaker range found; preserving tiebreakers.`);
     } else {
-      Logger.log('🚫 Tiebreaker range not found. Skipping preservation.');
+      Logger.log(`🚫 Tiebreaker range not found. Skipping preservation.`);
     }
 
     let comments = [];
     const commentsRange = ss.getRangeByName(`COMMENTS_${week}`);
     if (commentsRange) {
       comments = commentsRange.getValues();
-      Logger.log('💬 Comments range found; preserving comments.');
+      Logger.log(`💬 Comments range found; preserving comments.`);
     } else {
-      Logger.log('🚫 Comments range not found. Skipping preservation.');
+      Logger.log(`🚫 Comments range not found. Skipping preservation.`);
     }
 
     // Use your mapping function to get the column order of the OLD games.
     data.oldMatchupMap = outcomeDataValidationMapping(week, forms, `${LEAGUE}_PICKEM_OUTCOMES_${week}`);
     if (!data.oldMatchupMap) {
-      Logger.log('Could not create a game map from the old sheet. Aborting data preservation.');
+      Logger.log(`Could not create a game map from the old sheet. Aborting data preservation.`);
       return null;
     }
 
