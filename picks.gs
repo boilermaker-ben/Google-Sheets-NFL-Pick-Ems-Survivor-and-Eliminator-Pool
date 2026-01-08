@@ -1,7 +1,7 @@
-const VERSION = '1.1.0';
+const VERSION = '1.1.1';
 /** GOOGLE SHEETS FOOTBALL PICK 'EMS, SURVIVOR, & ELIMINATOR TOOL | 2025 Edition
  * Script Library for League Creator & Management Platform
- * 01/07/2026
+ * 01/08/2026
  * 
  * Created by Ben Powers
  * ben.powers.creative@gmail.com
@@ -50,7 +50,7 @@ const VERSION = '1.1.0';
  * 
  * **/
  
-  /**
+ /**
  * Runs when the spreadsheet is opened. Checks if the script has been
  * initialized for this document and either shows the authorization card or the main menu.
  */
@@ -3475,24 +3475,6 @@ function toggleFormStatus(formId) {
     const newState = !currentState;
     form.setAcceptingResponses(newState);
 
-    // --- [THE NEW LOGIC] ---
-    // Find any existing triggers for THIS specific form and delete them.
-    const allTriggers = ScriptApp.getProjectTriggers();
-    allTriggers.forEach(trigger => {
-      if (trigger.getTriggerSourceId() === formId) {
-        ScriptApp.deleteTrigger(trigger);
-        Logger.log(`Deleted existing trigger for form ID: ${formId}`);
-      }
-    });
-
-    if (newState === true) {
-      // If we are ACTIVATING the form, create a new onFormSubmit trigger.
-      ScriptApp.newTrigger('handleFormSubmit')
-        .forForm(form)
-        .onFormSubmit()
-        .create();
-      Logger.log(`Created new onFormSubmit trigger for form ID: ${formId}`);
-    }
     setFormSubmitTrigger(formId, newState);
     
     return { success: true, newStatus: newState, newSyncStatus: newState };
@@ -3511,18 +3493,25 @@ function toggleFormStatus(formId) {
  */
 function setFormSubmitTrigger(formId, shouldBeEnabled) {
   try {
-    // 1. Clean up any existing triggers for this form.
+    let found = false;
+    // Clear out existing trigger(s) for form ID
     const allTriggers = ScriptApp.getProjectTriggers();
     allTriggers.forEach(trigger => {
       if (trigger.getTriggerSourceId() === formId) {
+        found = true;
         ScriptApp.deleteTrigger(trigger);
+        Logger.log(`❌ Trigger DELETED for form ID: ${formId}`);
       }
     });
 
-    let toastMessage = ''; // Variable to hold our feedback message
+    if (!found) {
+      Logger.log(`⭕ Unable to locate an existing trigger for the form ID ${formId} among ${allTriggers.length} triggers.`)
+    }
+
+    let toastMessage = '';
 
     if (shouldBeEnabled) {
-      // 2a. If enabling, create a new trigger.
+      // If enabling, create a new trigger
       const form = FormApp.openById(formId);
       ScriptApp.newTrigger('handleFormSubmit')
         .forForm(form)
@@ -3532,29 +3521,27 @@ function setFormSubmitTrigger(formId, shouldBeEnabled) {
       toastMessage = `Auto-sync trigger has been created for the form.`;
       Logger.log(`✅ Auto-sync trigger ENABLED for form ID: ${formId}`);
     } else {
-      // 2b. If disabling, we've already deleted the trigger.
+      // If disabling, notify user
       toastTitle = `❌ TRIGGER DELETED`;
       toastMessage = `Auto-sync trigger has been removed for the form.`;
-      Logger.log(`❌ Auto-sync trigger DISABLED for form ID: ${formId}`);
     }
 
-    // 3. Store the preference (unchanged).
+    // Store the preference
     const formsData = fetchProperties('forms');
-    const week = getWeekFromFormId(formId); // Your existing helper
+    const week = getWeekFromFormId(formId);
     if (week && formsData[week]) {
       formsData[week].autoSync = shouldBeEnabled;
       saveProperties('forms', formsData);
     }
     
-    // --- [THE FIX] ---
-    // 4. Display the toast message.
+    // Display the toast message.
     SpreadsheetApp.getActiveSpreadsheet().toast(toastMessage,toastTitle);
 
     return { success: true, newStatus: shouldBeEnabled };
   } catch (error) {
-    Logger.log(`Failed to set trigger for form ${formId}:`, error);
+    Logger.log(`⚠️ Failed to set trigger for form ${formId}:`, error);
     SpreadsheetApp.getActiveSpreadsheet().toast(`Error: ${error.message}`, '❌ FAILED', 10);
-    throw new Error(`Could not update trigger. ${error.message}`);
+    throw new Error(`⚠️ Could not update trigger. ${error.message}`);
   }
 }
 
@@ -3565,19 +3552,19 @@ function setFormSubmitTrigger(formId, shouldBeEnabled) {
  * @param {Object} e The event object passed by the time-based trigger.
  */
 function executeFormLock(e) {
-  // 1. Get the unique ID of the trigger that just ran.
+  // Get the unique ID of the trigger that just ran
   const triggerId = e.triggerUid;
   if (!triggerId) {
-    Logger.log("executeFormLock ran but could not identify its own trigger ID.");
+    Logger.log(`⭕ executeFormLock ran but could not identify trigger ID.`);
     return;
   }
   
-  // 2. Look up the trigger metadata in Document Properties.
+  // Look up the trigger metadata in Document Properties
   const docProps = PropertiesService.getDocumentProperties();
   const triggerMetaProperty = docProps.getProperty('triggerMeta_' + triggerId);
   
   if (!triggerMetaProperty) {
-    Logger.log(`Could not find metadata for trigger ID ${triggerId}. Aborting lock.`);
+    Logger.log(`⭕ Could not find metadata for trigger ID ${triggerId}. Aborting lock.`);
     // Attempt to clean up the trigger anyway
     deleteTriggerById(triggerId);
     return;
@@ -3587,18 +3574,18 @@ function executeFormLock(e) {
   const formId = metadata.formId;
 
   try {
-    Logger.log(`Executing one-time lock for form ID: ${formId}`);
+    Logger.log(`▶️ Executing one-time lock for form ID: ${formId}`);
     
-    // 3. Lock the form.
+    // Lock the form
     FormApp.openById(formId).setAcceptingResponses(false);
     
-    // 4. Delete the trigger and its metadata.
+    // Delete the trigger and its metadata
     deleteTriggerById(triggerId);
     docProps.deleteProperty('triggerMeta_' + triggerId);
 
-    Logger.log(`Successfully executed and deleted one-time lock trigger for form ID: ${formId}`);
+    Logger.log(`✅ Successfully executed and deleted one-time lock trigger for form ID: ${formId}`);
   } catch (err) {
-    Logger.log(`Failed to execute lock for form ID ${formId}. Error: ${err.toString()}`);
+    Logger.log(`⚠️ Failed to execute lock for form ID ${formId}. Error: ${err.toString()}`);
     // Attempt to clean up anyway.
     deleteTriggerById(triggerId);
     docProps.deleteProperty('triggerMeta_' + triggerId);
@@ -3627,18 +3614,17 @@ function setOneTimeFormLockTrigger(formId, gamePlan) {
     Logger.log("Cannot set form lock trigger: earliest kickoff is in the past.");
     return;
   }
-  
-  // --- [THE FIX] ---
-  // 1. Create the time-based trigger correctly.
+
+  // Create the time-based trigger correctly.
   const trigger = ScriptApp.newTrigger('executeFormLock')
     .timeBased()
     .at(earliestKickoff)
     .create();
 
-  // 2. Get the unique ID of the trigger we just created.
+  // Get the unique ID of the new trigger
   const triggerId = trigger.getUniqueId();
 
-  // 3. Store metadata in properties, linking the trigger's ID to the form's ID.
+  // Store metadata in properties, linking the trigger's ID to the form's ID.
   const metadata = { formId: formId, week: gamePlan.week };
   PropertiesService.getDocumentProperties().setProperty('triggerMeta_' + triggerId, JSON.stringify(metadata));
 
@@ -3658,7 +3644,6 @@ function deleteTriggerById(triggerId) {
     }
   }
 }
-
 
 /** 
  * A reverse-lookup to find a week by form ID.
