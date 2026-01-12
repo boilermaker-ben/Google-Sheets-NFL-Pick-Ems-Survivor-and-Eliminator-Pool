@@ -5913,7 +5913,7 @@ function syncCurrentWeekResponses() {
 function syncFormResponses(week) {
   // SETUP 
   Logger.log(`🟩 Getting things ready to import for week ${week}`);
-  week = week || fetchWeek();
+  week = week || fetchWeek(null,true);
   const docProps = PropertiesService.getDocumentProperties();
   const config = JSON.parse(docProps.getProperty('configuration'));
   let memberData = JSON.parse(docProps.getProperty('members')) || { memberOrder: [], members: {}};
