@@ -1,7 +1,7 @@
-const VERSION = '1.1.1';
+const VERSION = '1.1.2';
 /** GOOGLE SHEETS FOOTBALL PICK 'EMS, SURVIVOR, & ELIMINATOR TOOL | 2025 Edition
  * Script Library for League Creator & Management Platform
- * 01/08/2026
+ * 01/12/2026
  * 
  * Created by Ben Powers
  * ben.powers.creative@gmail.com
@@ -13,37 +13,43 @@ const VERSION = '1.1.1';
  * 
  * ------------------------------------------------------------------------
  * INSTRUCTIONS:
- * make a copy and try running the Picks menu option
+ * make a copy and try running the Picks menu option; if you have trouble authorizing the script, please follow the instructions; if you have no menu, please refresh
  * 
  * ------------------------------------------------------------
  * 🏈 PICKS MENU OPTIONS WITH FUNCTION EXPLANATIONS:
  * 
- * ⚙️ Configuration - set up the specs for your pool
+ *  📝 Form Builder - make a new form with all sorts of customization
+ *  📋 Form Manager - review existing forms, turn on and off trigger to record logging, review specs of the form, copy links, etc. Also preview response count
+ *  📥 Check & Import Responses - import picks for any week that has a form (only do this when you're ready to import)
  * 
- * 👥 MEMBERS:
- *   👤 Member Manager - enter member names, rearrange, mark paid, revive (if using survivor/eliminator), and remove
- *   ✏️ Member Rename - rename a member in the sheet and update back-end name (note: this won't update the name on the form, which could cause problems, do this mid-week)
- * 📂 FORMS:
- *   📝 Form Builder - make a new form with all sorts of customization
- *   📥 Form Import - import picks for any week that has a form (only do this when you're ready to import). Should prompt to only bring in passed weeks if desired
- *   📋 Form Manager - review existing forms, turn on and off trigger to record logging, review specs of the form, copy links, etc. Also preview response count
- * -----------
- * 🔄 Fetch Scores - bring in NFL outcomes to the sheet
- * 🧰UTILITIES:
- *   📅 Update NFL Data - update the schedule data, should bring in new spreads
- *   📊 Update Spread Data - attempt to pull spreads for week, may need to wait to get updated data
- *   🧮 Update Formulas - should refresh formulas on all sheets that have named ranges
- *   ✅ Update Outcomes Sheet Validations - tool to fix any issues with the data validation fields
- *   🔽 Deploy Sheets - helps create all additional sheets for weekly pick 'em tracking
- * 🧙 AUTOMATION:
- *   📡 Spread Auto-Fetch Panel - lets you set a time for the schedule data (and spreads) to automatically be udpated
- *   ✔️ Enable 👑&💀 Trigger - required for processing updates to Survivor/Eliminator evals
- *   ❌ Disable 👑&💀 Trigger - remove if causing issues or want to run without it for a while
- * ------------
- * ❔ Help & Support - opens an HTML pop-up that has a link to send me an email and this project hosted on GitHub
+ *  ⚙️ Configuration - set name, select which pools to run, and many other options
+ * 
+ *  👥 Member Manager - enter member names, rearrange, mark paid, revive (if using survivor/eliminator), and remove
+ *  👑&💀 Survivor/Eliminator Manager - Allows for adjustments to the survivor and eliminator contests (only visible if Survivor or Eliminator Present)
+ * 
+ *  -----------
+ * 
+ *  🏈 Fetch Scores - bring in NFL outcomes to the sheet
+ *  🧰 UTILITIES:
+ *    📅 Update NFL Data - update the schedule data, should bring in new spreads
+ *    📊 Update Spread Data - attempt to pull spreads for week, may need to wait to get updated data
+ *    ✏️ Rename a Member - rename a member in the sheet and update back-end name (note: this won't update the name on the form, which could cause problems, do this mid-week)  
+ *    🧮 Update Formulas - should refresh formulas on all sheets that have named ranges
+ *    ✅ Update Outcomes Sheet Validations - tool to fix any issues with the data validation fields
+ *    🔽 Deploy Extra Tracking Sheets - helps create all additional sheets for weekly pick 'em tracking
+ *  🧙 AUTOMATION:
+ *    📡 Spread Auto-Fetch Panel - lets you set a time for the schedule data (and spreads) to automatically be udpated
+ *    ✔️ Enable 👑&💀 Trigger - required for processing updates to Survivor/Eliminator evals (only visible if Survivor or Eliminator Present)
+ *    ❌ Disable 👑&💀 Trigger - remove if causing issues or want to run without it for a while (only visible if Survivor or Eliminator Present)
+ * 
+ *   ------------
+ * 
+ *   ❔ Help & Support - opens an HTML pop-up that has a link to send me an email and this project hosted on GitHub
+ * 
+ * ------------------------------------------------------------
  * 
  * If you're feeling generous and would like to support my work,
- * here's a link to support my wife, five kiddos, and me:
+ * here's a link to support my wife, six kiddos, and me:
  * https://www.buymeacoffee.com/benpowers or https://venmo.com/benpowerscreative
  * 
  * Thanks for checking out the script!
@@ -70,28 +76,25 @@ function onOpen() {
     }
     const ui = SpreadsheetApp.getUi();
     let menu = ui.createMenu('🏈 Picks')
-      .addItem('⚙️ Configuration', 'launchConfiguration');
     if (docProps.getProperty('configuration')) {
-      let subMenu = ui.createMenu('👥 Members');
-      subMenu.addItem('👤 Member Manager', 'launchMemberPanel');
-      if (contest) subMenu.addItem(`${survElimIcons} ${survElimString} Manager`,'launchSurvElimPanel');
-      subMenu.addItem('✏️ Rename a Member','showRenamePanel');
-      menu.addSubMenu(subMenu);
-      menu.addSubMenu(ui.createMenu('📂 Forms')
-        .addItem('📝 Form Builder', 'launchFormBuilder')
-        .addItem('📥 Form Import', 'launchFormImport')
-        .addItem('📋 Form Manager', 'launchFormManager'));
+      if (contest) menu.addItem(`${survElimIcons} ${survElimString} Manager`,'launchSurvElimPanel');
+      menu.addItem('📝 Form Builder', 'launchFormBuilder')
+        .addItem('📋 Form Manager', 'launchFormManager')
+        .addItem('📥 Check & Import Responses', 'launchFormImport');
     }
+    menu.addItem('⚙️ Configuration', 'launchConfiguration')
+      .addItem('👥 Member Manager', 'launchMemberPanel');
     
     if (docProps.getProperty('forms')) {
       menu.addSeparator()
-      .addItem(`🔄 Fetch Scores`,'launchApiOutcomeImport')
+      .addItem(`🏈 Fetch ${LEAGUE} Outcomes`,'launchApiOutcomeImport')
       menu.addSubMenu(ui.createMenu('🧰 Utilities')
         .addItem(`📅 Update ${LEAGUE} Data`, 'fetchSchedule')
         .addItem('📊 Update Spread Data','fetchLatestSpreadsForWeek')
+        .addItem('✏️ Rename a Member','showRenamePanel')
         .addItem('🧮 Update Formulas', 'allFormulasUpdate')
         .addItem('✅ Update Outcomes Sheet Validation','outcomesSheetUpdatePrompt')
-        .addItem('🔽 Deploy Sheets','setupSheets'));
+        .addItem('🔽 Deploy Extra Tracking Sheets','setupSheets'));
       let subMenu = ui.createMenu('🧙 Automation')
         .addItem('📡 Spread Auto-Fetch Panel','showAutoFetchPanel');
       if (contest) {
@@ -4793,7 +4796,7 @@ function getFormImportData(week,auto) {
   try {
     const docProps = PropertiesService.getDocumentProperties();
     const formsData = JSON.parse(docProps.getProperty('forms'));
-    const memberData = JSON.parse(docProps.getProperty('members'));
+    let memberData = JSON.parse(docProps.getProperty('members')) || { memberOrder: [], members: {}};
     week = week || 1;
     if (formsData) {
       week = week || Math.max(...Object.keys(formsData).map(key => parseInt(key)));
@@ -5033,7 +5036,7 @@ function executePickImport(week, importOnlyStartedGames) {
     const title = ((config.survivorInclude && week >= config.survivorStartWeek) && (config.eliminatorInclude && week >= config.eliminatorStartWeek)) ? `NO SURVIVOR/ELMINATOR YET` : (config.survivorInclude && week >= config.survivorStartWeek) ? `NO SURVIVOR YET` : `NO ELIMINATOR YET`;
     const notification = ((config.survivorInclude && week >= config.survivorStartWeek) && (config.eliminatorInclude && week >= config.eliminatorStartWeek)) ?
       `Survivor and Eliminator not imported: user declined to import all matchups.` : (config.survivorInclude && week >= config.survivorStartWeek) ? 
-      `Survivor not imported: user declined to import all matchups.` : `Eliminator not imported: user declined to import all matchups.`;
+      `Survivor not imported: user declined to import all matchups.` : (config.eliminatorInclude && week >= config.eliminatorStartWeek) ? `Eliminator not imported: user declined to import all matchups.` : `Currently no Survivor or Eliminator pool to import`;
     Logger.log(`❎ ${notification}`);
     ss.toast(notification,`❎ ${title}`);    
   }
@@ -5191,18 +5194,20 @@ function parseAllPicksFromSheet(sheet, memberData) {
 
   const headers = data.shift();
   
-  // --- Find critical column indexes using our robust helper ---
+  // --- Find critical column indexes using helper ---
   const { nameCol, newNameCol } = findNameColumns(headers);
-  if (nameCol === -1) {
-    Logger.log(`⚠️ CRITICAL: Could not find a 'Select Your Name' column. Cannot parse picks.`);
+  if (nameCol === -1 && newNameCol === -1) {
+    Logger.log(`⚠️ CRITICAL: Could not find a 'Select Your Name' or 'Enter Your Name' entry from responses. Cannot parse picks.`);
     return {};
+  } else if (nameCol === -1) {
+    Logger.log(`❕ NOTE: Form appears to be in open enrollment mode for this week.`);
   }
 
   // --- 1. De-duplicate to "Last Submission Wins" ---
   const latestSubmissions = {};
   const newUserAnswerRegex = /new user/i;
   data.forEach(row => {
-    const name = newUserAnswerRegex.test(row[nameCol]) 
+    const name = (nameCol === -1 || newUserAnswerRegex.test(row[nameCol]))
       ? row[newNameCol] 
       : row[nameCol];
     if (name && name.trim() !== '') {
@@ -5230,7 +5235,7 @@ function parseAllPicksFromSheet(sheet, memberData) {
   const pickemRegex = / at /i;
 
   finalResponseRows.forEach(row => {
-    const name = newUserAnswerRegex.test(row[nameCol]) ? row[newNameCol] : row[nameCol];
+    const name = (nameCol === -1 || newUserAnswerRegex.test(row[nameCol])) ? row[newNameCol] : row[nameCol];
     const memberId = nameToIdMap[name.trim().toLowerCase()];
     
     // If we can't map the submission to an existing member ID, we skip it.
@@ -5911,7 +5916,7 @@ function syncFormResponses(week) {
   week = week || fetchWeek();
   const docProps = PropertiesService.getDocumentProperties();
   const config = JSON.parse(docProps.getProperty('configuration'));
-  let memberData = JSON.parse(docProps.getProperty('members'));
+  let memberData = JSON.parse(docProps.getProperty('members')) || { memberOrder: [], members: {}};
   let formsData = JSON.parse(docProps.getProperty('forms'));
   const responseSheet = getDatabaseSheet().getSheetByName(`WK${week}`);
   
@@ -5921,6 +5926,7 @@ function syncFormResponses(week) {
   }
   
   const data = responseSheet.getDataRange().getValues();
+
   if (data.length < 2) {
     Logger.log(`⭕ No responses found in sheet for WK${week}.`);
     return { success: true, message: `⭕ No responses to sync for Week ${week}.`, newMembers: 0, totalRespondents: 0 };
@@ -5933,13 +5939,12 @@ function syncFormResponses(week) {
   // DE-DUPLICATE RESPONSES (Latest Submission Used) ---
   const latestSubmissions = {};
   data.forEach(row => {
-    const name = newUserAnswerRegex.test(row[nameCol]) ? row[newNameCol] : row[nameCol];
+    const name = (nameCol == -1 || newUserAnswerRegex.test(row[nameCol])) ? row[newNameCol] : row[nameCol];
     if (name && name.trim() !== '') {
       latestSubmissions[name.trim().toLowerCase()] = row;
     }
   });
   const finalResponseRows = Object.values(latestSubmissions);
-
   // PROCESS NEW MEMBERS
   const nameToIdMap = {};
   for (const id in memberData.members) {
@@ -5949,10 +5954,11 @@ function syncFormResponses(week) {
   
   finalResponseRows.forEach(row => {
     const submitterChoice = row[nameCol];
-    const newUserName = (newNameCol > -1) ? row[newNameCol].trim() : '';
+    const newUserName = (nameCol == -1) ? row[newNameCol].trim() : (newNameCol > -1) ? row[newNameCol].trim() : '';
     
-    if (newUserAnswerRegex.test(submitterChoice) && newUserName) {
+    if ((nameCol == -1 || newUserAnswerRegex.test(submitterChoice)) && newUserName) {
       const nameKey = newUserName.trim().toLowerCase();
+      Logger.log(`🔄 Processing user named ${newUserName}, generating unique id...`)
       // If their name is NOT in official map, consider user a new member.
       if (!nameToIdMap[nameKey]) {
         const permanentId = generateUniqueId();
@@ -5966,6 +5972,7 @@ function syncFormResponses(week) {
         );
         
         nameToIdMap[nameKey] = permanentId;
+        Logger.log(`🆗 User ${newUserName}, stored under ${nameKey} and given unique ID of ${permanentId}`)
         newMemberIds.push(permanentId);
       }
     }
@@ -5974,8 +5981,7 @@ function syncFormResponses(week) {
   // UPDATE RESPONDENT LIST IN 'forms' OBJECT ---
   const respondentIds = finalResponseRows.map(row => {
     const submitterChoice = row[nameCol];
-    const newUserName = (newNameCol > -1) ? row[newNameCol] : '';
-    const name = newUserAnswerRegex.test(submitterChoice) ? newUserName : submitterChoice;
+    const name = (nameCol == -1) ? row[newNameCol] : newUserAnswerRegex.test(submitterChoice) ? ((newNameCol > -1) ? row[newNameCol] : '') : submitterChoice;
     return nameToIdMap[name.trim().toLowerCase()];
   }).filter(id => id);
   
