@@ -188,6 +188,7 @@ const nameValidation = FormApp.createTextValidation()
   .build();
   
 const scheduleTabColor = "#472a24";
+const numberMap = {10:'🔟', 9:'9️⃣', 8:'8️⃣', 7:'7️⃣', 6:'6️⃣', 5:'5️⃣', 4:'4️⃣', 3:'3️⃣', 2:'2️⃣', 1:'1️⃣', 0:'0️⃣' };  
 
 const LEAGUE_DATA = {
   "ARI": {
