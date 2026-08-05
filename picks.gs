@@ -1,7 +1,7 @@
-const VERSION = '1.1.2';
+const VERSION = '1.2.0';
 /** GOOGLE SHEETS FOOTBALL PICK 'EMS, SURVIVOR, & ELIMINATOR TOOL | 2025 Edition
  * Script Library for League Creator & Management Platform
- * 01/12/2026
+ * 08/05/2026
  * 
  * Created by Ben Powers
  * ben.powers.creative@gmail.com
@@ -102,6 +102,10 @@ function onOpen() {
           .addItem(`❌ Disable ${survElimIcons} Triggers`,'deleteOnEditTrigger');
       }
       menu.addSubMenu(subMenu);
+    } else {
+      menu.addSubMenu(ui.createMenu('🧰 Utilities')
+        .addItem(`📅 Update ${LEAGUE} Data`, 'fetchSchedule')
+        .addItem('📊 Update Spread Data','fetchLatestSpreadsForWeek'));
     }
     menu.addSeparator()
       .addItem('❔ Help & Support','showSupportDialog')
@@ -1798,6 +1802,44 @@ function fetchWeek(negative,current) {
   }
 }
 
+// SCOREBOARD WEEK ENDPOINT
+function fetchScoreboardEndpoint(week, leg) {
+  let current;
+  
+  // Assume regular season if only week is provided
+  if (week && !leg) {
+    leg = 2;
+  }
+
+  // Fetch current data only if week or leg is still missing
+  if (!week || !leg) {
+    current = JSON.parse(UrlFetchApp.fetch(SCOREBOARD).getContentText());
+  }
+  
+  week = week || current.week.number;
+  leg = leg || current.season.type;
+  
+  // Clamp leg to valid range (1-3)
+  leg = leg > 3 ? 3 : (leg < 1 ? 1 : leg);
+  
+  // Convert to postseason format if week exceeds regular season
+  if (week > REGULAR_SEASON) {
+    week = week - REGULAR_SEASON;
+    // Only change leg to postseason if it's currently regular season
+    if (leg === 2) {
+      Logger.log(`⏭ Input provided was beyond the regular season, directing API to Post Season.`);
+      leg = 3;
+    }
+  }
+
+  if (week && leg) {
+    return `${SCOREBOARD}?seasontype=${leg}&week=${week}`;
+  } else {
+    Logger.log(`⚠️ Issue with inputs or fetching current week/leg via "fetchScoreboardEndpoint" function, returning base scoreboard.`);
+    return SCOREBOARD;
+  }
+}
+
 // ESPN FUNCTIONS
 //------------------------------------------------------------------------
 // ESPN TEAMS - Fetches the ESPN-available API data on NFL teams
@@ -1809,6 +1851,7 @@ function fetchTeamsESPN(year) {
   let obj = {};
   try {
     let string = schedulePrefix + year + scheduleSuffix;
+    Logger.log(`🔎 Fetching JSON content from: ${string}`);
     obj = JSON.parse(UrlFetchApp.fetch(string).getContentText());
     let objTeams = obj.settings.proTeams;
     return objTeams;
@@ -1836,11 +1879,23 @@ function fetchSchedule(ss,year,currentWeek,auto,overwrite) {
     year = fetchYear();
   }
   const objTeams = fetchTeamsESPN(year);
+  if (!objTeams) {
+    Logger.log("❌ fetchTeamsESPN returned undefined. Aborting schedule fetch.");
+    ss.toast("Could not retrieve team data from ESPN.", "❌ API ERROR");
+    return;
+  }
   const teamsLen = objTeams.length;
   let headers = ['week','date','day','hour','minute','dayName','awayTeam','homeTeam','awayTeamLocation','awayTeamName','homeTeamLocation','homeTeamName','type','divisional','division','overUnder','spread','spreadAutoFetched','timeFetched'];
-  let sheetName = LEAGUE;
+  const sheetName = LEAGUE;
+  const overUnderIdx = headers.indexOf('overUnder');
+  const spreadIdx = headers.indexOf('spread');
+  const awayTeamIdx = headers.indexOf('awayTeam');
+  const homeTeamIdx = headers.indexOf('homeTeam');
+  const spreadAutoIdx = headers.indexOf('spreadAutoFetched');
+  const timeFetchedIdx = headers.indexOf('timeFetched');
+
   let sheet, range, abbr, name, arr = [], nfl = [],espnId = [], espnAbbr = [], espnName = [], espnLocation = [], location = [], ids = [], abbrs = []; 
-  
+
   for (let a = 0 ; a < teamsLen ; a++ ) {
     arr = [];
     if(objTeams[a].id != 0 ) {
@@ -2034,8 +2089,46 @@ function fetchSchedule(ss,year,currentWeek,auto,overwrite) {
   rangeData.setHorizontalAlignment('left');
   sheet.getRange(1,3).setNote('-4: Wednesday, -3: Thursday, -2: Friday, -1: Saturday, 0: Sunday, 1: Monday, 2: Tuesday');
   
-  // Fetches sorted data
-  // Sets named ranges for weekly home and away teams to compare for survivor status
+  // Fetch existing sheet values first so we have them loaded
+  let existingData = rangeData.getValues();
+  const regexOverUnder = new RegExp(/^[0-9\.]+$/);
+  const regexSpread = new RegExp(/^[A-Z]{2,3}\ \-[0-9\.]+$/);
+  let existing = {};
+  
+  for (let a = 0; a < existingData.length; a++) {
+    const row = existingData[a];
+    const weekNum = row[0];
+    const overUnderVal = row[overUnderIdx];
+    const spreadVal = row[spreadIdx];
+
+    if (regexOverUnder.test(overUnderVal) || regexSpread.test(spreadVal) || weekNum > REGULAR_SEASON) {
+      const matchup = `${row[awayTeamIdx]}@${row[homeTeamIdx]}`;
+      existing[weekNum] = existing[weekNum] || {};
+      existing[weekNum][matchup] = {
+        row,
+        placed: false,
+        auto: row[spreadAutoIdx],
+        timeFetched: row[timeFetchedIdx],
+        ...(overUnderVal && { overUnder: overUnderVal }),
+        ...(spreadVal && { spread: spreadVal })
+      };
+    }
+  }
+
+  // Restore the existing spreadsheet values into scheduleData right away
+  for (let a = 0; a < scheduleData.length; a++) {
+    let weekNum = scheduleData[a][0];
+    let matchup = `${scheduleData[a][awayTeamIdx]}@${scheduleData[a][homeTeamIdx]}`;
+    if (existing[weekNum] && existing[weekNum].hasOwnProperty(matchup)) {
+      let ext = existing[weekNum][matchup];
+      if (ext.overUnder) scheduleData[a][overUnderIdx] = ext.overUnder;
+      if (ext.spread) scheduleData[a][spreadIdx] = ext.spread;
+      scheduleData[a][spreadAutoIdx] = ext.auto;
+      scheduleData[a][timeFetchedIdx] = ext.timeFetched;
+    }
+  }
+
+  // Set named ranges for weekly home and away teams to compare for survivor status
   awayTeam = headers.indexOf('awayTeam')+1;
   homeTeam = headers.indexOf('homeTeam')+1;
   ss.setNamedRange(`${LEAGUE}_MATCHUPS_HEADERS`,sheet.getRange(1,1,1,headers.length));
@@ -2058,87 +2151,176 @@ function fetchSchedule(ss,year,currentWeek,auto,overwrite) {
   }
   // Sheet formatting =========================
 
-
   // Set of loops to create blank entries for playoff schedule
   const blankRow = new Array(headers.length).fill('');
-  for (let a = (REGULAR_SEASON+1); a <= WEEKS; a++) {
-    if (WEEKNAME.hasOwnProperty(a)) {
-      for (let b = 0; b < WEEKNAME[a].matchups; b++) {
+  Object.keys(WEEKNAME).forEach(weekNum => {
+    const weekInt = parseInt(weekNum);
+    if (weekInt > REGULAR_SEASON) {
+      for (let b = 0; b < WEEKNAME[weekNum].matchups; b++) {
         let newRow = [...blankRow];
-        newRow[0] = a; // Replace first value with week number
+        newRow[0] = weekInt; // Replace first value with week number
         scheduleData.push(newRow);
       }
     }
+  });
+
+  // --- Scoreboard Retrieval Block ---
+
+  // 1. Determine target week: If we are in the preseason (< 1), default to grabbing Week 1 spreads
+  let targetWeek = currentWeek < 1 ? 1 : currentWeek;
+  
+  // Construct the Scoreboard URL dynamically based on the target week / postseason
+  let scoreboardUrl = `${SCOREBOARD}?week=${currentWeek > REGULAR_SEASON ? currentWeek - REGULAR_SEASON : targetWeek}&seasontype=${currentWeek > REGULAR_SEASON ? 3 : 2}`;
+  Logger.log(`Fetching scoreboard from ${scoreboardUrl}`);
+
+  let scoreboardData = [];
+  try {
+    const response = UrlFetchApp.fetch(scoreboardUrl);
+    const obj = JSON.parse(response.getContentText());
+    
+    for (let event = 0; event < obj.events.length; event++) {
+      date = new Date(obj.events[event].date);
+      hour = date.getHours();
+      minute = date.getMinutes();
+      day = date.getDay();
+      
+      const away = obj.events[event].competitions[0].competitors.find(x => x.homeAway === 'away').team;
+      const home = obj.events[event].competitions[0].competitors.find(x => x.homeAway === 'home').team;
+      
+      divisional = LEAGUE_DATA[home.abbreviation].division_opponents.indexOf(away.abbreviation) > -1 ? 1 : 0;
+      division = divisional == 1 ? LEAGUE_DATA[home.abbreviation].division : '';
+      
+      // Safely extract the odds object if it exists
+      let odds = obj.events[event].competitions[0].odds?.[0] || {};
+      let overUnder = odds.overUnder || '';
+      let details = odds.details || '';
+
+      let arr = [
+        targetWeek, // Map to targetWeek (1 or postseason target) instead of the negative preseason week
+        date,
+        DAY[day].index,
+        hour,
+        minute,
+        DAY[day].name,
+        away.abbreviation,
+        home.abbreviation,
+        away.location,
+        away.name,
+        home.location,
+        home.name,
+        WEEKNAME.hasOwnProperty(targetWeek) ? WEEKNAME[targetWeek].name : 'Regular Season',
+        divisional,
+        division,
+        overUnder,
+        details,
+        auto ? 1 : 0,
+        timeFetched
+      ];
+      scoreboardData.push(arr);
+    }
+  } catch (err) {
+    Logger.log(`⚠️ Unable to fetch scoreboard details for Week ${targetWeek}: ${err.message}`);
   }
 
-  // Get scoreboard data
-  const obj = JSON.parse(UrlFetchApp.fetch(SCOREBOARD));
-  let scoreboardData = [];
-  for (let event = 0; event < obj.events.length; event++) {
-    date = new Date(obj.events[event].date);
-    hour = date.getHours();
-    minute = date.getMinutes();
-    day = date.getDay();
-    const away = obj.events[event].competitions[0].competitors.filter(x => x.homeAway === 'away')[0].team;
-    const home = obj.events[event].competitions[0].competitors.filter(x => x.homeAway === 'home')[0].team;
-    divisional = LEAGUE_DATA[home.abbreviation].division_opponents.indexOf(away.abbreviation) > -1 ? 1 : 0;
-    division = divisional == 1 ? LEAGUE_DATA[home.abbreviation].division : '';
-    let arr = [
-      currentWeek,
-      date,
-      DAY[day].index,
-      hour,
-      minute,
-      DAY[day].name,
-      away.abbreviation,
-      home.abbreviation,
-      away.location,
-      away.name,
-      home.location,
-      home.name,
-      WEEKNAME.hasOwnProperty(currentWeek) ? WEEKNAME[currentWeek].name : 'Regular Season', // type
-      divisional,
-      division,
-      (obj.events[event].competitions[0]).hasOwnProperty('odds') ? obj.events[event].competitions[0].odds[0].overUnder : '',
-      (obj.events[event].competitions[0]).hasOwnProperty('odds') ? obj.events[event].competitions[0].odds[0].details : '',
-      auto ? 1 : 0,
-      timeFetched
-    ];
-    scoreboardData.push(arr);
-  }
-  for (let a = 0; a < scheduleData.length; a++) {
-    if (scheduleData[a][0] == currentWeek) {
-      scheduleData.splice(a,1,scoreboardData[0]);
-      scoreboardData.shift();
+  // 2. Reconcile differences and merge at the matchup level
+  let conflicts = [];
+  // Retain a deep copy of raw, untouched scoreboard values
+  let rawScoreboardData = scoreboardData.map(row => [...row]);
+
+  if (scoreboardData.length > 0) {
+    for (let s = 0; s < scoreboardData.length; s++) {
+      let sbRow = scoreboardData[s];
+      let matchupKey = `${sbRow[awayTeamIdx]}@${sbRow[homeTeamIdx]}`;
+      
+      // Match exact matchups for the target week
+      let matchIdx = scheduleData.findIndex(row => 
+        row[0] === targetWeek && 
+        row[awayTeamIdx] === sbRow[awayTeamIdx] &&
+        row[homeTeamIdx] === sbRow[homeTeamIdx]
+      );
+      
+      if (matchIdx !== -1) {
+        let existingRow = scheduleData[matchIdx];
+        let oldOverUnder = existingRow[overUnderIdx];
+        let oldSpread = existingRow[spreadIdx];
+        let newOverUnder = sbRow[overUnderIdx];
+        let newSpread = sbRow[spreadIdx];
+        
+        // Safety: If the API does not currently have betting lines, preserve the old values
+        if (newOverUnder === '') {
+          sbRow[overUnderIdx] = oldOverUnder;
+          rawScoreboardData[s][overUnderIdx] = oldOverUnder;
+          newOverUnder = oldOverUnder;
+        }
+        if (newSpread === '') {
+          sbRow[spreadIdx] = oldSpread;
+          rawScoreboardData[s][spreadIdx] = oldSpread;
+          newSpread = oldSpread;
+        }
+        
+        // Log discrepancies and queue them for display
+        if (oldOverUnder !== newOverUnder || oldSpread !== newSpread) {
+          Logger.log(`🔄 Conflict detected for ${matchupKey} (Week ${targetWeek}):`);
+          Logger.log(`   Old Value -> O/U: ${oldOverUnder || 'None'}, Spread: ${oldSpread || 'None'}`);
+          Logger.log(`   New Value -> O/U: ${newOverUnder || 'None'}, Spread: ${newSpread || 'None'}`);
+          
+          conflicts.push({
+            matchup: matchupKey,
+            oldOU: oldOverUnder || 'None',
+            newOU: newOverUnder || 'None',
+            oldSpread: oldSpread || 'None',
+            newSpread: newSpread || 'None'
+          });
+        }
+        
+        // Safeguard: Protect manual overrides temporarily in scheduleData
+        if (!overwrite && (oldOverUnder !== '' || oldSpread !== '')) {
+          sbRow[overUnderIdx] = oldOverUnder;
+          sbRow[spreadIdx] = oldSpread;
+          sbRow[spreadAutoIdx] = existingRow[spreadAutoIdx];
+        }
+        
+        scheduleData[matchIdx] = sbRow;
+      }
     }
   }
-  scheduleData.splice(scheduleData.indexOf(currentWeek),scoreboardData.length,...scoreboardData);
 
-  let rows = scheduleData.length + 1;
-  let columns = scheduleData[0].length;
-  
-  // utilities.gs functions to remove/add rows that are blank
-  adjustRows(sheet,rows);
-  adjustColumns(sheet,columns);
-  
-  let existingData = rangeData.getValues();
-  const regexOverUnder = new RegExp(/^[0-9\.]+$/);
-  const regexSpread = new RegExp(/^[A-Z]{2,3}\ \-[0-9\.]+$/);
-  let existing = {};
-  for (let a = 0; a < existingData.length; a++) {
-    // Log data for each week (over/under and spread) as well as the schedule data for postseason weeks to recall later if needed
-    if ((regexOverUnder.test(existingData[a][headers.indexOf('overUnder')]) || regexSpread.test(existingData[a][headers.indexOf('spread')])) || existingData[a][0] > REGULAR_SEASON) {
-      let matchup = `${existingData[a][headers.indexOf('awayTeam')]}@${[existingData[a][headers.indexOf('homeTeam')]]}`;
-      let rowData = existingData[a];
-      existing[existingData[a][0]] = existing[existingData[a][0]] || {};
-      existing[existingData[a][0]][matchup] = {};
-      existing[existingData[a][0]][matchup].row = rowData;
-      existing[existingData[a][0]][matchup].placed = false;
-      if (existingData[a][headers.indexOf('overUnder')]) {
-        existing[existingData[a][0]][matchup].overUnder = existingData[a][headers.indexOf('overUnder')];
-      }
-      if (existingData[a][headers.indexOf('spread')]) {
-        existing[existingData[a][0]][matchup].spread = existingData[a][headers.indexOf('spread')];
+  // 3. Prompt user dynamically for the targetWeek overrides
+  if (!overwrite && conflicts.length > 0) {
+    let ui = fetchUi();
+    let message = `Found ${conflicts.length} matchups with conflicting betting lines for Week ${targetWeek}.\n\n`;
+    
+    let displayLimit = 5;
+    for (let i = 0; i < Math.min(conflicts.length, displayLimit); i++) {
+      let c = conflicts[i];
+      message += `🏈 ${c.matchup}:\n`;
+      message += `   Current -> O/U: ${c.oldOU}, Spread: ${c.oldSpread}\n`;
+      message += `   Incoming -> O/U: ${c.newOU}, Spread: ${c.newSpread}\n\n`;
+    }
+    
+    if (conflicts.length > displayLimit) {
+      message += `...and ${conflicts.length - displayLimit} other matchup conflicts.\n\n`;
+    }
+    
+    message += `Would you like to overwrite your existing data with these new API values?`;
+    
+    let replaceAlert = ui.alert(`⚠️ CONFLICTING BETTING LINES FOUND`, message, ui.ButtonSet.YES_NO_CANCEL);
+    
+    if (replaceAlert === ui.Button.YES) {
+      // Overwrite: Apply the raw scoreboard details back into scheduleData
+      for (let s = 0; s < rawScoreboardData.length; s++) {
+        let rawRow = rawScoreboardData[s];
+        let matchIdx = scheduleData.findIndex(row => 
+          row[0] === targetWeek && 
+          row[awayTeamIdx] === rawRow[awayTeamIdx] && 
+          row[homeTeamIdx] === rawRow[homeTeamIdx]
+        );
+        if (matchIdx !== -1) {
+          scheduleData[matchIdx][overUnderIdx] = rawRow[overUnderIdx];
+          scheduleData[matchIdx][spreadIdx] = rawRow[spreadIdx];
+          scheduleData[matchIdx][spreadAutoIdx] = auto ? 1 : 0;
+          scheduleData[matchIdx][timeFetchedIdx] = timeFetched;
+        }
       }
     }
   }
@@ -2149,7 +2331,7 @@ function fetchSchedule(ss,year,currentWeek,auto,overwrite) {
     for (let a = 0; a < scheduleData.length; a++) {
       let scheduleDataWeek = scheduleData[a][0];
       if (scheduleDataWeek > REGULAR_SEASON) {
-        if (scheduleData[a][headers.indexOf('awayTeam')] == '' || scheduleData[a][headers.indexOf('homeTeam') == '']) {
+        if (scheduleData[a][headers.indexOf('awayTeam')] == '' || scheduleData[a][headers.indexOf('homeTeam')] == '') {
           missingMatchups[scheduleDataWeek] = missingMatchups[scheduleDataWeek] || {};
           missingMatchups[scheduleDataWeek].rows = missingMatchups[scheduleDataWeek].rows || [];
           missingMatchups[scheduleDataWeek].rows.push(a);
@@ -2187,8 +2369,11 @@ function fetchSchedule(ss,year,currentWeek,auto,overwrite) {
         }
       }
       for (let a = 0; a < knownMatchups.length; a++) {
-        if (existing[knownMatchups[a][0]].hasOwnProperty(`${knownMatchups[a][headers.indexOf('awayTeam')]}@${knownMatchups[a][headers.indexOf('homeTeam')]}`)) {
-          existing[knownMatchups[a][0]][`${knownMatchups[a][headers.indexOf('awayTeam')]}@${knownMatchups[a][headers.indexOf('homeTeam')]}`].placed = true;
+        let weekNum = knownMatchups[a][0];
+        let matchupKey = `${knownMatchups[a][headers.indexOf('awayTeam')]}@${knownMatchups[a][headers.indexOf('homeTeam')]}`;
+        
+        if (existing[weekNum] && existing[weekNum].hasOwnProperty(matchupKey)) {
+          existing[weekNum][matchupKey].placed = true;
         }
       }
       Object.keys(existing[week]).forEach(matchup => {
@@ -2200,74 +2385,43 @@ function fetchSchedule(ss,year,currentWeek,auto,overwrite) {
       });
     }
   });
+
   for (let a = 0; a < scheduleData.length; a++ ) {
-    let scheduleDataWeek = scheduleData[a][0];
-    if (existing.hasOwnProperty(scheduleDataWeek)) {     
-      if (existing[scheduleDataWeek].hasOwnProperty('row')) {
-        Logger.log(`Replacing ${scheduleData[a]} with object data: ${existing[scheduleDataWeek].row}`);
-        scheduleData.splice(a,1,existing[scheduleDataWeek].row);
+    try {
+      let scheduleDataWeek = scheduleData[a][0];
+      if (existing.hasOwnProperty(scheduleDataWeek)) {     
+        if (existing[scheduleDataWeek].hasOwnProperty('row')) {
+          Logger.log(`Replacing ${scheduleData[a]} with object data: ${existing[scheduleDataWeek].row}`);
+          scheduleData.splice(a,1,existing[scheduleDataWeek].row);
+        }
       }
+    } catch (err) {
+      // Logger.log(`No existing data for week ${a}`)
     }
   }
 
-  if (Object.keys(existing).length > 0) {
-    let awayIndex = headers.indexOf('awayTeam');
-    let homeIndex = headers.indexOf('homeTeam');
-    let spreadIndex = headers.indexOf('spread');
-    let overUnderIndex = headers.indexOf('overUnder');
-    let spreadAutoIndex = headers.indexOf('spreadAutoFetched');
-    let timeFetchedIndex = headers.indexOf('timeFetched');
-    for (let a = 0; a < scheduleData.length; a++) {
-      let dataWeek = scheduleData[a][0];
-      let matchup = `${scheduleData[a][awayIndex]}@${[scheduleData[a][homeIndex]]}`;
-      if (dataWeek != currentWeek) {
-        if (existing.hasOwnProperty(dataWeek)) {
-          if (existing[dataWeek].hasOwnProperty(matchup)) {
-            if (existing[dataWeek][matchup].hasOwnProperty('overUnder')) {
-              scheduleData[a][overUnderIndex] = existing[dataWeek][matchup].overUnder;
-            }
-            if (existing[dataWeek][matchup].hasOwnProperty('spread')) {
-              scheduleData[a][spreadIndex] = existing[dataWeek][matchup].spread;
-            }
-            scheduleData[a][spreadAutoIndex] = existing[dataWeek][matchup].auto;
-            scheduleData[a][timeFetchedIndex] = existing[dataWeek][matchup].timeFetched;
-          }
-        }
-      }
-    }
-    if (!overwrite && existing.hasOwnProperty(currentWeek)) {
-      let ui = fetchUi();
-      let replaceAlert = ui.alert(`❗ PREVIOUS VALUES FOUND`,`Found previous over/under and spread data for week ${currentWeek} in the existing NFL data.\n\nWould you like to overwrite with new values?`, ui.ButtonSet.YES_NO_CANCEL);
-      if (replaceAlert !== ui.Button.YES) {
-        for (let a = 0; a < scheduleData.length; a++) {
-          let dataWeek = scheduleData[a][0];
-          let matchup = `${scheduleData[a][awayIndex]}@${[scheduleData[a][homeIndex]]}`;
-          if (dataWeek === currentWeek) {
-            if (existing.hasOwnProperty(dataWeek)) {
-              if (existing[dataWeek].hasOwnProperty(matchup)) {
-                scheduleData[a][overUnderIndex] = existing[dataWeek][matchup].overUnder;
-                scheduleData[a][spreadIndex] = existing[dataWeek][matchup].spread;
-                scheduleData[a][spreadAutoIndex] = auto ? 1 : 0;
-                scheduleData[a][timeFetchedIndex] = timeFetched;
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-  rangeData.setValues(scheduleData);
+  let rows = scheduleData.length + 1;
+  let columns = scheduleData[0].length;
+  
+  // utilities.gs functions to remove/add rows that are blank
+  adjustRows(sheet,rows);
+  adjustColumns(sheet,columns);
 
-  sheet.protect().setDescription(sheetName);
   try {
-    sheet.hideSheet();
-  }
-  catch (err){
-    // Logger.log(`❗ fetchSchedule hiding: Couldn't hide sheet as no other sheets exist`);
-  }
-  ss.toast(`Imported all ${LEAGUE} schedule data`);
+    rangeData.setValues(scheduleData);
+    sheet.protect().setDescription(sheetName);
+    try {
+      sheet.hideSheet();
+    }
+    catch (err){
+      Logger.log(`❗ fetchSchedule hiding: Couldn't hide sheet as no other sheets exist`);
+    }
+      ss.toast(`Imported all ${LEAGUE} schedule data`,`✅ SUCCESS`);
+  } catch (err) {
+    Logger.log(`❗ Issue placing the schedule data: ${err.message}`);
+    ss.toast(`fetchSchedule failed to import ${LEAGUE} schedule data`, `❗ FAILURE`);
+  }  
 }
-
 
 /**
  * Updates the spread and over/under data.
