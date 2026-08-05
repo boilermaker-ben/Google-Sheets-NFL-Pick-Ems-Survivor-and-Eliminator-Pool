@@ -1,11 +1,11 @@
-# Google Sheets / Forms NFL Pick'Ems and Survivor Pool 
+# Google Sheets / Forms NFL Pick'Ems and Survivor Pool, v1.2.0
 ## Creation and Management Tool for Running your Own Group
 
 Google Sheet document with multiple script files to generate Google Forms for season-long NFL Pick'Ems or Survivor league management
 
 -------------------------
 
-**TLDR: Go [here](https://docs.google.com/spreadsheets/d/1cafdoM2H5JDXqDxH58Unww7TAFRHr_kWZN5IdDN2-eY/edit?usp=sharing) and make a copy of the sheet. Follow prompts. Enjoy!**
+**TLDR: Go [here](https://docs.google.com/spreadsheets/d/17k_Rj8QwprbY07odPzRSmhHj9d0e7f6s532YC5Jw8F8/edit?usp=sharing) and make a copy of the sheet. Follow prompts. Enjoy!**
 
 -------------------------
 
@@ -24,7 +24,7 @@ Lastly, there are some safeguards Google has in place to avoid allowing users to
 -------------------------
 
 **Notable Changes**
-This newest update to version 2.6 includes the following new improved features/changes:
+This newest update to version 1.2.0 includes the following new improved features/changes:
 - **More intuitive setup and initialization tool**
 - Use of **Document Properties** (formerly used _Script_ Properties)
   - Storing timezone, initialization, configuration, members, and form details
@@ -125,7 +125,7 @@ This newest update to version 2.6 includes the following new improved features/c
 
 -------------------------
 
-# **2. Example Form (needs updated to 2025 version)**
+# **2. Example Form (needs updated to 2026 version)**
 Update your form to look like this, or whatever you prefer. The script will create all the weekly entries for each matchup of the week, a survivor pool prompt, a tiebreaker entry field, and a comments section. When membership is unlocked, the form will have a text entry field, rather than the dropdown, for “Name”.
 
 <p align="center">
@@ -202,7 +202,6 @@ Hopeful improvements for future versions:
 - Reorganize member names alphabetically as an option
 - Multiple entries per user
 - Option to have user removed upon submission from Form to avoid duplication
-- Column for payment/entry fee received per weekly sheet
 - Confidence pick 'ems capability
 - Opting out of survivor competition in the Form
 - NCAA Football capability
