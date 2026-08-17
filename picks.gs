@@ -1,7 +1,7 @@
-const VERSION = '1.2.0';
+const VERSION = '1.2.1';
 /** GOOGLE SHEETS FOOTBALL PICK 'EMS, SURVIVOR, & ELIMINATOR TOOL | 2025 Edition
  * Script Library for League Creator & Management Platform
- * 08/05/2026
+ * 08/17/2026
  * 
  * Created by Ben Powers
  * ben.powers.creative@gmail.com
@@ -164,8 +164,8 @@ const WEEKS = 23; // Total season weeks (including playoffs)
 const WEEKS_TO_EXCLUDE = [22]; // Break before Superbowl
 const MAXGAMES = TEAMS/2;
 const SCOREBOARD = 
-    LEAGUE == "NFL" ? "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard" :
-    (LEAGUE == "NCAAF" ? "https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard" : null);
+    LEAGUE == "NFL" ? "https://site.web.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard" :
+    (LEAGUE == "NCAAF" ? "https://site.web.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard" : null);
 const COLOR_PRIMARY = "#D50A0A";
 const COLOR_SECONDARY = "#D50A0A";
 const COLOR_TERTIARY = "#FFFFFF";
@@ -178,10 +178,10 @@ const weeklySheetPrefix = "WK";
 const schedulePrefix = "https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/";
 const scheduleSuffix = "?view=proTeamSchedules";
 const fallbackYear = 2025;
-const dayColorsObj = {"Thursday":"#fffdcc","Friday":"#e7fed1","Saturday":"#cffdda","Sunday":"#bbfbe7","Monday":"#adf7f5"};
-const dayColorsFilledObj = {"Thursday":"#fffb95","Friday":"#d4ffa6","Saturday":"#abffbf","Sunday":"#89fddb","Monday":"#74f7f3"};
-const dayColors = ["#fffdcc","#e7fed1","#cffdda","#bbfbe7","#adf7f5"];
-const dayColorsFilled = ["#fffb95","#d4ffa6","#abffbf","#89fddb","#74f7f3"];
+const dayColorsObj = {"Wednesday": "#ffe3cc","Thursday":"#fffdcc","Friday":"#e7fed1","Saturday":"#cffdda","Sunday":"#bbfbe7","Monday":"#adf7f5"};
+const dayColorsFilledObj = {"Wednesday": "#ffeb90","Thursday":"#fffb95","Friday":"#d4ffa6","Saturday":"#abffbf","Sunday":"#89fddb","Monday":"#74f7f3"};
+const dayColors = ["#ffe3cc", "#fffdcc","#e7fed1","#cffdda","#bbfbe7","#adf7f5"];
+const dayColorsFilled = ["#ffeb90", "#fffb95","#d4ffa6","#abffbf","#89fddb","#74f7f3"];
 const configTabColor = "#ff9561";
 const generalTabColor = "#aaaaaa";
 const winnersTabColor = "#ffee00";
@@ -980,6 +980,7 @@ function fetchConfigurationSidebarData() {
 }
 
 function checkDocumentConfiguration() {
+  Logger.log(`Fetching configuration. Please review report in Sheets tab...`);
   try {
     const ss = fetchSpreadsheet();
     const ui = fetchUi();
@@ -1478,6 +1479,60 @@ function removeMemberFromSheet(memberName) {
       });
     }
   });
+}
+
+/**
+ * Creates and displays the HTML modal dialog for member management.
+ */
+function launchSurvElimPanel() {
+  // Create an HTML output object from a separate HTML file.
+  // This is cleaner than embedding a huge string in your .gs file.
+  const html = HtmlService.createHtmlOutputFromFile('survElimPanel')
+      .setWidth(600)
+      .setHeight(700);
+  
+  // Display it as a modal dialog. The user must interact with it before returning to the sheet.
+  SpreadsheetApp.getUi().showModalDialog(html, 'Contest Manager');
+}
+
+/**
+ * Retrieves all data needed for the survivor and eliminator manager panel.
+ *
+ * @returns {Object}
+ */
+function getSurvElimManagerData() {
+  try {
+    const docProps = PropertiesService.getDocumentProperties();
+
+    // 1. Fetch the member data as before.
+    const members = JSON.parse(docProps.getProperty('members')) || { order: [], details: {} }; // Ensure a default object
+
+    // 2. Fetch the main configuration
+    const config = JSON.parse(docProps.getProperty('configuration')) || {}; // Ensure a default object
+    Logger.log("Output from the getSurvelimManagerData: " + JSON.stringify({
+      week: fetchWeek() || 1,
+      memberData: members,
+      config: config,
+      leagueData: LEAGUE_DATA
+    }))
+    // 4. Return a single, bundled object with all the data the client needs.
+    return {
+      week: fetchWeek() || 1,
+      memberData: members,
+      config: config,
+      leagueData: LEAGUE_DATA
+    };
+
+  } catch (error) {
+    Logger.log('Error preparing survivor/eliminator data:', error);
+    // Return a safe, default structure in case of any error.
+    return {
+      week: fetchWeek() || 1,
+      memberData: { membersOrder: [], members: {} },
+      config: config,
+      leagueData: LEAGUE_DATA
+    };
+  }
 }
 
 /**
@@ -3688,8 +3743,8 @@ function fetchFormCreationData() {
       validitySummary: scheduleAnalysis.validitySummary,
       apiWeek: apiWeek,
       leagueData: LEAGUE_DATA,
-      dayColor: dayColorsObj,
-      dayColorBorder: dayColorsFilledObj
+      dayColor: dayColorsObj  || '#e0e0e0',
+      dayColorBorder: dayColorsFilledObj || '#b0b0b0'
     };
   } catch (err) {
     Logger.log(`⚠️ A critical error occurred in "fetchFormCreationData": ${err.stack}`);
@@ -3701,8 +3756,8 @@ function fetchFormCreationData() {
       validitySummary: {},
       apiWeek: apiWeek,
       leagueData: LEAGUE_DATA,
-      dayColor: dayColorsObj,
-      dayColorBorder: dayColorsFilledObj
+      dayColor: dayColorsObj || '#e0e0e0',
+      dayColorBorder: dayColorsFilledObj || '#b0b0b0'
     };
   }
 }
@@ -5180,13 +5235,14 @@ function executePickImport(week, importOnlyStartedGames) {
     }
   }
   if (!importOnlyStartedGames) {
+    let survInclude = config.survivorInclude && week >= config.survivorStartWeek;
+    const elimInclude = config.eliminatorInclude && week >= config.eliminatorStartWeek;
     // --- 5. Populate Survivor and Eliminator Sheets ---
-    if (config.survivorInclude && week >= config.survivorStartWeek) {
-      populateSurvElimSheet(ss, parsedPicks, memberData, config, formsData[week]?.gamePlan, week, 'survivor');
-    }
-    if (config.eliminatorInclude && week >= config.eliminatorStartWeek) {
-      populateSurvElimSheet(ss, parsedPicks, memberData, config, formsData[week]?.gamePlan, week, 'eliminator');
-    }
+    if (survInclude) populateSurvElimSheet(ss, parsedPicks, memberData, config, formsData[week]?.gamePlan, week, 'survivor');
+    if (elimInclude) populateSurvElimSheet(ss, parsedPicks, memberData, config, formsData[week]?.gamePlan, week, 'eliminator');
+    // Record picks from applicable survivor/eliminator to the JSON members object
+    if (survInlcude || elimInclude) recordSurvElimResponses(parsedPicks, memberData, week, survInclude, elimInclude);
+
   } else {
     const title = ((config.survivorInclude && week >= config.survivorStartWeek) && (config.eliminatorInclude && week >= config.eliminatorStartWeek)) ? `NO SURVIVOR/ELMINATOR YET` : (config.survivorInclude && week >= config.survivorStartWeek) ? `NO SURVIVOR YET` : `NO ELIMINATOR YET`;
     const notification = ((config.survivorInclude && week >= config.survivorStartWeek) && (config.eliminatorInclude && week >= config.eliminatorStartWeek)) ?
@@ -5213,6 +5269,99 @@ function executePickImport(week, importOnlyStartedGames) {
   saveProperties('forms', formsData);
 
   return { success: true, message: `✅ Picks for week ${week} have been successfully imported!` };
+}
+
+/**
+ * Updates the memberData object with Survivor and Eliminator picks for a specific week
+ * and saves the updated object to Document Properties.
+ * 
+ * @param {Object} parsedPicks - The object containing picks (keyed by memberId).
+ * @param {Object} memberData - The master members object.
+ * @param {number|string} week - The current NFL week number.
+ */
+function recordSurvElimResponses(parsedPicks, memberData, week, survInclude, elimInclude) {
+  // Safeguards for testing or absent entries
+  const verbose = !parsedPicks || !memberData || !week;
+  week = week || 1;
+  memberData = memberData || JSON.parse(PropertiesService.getDocumentProperties().getProperty('members'));
+  parsedPicks = parsedPicks || parseAllPicksFromSheet(getDatabaseSheet().getSheetByName(`WK${week}`),memberData)
+  const weekIdx = parseInt(week) - 1; // Convert Week 1 to Index 0
+  let updateCount = 0;
+
+  if (verbose) {
+    Logger.log(`🧾 Verbose Mode: Displaying Week ${week} Responses:`);
+    memberData.memberOrder.forEach(id => {
+      const member = memberData.members[id];
+      const picks = parsedPicks[id]; // Matches by the ID key (e.g., id_8VS4MCM966)
+
+      if (picks) {
+        const s = picks.survivor || "---";
+        const e = picks.eliminator || "---";
+        if (verbose || (survInclude && elimInclude)) {
+          Logger.log(`👤 ${member.name}: [Survivor: ${s}] [Eliminator: ${e}]`);
+        } else if (survInclude) {
+          Logger.log(`👤 ${member.name}: [Survivor: ${s}]`);
+        } else {
+          Logger.log(`👤 ${member.name}: [Eliminator: ${e}]`);
+        }
+      } else {
+        // Optional: Log if a member didn't submit anything at all
+        Logger.log(`👤 ${member.name}: No response received.`);
+      }
+    });
+  }
+
+  try {
+    // 1. Iterate through every member present in the current picks batch
+    for (const memberId in parsedPicks) {
+      const member = memberData.members[memberId];
+      
+      // Skip if the member doesn't exist in our master record
+      if (!member) {
+        Logger.log(`⚠️ Warning: Member ID ${memberId} found in picks but not in master member list.`);
+        continue;
+      }
+
+      const picks = parsedPicks[memberId];
+
+      // 2. Handle Survivor Pick (sP)
+      if (picks.survivor) {
+        if (!member.sP) member.sP = [];
+        // Fill gaps with null if necessary
+        while (member.sP.length < weekIdx) {
+          member.sP.push(null);
+        }
+        member.sP[weekIdx] = picks.survivor;
+      }
+
+      // 3. Handle Eliminator Pick (eP)
+      if (picks.eliminator) {
+        if (!member.eP) member.eP = [];
+        // Fill gaps with null if necessary
+        while (member.eP.length < weekIdx) {
+          member.eP.push(null);
+        }
+        member.eP[weekIdx] = picks.eliminator;
+      }
+
+      updateCount++;
+    }
+
+    // 4. Save the modified object back to PropertiesService
+    saveProperties('members', memberData);
+    
+    if (verbose) {
+      Logger.log(`🔎 Displaying document properties...`)
+      viewDocumentProperties;
+    }
+
+    Logger.log(`✅ Successfully logged contest picks for ${updateCount} members for Week ${week}.`);
+    return true;
+
+  } catch (err) {
+    Logger.log(`❌ Error in logWeeklyContestPicks: ${err.stack}`);
+    return false;
+  }
 }
 
 
@@ -5405,7 +5554,7 @@ function parseAllPicksFromSheet(sheet, memberData) {
       survivor: null,
       eliminator: null,
       tiebreaker: null,
-      comments: '' // Default comments to an empty string as requested
+      comments: ''
     };
 
     headers.forEach((header, index) => {
@@ -5425,14 +5574,12 @@ function parseAllPicksFromSheet(sheet, memberData) {
         } else if (eliminatorRegex.test(question) && answer) {
           userPicks.eliminator = answer;
         } else if (tiebreakerRegex.test(question)) {
-          userPicks.tiebreaker = answer; // Tiebreaker is a number, not a team
+          userPicks.tiebreaker = answer;
         } else if (pickemRegex.test(question) && answer) {
-          // The header is the matchup, the value is the cleaned team abbreviation
           userPicks.pickem[question] = answer;
         }
       }
     });
-
     weeklyPicksCache[memberId] = userPicks;
   });
 
@@ -5521,15 +5668,35 @@ function populateSurvElimSheet(ss, parsedPicks, memberData, config, gamePlan, we
     let writeArray = Array(dataRange.getNumRows()).fill(['']);
     for (const memberId in parsedPicks) {
       writeArray[memberIdToRowMap[memberId]] = [parsedPicks[memberId]?.[contestType]] || [''];
+      
+      // Update the memberData Object
+      if (memberData.members[memberId] && pickValue) {
+        let member = memberData.members[memberId];
+        
+        // Ensure the array is initialized
+        if (!member[pickKey]) { member[pickKey] = []; }
+        
+        // Pad array with nulls if there are missing weeks (prevents index errors)
+        while (member[pickKey].length < weekIdx) {
+          member[pickKey].push(null);
+        }
+        
+        // Record the pick at the correct week index
+        member[pickKey][weekIdx] = pickValue;
+      }
     }
+    // Write Picks to Sheet
     writeRange.setValues(writeArray);
+
+    // Save Updated Member Data
+    saveProperties('members', memberData);
     
-    const text = `Successfully populated ${sheetName} sheet for Week ${week}.`;
+    const text = `Successfully populated ${sheetName} sheet and updated member records for Week ${week}.`;
     Logger.log(`✅ ${text}`);
     ss.toast(text,`✅ ${sheetName} IMPORTED`);
     return true;
   } catch (err) {
-    const text = `❗ Failed to populate ${sheetName} sheet for Week ${week}.`;
+    const text = `❗ Failed to populate ${sheetName} sheet and member records for Week ${week}.`;
     Logger.log(text + '| ERROR: ' + err.stack);
     ss.toast(text,`${sheetName} PICK IMPORT FAILURE`);
   }
@@ -6604,6 +6771,25 @@ function viewDocumentProperties() {
   }
 }
 
+// VIEW RESPONSES - Shows all set variables within Google user properties
+// This is a back-end and unused script, these variables aren't isolated to the sheet/script but used by the form/sheet connection when triggering onSubmit calls
+function viewResponseJSON(week) {
+  week = week || 1
+  let docProps = PropertiesService.getDocumentProperties();
+  let formsData = JSON.parse(docProps.getProperty('forms')) || {};
+  const databaseSheet = getDatabaseSheet();
+  const responseSheet = databaseSheet.getSheetByName(`WK${week}`);
+  
+  // Parse the latest, de-duplicated picks from the response sheet
+  const memberData = JSON.parse(docProps.getProperty('members')) || {};
+  const parsedPicks = parseAllPicksFromSheet(responseSheet, memberData);
+  Logger.log(`Week ${week} Pick Responses:`);
+  for (let key in parsedPicks) {
+    Logger.log(key + ': ' + JSON.stringify(parsedPicks[key]));
+  }
+}
+
+  
 
 /**
  * A simple toast message helper.
@@ -6638,7 +6824,7 @@ function outcomesSheet(ss) {
       namedRange.remove();
     }
   });
-  sheet.setTabColor(dayColorsFilled[dayColorsFilled.length - 1]); // Your custom tab color
+  sheet.setTabColor(dayColorsFilled[dayColorsFilled.length - 1] || null); // Your custom tab color
 
   const data = ss.getRangeByName(LEAGUE)?.getValues() || fetchSchedule(ss);
   
@@ -6728,7 +6914,7 @@ function outcomesSheet(ss) {
       const marginCell = sheet.getRange(rowIndex, marginCol);
       const awayTeam = game[6];
       const homeTeam = game[7];
-      const dayIndex = game[2] + 3; // Numeric day used for gradient application (-3 is Thursday, 1 is Monday);
+      const dayIndex = game[2] + 4; // Numeric day used for gradient application (-4 is Wednesday, 1 is Monday);
       
       winnerCell.setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList([awayTeam, homeTeam, 'TIE'], true).setAllowInvalid(false).build());
       marginCell.setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(Array.from({ length: 46 }, (_, index) => index), true).build());
@@ -6743,7 +6929,7 @@ function outcomesSheet(ss) {
       const homeWinRule = SpreadsheetApp.newConditionalFormatRule()
         .whenTextEqualTo(homeTeam)
         .setBold(true)
-        .setBackground(dayColorsFilled[dayIndex])
+        .setBackground(dayColorsFilled[dayIndex] || null)
         .setRanges([winnerCell])
         .build();
       allConditionalFormatRules.push(homeWinRule);
@@ -6751,7 +6937,7 @@ function outcomesSheet(ss) {
       const awayWinRule = SpreadsheetApp.newConditionalFormatRule()
         .whenTextEqualTo(awayTeam)
         .setBold(false) // Home team is bold, away is not
-        .setBackground(dayColorsFilled[dayIndex])
+        .setBackground(dayColorsFilled[dayIndex] || null)
         .setRanges([winnerCell])
         .build();
       allConditionalFormatRules.push(awayWinRule);
@@ -6759,8 +6945,8 @@ function outcomesSheet(ss) {
       // [BONUS] Custom color scale for the margin, using the day's colors.
       // It will scale from the lighter day color to the darker filled day color.
       const marginColorScaleRule = SpreadsheetApp.newConditionalFormatRule()
-        .setGradientMinpointWithValue(dayColors[dayIndex], SpreadsheetApp.InterpolationType.NUMBER, '1')
-        .setGradientMaxpointWithValue(dayColorsFilled[dayIndex], SpreadsheetApp.InterpolationType.NUMBER, '10')
+        .setGradientMinpointWithValue(dayColors[dayIndex] || '#e0e0e0', SpreadsheetApp.InterpolationType.NUMBER, '1')
+        .setGradientMaxpointWithValue(dayColorsFilled[dayIndex] || '#b0b0b0', SpreadsheetApp.InterpolationType.NUMBER, '10')
         .setRanges([marginCell])
         .build();
       allConditionalFormatRules.push(marginColorScaleRule);
@@ -6786,8 +6972,7 @@ function outcomesSheet(ss) {
   allConditionalFormatRules.unshift(zeroRule);
   sheet.setConditionalFormatRules(allConditionalFormatRules);
 
-  
-  Logger.log(`Completed setting up ${LEAGUE} OUTCOMES sheet`);
+  Logger.log(`✅ Completed setting up ${LEAGUE} OUTCOMES sheet`);
 }
 
 
@@ -6908,27 +7093,27 @@ function outcomesSheetUpdate(ss,week,config,gamePlan) {
     if (contests[a].dayName != contests[a+1]?.dayName) {
       // Matchup column color (static) and conditional formatting
       matchupCell = sheet.getRange(start,matchups.getColumn(),end-start,1)
-      matchupCell.setBackground(dayColorsObj[contests[a].dayName]);
+      matchupCell.setBackground(dayColorsObj[contests[a].dayName] || '#e0e0e0');
       let homeWin = SpreadsheetApp.newConditionalFormatRule()
         .whenFormulaSatisfied(`=iferror(match(indirect("R[0]C[0]",false),indirect("${LEAGUE}_HOME_${week}"),0)>=0,false)`)
-        .setBackground(dayColorsFilledObj[contests[a].dayName])
+        .setBackground(dayColorsFilledObj[contests[a].dayName] || '#b0b0b0')
         .setBold(true)
         .setRanges([matchupCell])
         .build();
       newRules.push(homeWin);
       let awayWin = SpreadsheetApp.newConditionalFormatRule()
         .whenCellNotEmpty()
-        .setBackground(dayColorsFilledObj[contests[a].dayName])
+        .setBackground(dayColorsFilledObj[contests[a].dayName] || '#b0b0b0')
         .setRanges([matchupCell])
         .build();
       newRules.push(awayWin);
 
       // Margin column color (static) and conditional formatting
       marginCell = sheet.getRange(start,margins.getColumn(),end-start,1);
-      marginCell.setBackground(dayColorsObj[contests[a].dayName]);
+      marginCell.setBackground(dayColorsObj[contests[a].dayName] || '#e0e0e0');
       const marginColorScaleRule = SpreadsheetApp.newConditionalFormatRule()
-        .setGradientMinpointWithValue(dayColorsObj[contests[a].dayName], SpreadsheetApp.InterpolationType.NUMBER, '1')
-        .setGradientMaxpointWithValue(dayColorsFilledObj[contests[a].dayName], SpreadsheetApp.InterpolationType.NUMBER, '10')
+        .setGradientMinpointWithValue(dayColorsObj[contests[a].dayName] || '#e0e0e0', SpreadsheetApp.InterpolationType.NUMBER, '1')
+        .setGradientMaxpointWithValue(dayColorsFilledObj[contests[a].dayName] || '#b0b0b0', SpreadsheetApp.InterpolationType.NUMBER, '10')
         .setRanges([marginCell])
         .build();
       newRules.push(marginColorScaleRule);
@@ -8230,12 +8415,12 @@ function weeklySheet(ss,week,config,forms,memberData,displayEmpty,rebuild) {
     let writeCell = sheet.getRange(subHeaderRow,firstMatchupCol+(matchups-1));
     let rule = SpreadsheetApp.newConditionalFormatRule()
       .whenFormulaSatisfied(`=not(isblank(indirect("R${outcomeRow}C[0]",false)))`)
-      .setBackground(dayColorsFilledObj[day])
+      .setBackground(dayColorsFilledObj[day] || '#b0b0b0')
       .setBold(true)
       .setRanges([writeCell]);
     rule.build();
     formatRules.push(rule);
-    subHeaderRowColors.push(dayColorsObj[day]);
+    subHeaderRowColors.push(dayColorsObj[day] || '#e0e0e0');
     subHeaders.push(contests[a].dayName);
     const spread = contests[a].spread || '';
     spreads.push(spread);
