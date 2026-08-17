@@ -1148,49 +1148,51 @@ function setupSheets() {
  * @returns {Object} A success or error message object to be sent back to the client.
  */
 function processReviveMember(data) {
-  const { memberId, gameType, week } = data;
+  // Support both HTML panels: one uses .week, one uses .startWeek
+  const memberId = data.memberId;
+  const gameType = data.gameType;
+  const weekNum = data.week || data.startWeek;
   
-  // --- 1. Validation ---
-  if (!memberId || !gameType) {
-    throw new Error("Invalid request. Missing member ID or game type.");
-  }
-  if (gameType !== 'survivor' && gameType !== 'eliminator') {
-    throw new Error(`Invalid game type: "${gameType}".`);
+  if (!memberId || !gameType || !week) {
+    throw new Error("Invalid request. Missing ID, Type, or Week.");
   }
 
   try {
-    // --- 2. Fetch current data (Unchanged) ---
-    const docProps = PropertiesService.getDocumentProperties();
-    const memberData = JSON.parse(docProps.getProperty('members')) || {};
+    const memberData = getProperties('members');
     const member = memberData.members[memberId];
-    const config = JSON.parse(docProps.getProperty('configuration')) || {};
+    const config = getProperties('configuration');
 
-    // --- 3. Modify the data object (Now uses the 'lives array') ---
     const livesKey = gameType === 'survivor' ? 'sL' : 'eL';
     const revivesKey = gameType === 'survivor' ? 'sR' : 'eR';
-    const eliminatedKey = `${gameType.substring(0,1)}O`;
-    const startingLives = config[`${gameType}Lives`] || 1;
+    const eliminatedKey = `${gameType.substring(0,1).toLowerCase()}O`; // sO or eO
+    const startingLives = parseInt(config[`${gameType}Lives`], 10) || 1;
     
-    // a) Reset the lives for the current week to the configured amount.
     if (!member[livesKey]) member[livesKey] = [];
-    member[livesKey][week - 1] = parseInt(startingLives, 10);
-    
-    // b) Increment the revives used counter.
+
+    // --- CRITICAL UPDATE ---
+    // Update the week of revival to full lives
+    member[livesKey][week - 1] = startingLives;
+
+    // IMPORTANT: If they were eliminated previously, they might have 0s 
+    // in subsequent weeks of the array. We need to clear those out.
+    for (let i = week; i < member[livesKey].length; i++) {
+      member[livesKey][i] = startingLives;
+    }
+
+    // Increment revives count
     member[revivesKey] = (member[revivesKey] || 0) + 1;
     
-    // c) Clear the elimination week, as they are now back in.
+    // Remove the elimination week marker (sO/eO)
     delete member[eliminatedKey];
     
-     Logger.log(`Revived ${member.name} for ${gameType} in Week ${week}.`);
-
-    // --- 4. Save the modified object back to properties (Unchanged) ---
+    // Save to Document Properties
     saveProperties('members', memberData);
 
-    // --- 5. [THE FIX] Return the ENTIRE updated memberData object ---
+    // This return matches what your HTML success handlers expect
     return { 
       success: true, 
-      message: `${member.name} has been successfully revived!`,
-      updatedMemberData: memberData // Send the fresh data back
+      message: `🌅 ${member.name} has been revived for Week ${weekNum}!`,
+      updatedMemberData: memberData 
     };
 
   } catch (err) {
@@ -1532,6 +1534,91 @@ function getSurvElimManagerData() {
       config: config,
       leagueData: LEAGUE_DATA
     };
+  }
+}
+
+/**
+ * Saves the modified member data from the UI panel to Properties and updates the Sheets.
+ * @param {Object} updatedMemberData The full memberData object from the HTML panel.
+ */
+function saveSurvElimData(updatedMemberData) {
+  try {
+    // 1. Save the JSON object to Document Properties
+    saveProperties('members', updatedMemberData);
+
+    // 2. Update the physical sheets (Survivor/Eliminator) so they match the new data
+    // We pass null for 'week' to indicate a full refresh of all weeks, 
+    // or you can just sync the current view.
+    syncSurvElimDataToSheet(updatedMemberData);
+
+    Logger.log(`✅ Member records updated/modified successfully`)
+    return {
+      success: true,
+      message: `✅ Member records updated/modified successfully`
+    };
+  } catch (err) {
+    Logger.log(`⚠️ Error in updating member suvivor/eliminator data: ${err.stack}`);
+    throw new Error("⚠️ Failed to save data:\n" + err.message);
+  }
+}
+
+/**
+ * Refreshes the Spreadsheet picks and lives based on the current JSON data.
+ * Used after manual edits in the Manager Panel.
+ */
+function syncSurvElimDataToSheet(memberData) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const types = ['SURVIVOR', 'ELIMINATOR'];
+
+  types.forEach(sheetName => {
+    const sheet = ss.getSheetByName(sheetName);
+    if (!sheet) return;
+
+    const prefix = sheetName.charAt(0).toLowerCase(); // 's' or 'e'
+    const nameRange = ss.getRangeByName(`${sheetName}_NAMES`);
+    const namesOnSheet = nameRange.getValues().flat();
+    
+    // Map names to their IDs
+    const nameToId = {};
+    for (const id in memberData.members) {
+      nameToId[memberData.members[id].name.toLowerCase().trim()] = id;
+    }
+
+    namesOnSheet.forEach((name, index) => {
+      const memberId = nameToId[name.toString().toLowerCase().trim()];
+      if (memberId) {
+        const picks = memberData.members[memberId][prefix + 'P'] || [];
+        if (picks.length > 0) {
+          const rowIndex = index + nameRange.getRow();
+          // Write the whole row of picks starting at Column 5 (Week 1)
+          sheet.getRange(rowIndex, 5, 1, picks.length).setValues([picks]);
+        }
+      }
+    });
+  });
+}
+
+/**
+ * Called by the HTML Panel to handle a revival.
+ * Updates the data object and then refreshes the spreadsheet visuals.
+ */
+function recalculateAndReviveFromWeek(payload) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    
+    // 1. Run the data logic (Update JSON)
+    // processReviveMember handles the JSON and saveProperties
+    const result = processReviveMember(payload);
+    
+    // 2. Refresh the Spreadsheet Visuals
+    // We pass the updatedMemberData directly so updateSurvElimSheet doesn't have to re-fetch it
+    const config = getProperties('configuration');
+    updateSurvElimSheet(ss, config, result.updatedMemberData, payload.gameType);
+
+    return result; // Return success to HTML to hide loader and alert user
+  } catch (err) {
+    Logger.log(`Error in recalculateAndReviveFromWeek: ${err.stack}`);
+    throw new Error(err.message);
   }
 }
 
@@ -5241,7 +5328,7 @@ function executePickImport(week, importOnlyStartedGames) {
     if (survInclude) populateSurvElimSheet(ss, parsedPicks, memberData, config, formsData[week]?.gamePlan, week, 'survivor');
     if (elimInclude) populateSurvElimSheet(ss, parsedPicks, memberData, config, formsData[week]?.gamePlan, week, 'eliminator');
     // Record picks from applicable survivor/eliminator to the JSON members object
-    if (survInlcude || elimInclude) recordSurvElimResponses(parsedPicks, memberData, week, survInclude, elimInclude);
+    if (survInclude || elimInclude) recordSurvElimResponses(parsedPicks, memberData, week, survInclude, elimInclude);
 
   } else {
     const title = ((config.survivorInclude && week >= config.survivorStartWeek) && (config.eliminatorInclude && week >= config.eliminatorStartWeek)) ? `NO SURVIVOR/ELMINATOR YET` : (config.survivorInclude && week >= config.survivorStartWeek) ? `NO SURVIVOR YET` : `NO ELIMINATOR YET`;
@@ -5622,75 +5709,60 @@ function getInvalidPickMatchups() {
  * @param {string} contestType The type of sheet to populate: 'survivor' or 'eliminator'.
  */
 function populateSurvElimSheet(ss, parsedPicks, memberData, config, gamePlan, week, contestType) {
-
   const sheetName = contestType.toUpperCase();
   try {
     let sheet = ss.getSheetByName(sheetName);
-
-    // If the sheet doesn't exist, create it first.
-    if (!sheet) {
-      sheet = survElimSheet(ss, config, memberData, contestType);
-    }
+    if (!sheet) sheet = survElimSheet(ss, config, memberData, contestType);
 
     const isAts = gamePlan[`${contestType}Ats`];
-    
-    // Widen the column for this week to accommodate spreads.
-    const weekColumn = parseInt(week) + 4;
-    if (isAts) { 
-      sheet.setColumnWidth(weekColumn, 68);
-    } else {
-      sheet.setColumnWidth(weekColumn, 42);
+    const weekColumn = parseInt(week) + 4; 
+    sheet.setColumnWidth(weekColumn, isAts ? 68 : 42);
+
+    // 1. Map Names to IDs
+    const nameToIdObject = {};
+    for (const id in memberData.members) {
+      const name = memberData.members[id].name;
+      if (name) nameToIdObject[name.toString().trim().toLowerCase()] = id;
     }
 
-    const nameToIdObject = {};
-    if (memberData && memberData.members) {
-      for (const id in memberData.members) {
-        const member = memberData.members[id];
-        if (member && member.name) {
-          // Use bracket notation to set key-value pairs
-          nameToIdObject[member.name.toString().trim().toLowerCase()] = id;
-        }
-      }
-    }
-    // 2. Now, create the final map we need by reading the sheet: { id -> rowIndex }
+    // 2. Map IDs to Sheet Rows
     const memberIdToRowMap = {};
-    ss.getRangeByName(`${sheetName}_NAMES`).getValues().flat().forEach((nameOnSheet, index) => {
-      // Find the official ID for the name on the sheet using our case-insensitive map.
-      const memberId = nameToIdObject[nameOnSheet.toString().trim().toLowerCase()];
-      if (memberId) {
-        // If we found a match, create the link between the ID and its row on the sheet.
-        memberIdToRowMap[memberId] = index; // +2 for 0-based index and header row
-      }
+    const namesOnSheet = ss.getRangeByName(`${sheetName}_NAMES`).getValues().flat();
+    namesOnSheet.forEach((name, index) => {
+      const memberId = nameToIdObject[name.toString().trim().toLowerCase()];
+      if (memberId) memberIdToRowMap[memberId] = index;
     });
-    // --- The rest of your function can now work reliably --
+
+    // 3. Define Logic Variables
+    const pickKey = (contestType === 'survivor') ? 'sP' : 'eP';
+    const weekIdx = parseInt(week) - 1;
     const dataRange = ss.getRangeByName(`${sheetName}_PICKS`);
-    const writeRange = sheet.getRange(2,weekColumn,dataRange.getNumRows(),1)
-    let writeArray = Array(dataRange.getNumRows()).fill(['']);
+    const totalRows = dataRange.getNumRows();
+    let writeArray = Array(totalRows).fill(['']);
+
+    // 4. Process Picks
     for (const memberId in parsedPicks) {
-      writeArray[memberIdToRowMap[memberId]] = [parsedPicks[memberId]?.[contestType]] || [''];
+      const rowIndex = memberIdToRowMap[memberId];
+      if (rowIndex === undefined) continue;
+
+      const pickValue = parsedPicks[memberId]?.[contestType];
+      writeArray[rowIndex] = [pickValue || ''];
       
-      // Update the memberData Object
+      // Update the memberData Object JSON
       if (memberData.members[memberId] && pickValue) {
         let member = memberData.members[memberId];
-        
-        // Ensure the array is initialized
-        if (!member[pickKey]) { member[pickKey] = []; }
-        
-        // Pad array with nulls if there are missing weeks (prevents index errors)
-        while (member[pickKey].length < weekIdx) {
-          member[pickKey].push(null);
-        }
-        
-        // Record the pick at the correct week index
+        if (!member[pickKey]) member[pickKey] = [];
+        while (member[pickKey].length < weekIdx) { member[pickKey].push(null); }
         member[pickKey][weekIdx] = pickValue;
       }
     }
-    // Write Picks to Sheet
-    writeRange.setValues(writeArray);
 
-    // Save Updated Member Data
+    // 5. Write to Sheet
+    sheet.getRange(2, weekColumn, totalRows, 1).setValues(writeArray);
+
+    // 6. Save the Object
     saveProperties('members', memberData);
-    
+
     const text = `Successfully populated ${sheetName} sheet and updated member records for Week ${week}.`;
     Logger.log(`✅ ${text}`);
     ss.toast(text,`✅ ${sheetName} IMPORTED`);
@@ -9122,7 +9194,7 @@ function weeklySheet(ss,week,config,forms,memberData,displayEmpty,rebuild) {
     .setHorizontalAlignment('center')
     .setFontSize(10)
     .setFontFamily("Montserrat");
-  sheet.getRange(subHeaderRow,2,1,subHeadersPriorLength)
+  sheet.getRange(subHeaderRow,2,1,subHeadersPriorLength - 1)
     .setFontSize(8)
     .setFontWeight('bold');
   sheet.getRange(subHeaderRow,subHeaders.indexOf('Chances')+1,1,2).mergeAcross();
