@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    /* Base styles */
+    body { font-family: 'Montserrat', Arial, sans-serif; padding: 0; margin: 0; background-color: #FFFFFF; }
+    h2 { margin: 0; color: #013369; font-size: 20px; }
+    label { font-weight: 500; font-size: 14px; }
+    select, input[type="number"] { padding: 8px; border-radius: 4px; border: 1px solid #ccc; font-size: 14px; }
+    .button-row { display: flex; gap: 8px; padding: 15px 20px; border-top: 1px solid #E8EAED; }
+    .btn { flex: 1; padding: 8px 14px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; font-weight: 600; }
+    .btn-primary { background-color: #013369; color: white; }
+    .btn-primary:hover { background-color: #2067b3; }
+    .btn-secondary { background-color: #D50A0A; color: white; }
+    .btn-secondary:hover { background-color: #ff3d3d; }
+    #loading-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(255, 255, 255, 0.85); display: flex; justify-content: center; align-items: center; z-index: 100; }
+    .spinner { border: 5px solid #f3f3f3; border-top: 5px solid #013369; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    .hidden { display: none !important; }
+
+    /* Header Layout Styles */
+    .header-container { padding: 15px 20px; display: flex; flex-direction: column; gap: 12px; border-bottom: 1px solid #ddd; }
+    .header-line { display: flex; align-items: center; justify-content: space-between; }
+    #member-line { justify-content: flex-start; gap: 15px; }
+    #member-lives-display { font-size: 20px; letter-spacing: 2px; display: flex; align-items: center; }
+    .eliminated-text { font-size: 13px; color: #D50A0A; font-weight: 600; margin-left: 10px; font-style: italic; }
+
+    /* Mode Buttons */
+    .mode-buttons-container { display: flex; gap: 8px; }
+    .mode-btn { padding: 6px 12px; font-size: 18px; font-weight: 600; background-color: #e9ecef; color: #6c757d; border: 1px solid #dee2e6; border-radius: 4px; cursor: pointer; transition: all 0.2s ease; }
+    .mode-btn.active { background-color: #013369; color: white; border-color: #013369; }
+
+    /* Info bar styles */
+    .info-bar { font-size: 13px; color: #555; background-color: #f8f9fa; padding: 10px; border-radius: 4px; border: 1px solid #e8eaed; width: 100%; text-align: center; }
+    .info-bar strong { color: #013369; }
+
+    /* Per-row Revive Button */
+    .revive-cell { text-align: center; }
+    .row-revive-btn { padding: 4px 8px; font-size: 12px; font-weight: 600; background-color: #013369; color: white; border: none; border-radius: 4px; cursor: pointer; }
+    .row-revive-btn:hover { background-color: #2067b3; }
+    .row-revive-btn:disabled { background-color: #adb5bd; cursor: not-allowed; }
+
+    /* Table Styles */
+    #data-table-container { max-height: 450px; overflow-y: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 10px 12px; font-size: 14px; border-bottom: 1px solid #ddd; }
+    th { background-color: #f2f2f2; font-weight: 600; position: sticky; top: 0; z-index: 10; text-align: center; }
+    tr:nth-child(even) { background-color: #f9f9f9; }
+    
+    .week-cell { font-weight: 600; color: #555; text-align: center; }
+    .pick-cell select { width: 100%; }
+    .result-cell { text-align: center; font-weight: bold; font-size: 18px; }
+    .lives-cell input { width: 60px; text-align: center; }
+
+    /* Disabled row for weeks before start week */
+    .disabled-row { background-color: #f0f0f0 !important; }
+    .disabled-row td, .disabled-row .week-cell { color: #999; }
+    .disabled-row select, .disabled-row input { background-color: #e9ecef; border-color: #ddd; cursor: not-allowed; }
+    .result-correct { background-color: #c7fcc7; color: #155724; }
+    .result-incorrect { background-color: #ffccd6; color: #721c24; }
+    .result-pending { background-color: #e2e3e5; color: #383d41; }
+  </style>
+</head>
+<body>
+  <div id="loading-overlay">
+    <div class="spinner"></div>
+  </div>
+
+  <div class="header-container">
+    <div class="header-line">
+      <h2 id="manager-title"></h2>
+      <div id="mode-buttons-container" class="mode-buttons-container"></div>
+    </div>
+    <div class="header-line">
+      <div id="info-bar" class="info-bar hidden"></div>
+    </div>
+    <div id="member-line" class="header-line">
+      <div class="control-group">
+        <label for="member-select">Member:</label>
+        <select id="member-select"></select>
+      </div>
+      <div id="member-lives-display"></div>
+    </div>
+  </div>
+
+  <div id="data-table-container"></div>
+
+  <div class="button-row">
+    <button type="button" class="btn btn-secondary" onclick="google.script.host.close()">Cancel</button>
+    <button type="button" class="btn btn-primary" onclick="handleSubmit()">Save Changes</button>
+  </div>
+
+  <script>
+    let fullData = {}, leagueData = {}, config = {};
+    let currentWeek = 1, currentMemberId = null, currentMode = 'survivor';
+
+    const loader = document.getElementById('loading-overlay');
+    function showLoader() { if (loader) loader.classList.remove('hidden'); }
+    function hideLoader() { if (loader) loader.classList.add('hidden'); }
+    
+    function createLivesString(remaining, total) {
+      remaining = Math.max(0, remaining);
+      total = Math.max(remaining, total);
+      return '<span>' + '🟢'.repeat(remaining) + '⚫'.repeat(total - remaining) + '</span>';
+    }
+    
+    document.addEventListener('DOMContentLoaded', function() {
+      google.script.run
+        .withSuccessHandler(initializePanel)
+        .withFailureHandler(handleError)
+        .getSurvElimManagerData();
+    });
+
+    function initializePanel(data) {
+      fullData = data.memberData;
+      leagueData = data.leagueData;
+      config = data.config;
+      currentWeek = data.config.currentWeek;
+      setupControls();
+      addEventListeners();
+      if (currentMemberId) updateAndRenderAll();
+      hideLoader();
+    }
+
+    function setupControls() {
+      const memberSelect = document.getElementById('member-select');
+      memberSelect.innerHTML = '';
+      fullData.memberOrder.forEach(memberId => {
+        memberSelect.appendChild(new Option(fullData.members[memberId].name, memberId));
+      });
+      currentMemberId = memberSelect.value;
+
+      const modeContainer = document.getElementById('mode-buttons-container');
+      const title = document.getElementById('manager-title');
+      const survivorEnabled = config.survivorInclude;
+      const eliminatorEnabled = config.eliminatorInclude;
+      modeContainer.innerHTML = '';
+
+      if (survivorEnabled && eliminatorEnabled) {
+        modeContainer.innerHTML = `
+          <button id="survivor-mode-btn" class="mode-btn">👑</button>
+          <button id="eliminator-mode-btn" class="mode-btn">💀</button>`;
+        document.getElementById(`${currentMode}-mode-btn`).classList.add('active');
+        title.textContent = currentMode.charAt(0).toUpperCase() + currentMode.slice(1);
+      } else if (survivorEnabled) {
+        currentMode = 'survivor';
+        title.innerHTML = '👑 Survivor';
+      } else if (eliminatorEnabled) {
+        currentMode = 'eliminator';
+        title.innerHTML = '💀 Eliminator';
+      } else {
+        document.getElementById('data-table-container').innerHTML = '<p style="text-align:center; padding: 20px;">Neither pool is active.</p>';
+        document.getElementById('info-bar').classList.add('hidden');
+      }
+    }
+
+    function addEventListeners() {
+      document.getElementById('member-select').addEventListener('change', (e) => {
+        currentMemberId = e.target.value;
+        updateAndRenderAll();
+      });
+
+      const survivorBtn = document.getElementById('survivor-mode-btn');
+      const eliminatorBtn = document.getElementById('eliminator-mode-btn');
+      if (survivorBtn && eliminatorBtn) {
+        survivorBtn.addEventListener('click', () => switchMode('survivor'));
+        eliminatorBtn.addEventListener('click', () => switchMode('eliminator'));
+      }
+
+      document.getElementById('data-table-container').addEventListener('change', handleTableChange);
+      document.getElementById('data-table-container').addEventListener('click', handleTableClick);
+    }
+    
+    function updateAndRenderAll() {
+      updateHeaderInfo();
+      renderMemberDataTable();
+    }
+
+    function updateHeaderInfo() {
+      const infoBar = document.getElementById('info-bar');
+      const livesDisplay = document.getElementById('member-lives-display');
+      if (!currentMemberId) {
+        infoBar.classList.add('hidden');
+        livesDisplay.innerHTML = '';
+        return;
+      }
+
+      // FIX: Always get the latest, correct member object from the master data source
+      const member = fullData.members[currentMemberId]; 
+      const prefix = currentMode.slice(0, 1);
+      const totalLives = config[currentMode + 'Lives'] || 1;
+      const startWeek = config[currentMode + 'StartWeek'] || 1;
+      const livesTerm = parseInt(totalLives) === 1 ? 'life' : 'lives';
+      
+      infoBar.innerHTML = `This pool started in <strong>Week ${startWeek}</strong> with <strong>${totalLives}</strong> total ${livesTerm}.`;
+      infoBar.classList.remove('hidden');
+
+      const livesArray = member[prefix + 'L'] || [];
+      const currentLives = livesArray[currentWeek - 1] !== undefined && livesArray[currentWeek - 1] !== null ? livesArray[currentWeek - 1] : totalLives;
+      
+      let livesHtml = createLivesString(currentLives, totalLives);
+      
+      if (currentLives <= 0) {
+        let eliminationWeek = -1;
+        // Find the first week index where lives became 0
+        for (let i = 0; i < livesArray.length; i++) {
+          if (livesArray[i] === 0) {
+            eliminationWeek = i + 1;
+            break;
+          }
+        }
+        if (eliminationWeek !== -1) {
+          livesHtml += `<span class="eliminated-text">Eliminated in Week ${eliminationWeek}</span>`;
+        }
+      }
+      livesDisplay.innerHTML = livesHtml;
+    }
+
+    function renderMemberDataTable() {
+      const container = document.getElementById('data-table-container');
+      if (!currentMemberId) {
+        container.innerHTML = '';
+        return;
+      }
+      
+      const member = fullData.members[currentMemberId];
+      const prefix = currentMode.slice(0, 1);
+      const startWeek = config[currentMode + 'StartWeek'] || 1;
+      
+      const picks = member[prefix + 'P'] || [];
+      const evaluations = member[prefix + 'E'] || [];
+      const lives = member[prefix + 'L'] || [];
+      const numWeeks = Math.max(18, picks.length, evaluations.length, lives.length);
+      
+      let tableHtml = `<table><thead><tr><th>Week</th><th>Pick</th><th>Result</th><th>Lives</th><th>Action</th></tr></thead><tbody>`;
+      const allTeams = Object.keys(leagueData).sort();
+      
+      for (let i = 0; i < numWeeks; i++) {
+        const weekNum = i + 1;
+        const currentPick = picks[i] || null;
+        const isBeforeStart = weekNum < startWeek;
+        const rowClass = isBeforeStart ? 'disabled-row' : '';
+        const disabledAttr = isBeforeStart ? 'disabled' : '';
+
+        const picksMadeInPriorWeeks = picks.slice(startWeek - 1, i);
+        const availableTeams = allTeams.filter(team => !picksMadeInPriorWeeks.includes(team));
+        
+        let optionsHtml = '<option value="">-- No Pick --</option>'; // Changed for clarity
+        if (currentPick && !availableTeams.includes(currentPick)) availableTeams.unshift(currentPick);
+        availableTeams.forEach(teamAbbr => {
+          const teamInfo = leagueData[teamAbbr] || {};
+          const emoji = config.hideEmojis ? '' : (teamInfo.mascot || '🏈');
+          optionsHtml += `<option value="${teamAbbr}" ${teamAbbr === currentPick ? 'selected' : ''}>${emoji} ${teamAbbr}</option>`;
+        });
+        
+        const evaluation = evaluations[i];
+        let resultClass = 'result-pending', resultText = '❔';
+        if (evaluation === true) { resultClass = 'result-correct'; resultText = '✔️'; } 
+        else if (evaluation === false) { resultClass = 'result-incorrect'; resultText = '❌'; }
+
+        const livesValue = (lives[i] !== undefined && lives[i] !== null) ? lives[i] : '';
+        const reviveButtonHtml = `<button class="row-revive-btn" data-week-num="${weekNum}" ${disabledAttr}>Revive</button>`;
+        
+        tableHtml += `
+          <tr class="week-row ${rowClass}" data-week-index="${i}">
+            <td class="week-cell">${weekNum}</td>
+            <td class="pick-cell"><select data-type="pick" ${disabledAttr}>${optionsHtml}</select></td>
+            <td class="result-cell ${resultClass}">${resultText}</td>
+            <td class="lives-cell"><input type="number" value="${livesValue}" data-type="lives" min="0" ${disabledAttr}></td>
+            <td class="revive-cell">${reviveButtonHtml}</td>
+          </tr>`;
+      }
+      
+      tableHtml += '</tbody></table>';
+      container.innerHTML = tableHtml;
+    }
+
+    function switchMode(newMode) {
+      if (currentMode === newMode) return;
+      currentMode = newMode;
+      document.getElementById('survivor-mode-btn').classList.toggle('active', newMode === 'survivor');
+      document.getElementById('eliminator-mode-btn').classList.toggle('active', newMode === 'eliminator');
+      document.getElementById('manager-title').textContent = newMode.charAt(0).toUpperCase() + newMode.slice(1);
+      updateAndRenderAll();
+    }
+    
+    function handleTableClick(e) {
+      if (e.target.classList.contains('row-revive-btn')) {
+        const weekNum = parseInt(e.target.dataset.weekNum, 10);
+        handleRowReviveClick(weekNum);
+      }
+    }
+
+    function handleRowReviveClick(weekNum) {
+      const memberName = fullData.members[currentMemberId]?.name || 'this member';
+      const confirmed = confirm(`Are you sure you want to reset and recalculate lives for ${memberName} starting from Week ${weekNum}?`);
+      if (confirmed) {
+        showLoader();
+        google.script.run
+          .withSuccessHandler(onReviveSuccess)
+          .withFailureHandler(handleError)
+          .recalculateAndReviveFromWeek({
+            memberId: currentMemberId,
+            gameType: currentMode,
+            startWeek: weekNum
+          });
+      }
+    }
+
+    function handleTableChange(e) {
+      const target = e.target;
+      const row = target.closest('.week-row');
+      if (!row) return;
+
+      const weekIndex = parseInt(row.dataset.weekIndex, 10);
+      const member = fullData.members[currentMemberId];
+      const prefix = currentMode.slice(0, 1);
+      const dataType = target.dataset.type;
+
+      if (!member[prefix + 'P']) member[prefix + 'P'] = [];
+      if (!member[prefix + 'L']) member[prefix + 'L'] = [];
+
+      if (dataType === 'pick') {
+        member[prefix + 'P'][weekIndex] = target.value;
+      } else if (dataType === 'lives') {
+        member[prefix + 'L'][weekIndex] = target.value === '' ? null : parseInt(target.value, 10);
+      }
+    }
+
+    function handleSubmit() {
+      showLoader();
+      google.script.run
+        .withSuccessHandler(onSubmitSuccess)
+        .withFailureHandler(handleError)
+        .saveSurvElimData(fullData);
+    }
+
+    function onReviveSuccess(response) {
+      alert(response.message);
+      fullData = response.updatedMemberData;
+      updateAndRenderAll();
+      hideLoader();
+    }
+
+    function onSubmitSuccess(response) {
+      hideLoader();
+      alert(response.message || 'Changes saved successfully!');
+      google.script.host.close();
+    }
+    
+    function handleError(error) {
+      hideLoader();
+      console.error('An error occurred:', error);
+      alert('Error: ' + (error.message || 'An unknown error occurred. Please try again.'));
+    }
+  </script>
+</body>
+</html>
