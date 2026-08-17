@@ -5780,25 +5780,26 @@ function populateSurvElimSheet(ss, parsedPicks, memberData, config, gamePlan, we
  * data for all members after an outcome has been processed.
  *
  * @param {Sheet} ss The active Spreadsheet object.
+ * @param {config} is the configuration object from document properties
+ * @param {memberData} is the 'members' document property object
  * @param {string} contestType The type of sheet to update: 'survivor' or 'eliminator'.
  */
 function updateSurvElimSheet(ss, config, memberData, contestType) {
-  contestType = contestType.toLowerCase();
+  contestType = contestType.toLowerCase(); // 'survivor' or 'eliminator'
   
-  // 1. Get the properties if needed
   config = config || (JSON.parse(PropertiesService.getDocumentProperties().getProperty('configuration')) || {});
   memberData = memberData || (JSON.parse(PropertiesService.getDocumentProperties().getProperty('members')) || {});
 
   const sheetName = contestType.toUpperCase();
-  const sheet = ss.getSheetByName(sheetName);
+  let sheet = ss.getSheetByName(sheetName);
+  
   if (!sheet) {
     const text = `❗ '${sheetName}' sheet not found, creating it now...`;
-    Logger.log(text);
-    ss.alert(text,`⭐ CREATING ${contestType.toUpperCase()} SHEET`);
-    sheet = survElimSheet(ss,null,null,contestType);
+    const ui = SpreadsheetApp.getUi();
+    ui.alert(`⭐ CREATING ${contestType.toUpperCase()} SHEET`, text, ui.ButtonSet.OK);
+    sheet = survElimSheet(ss, null, null, contestType);
   }
 
-  // 2. Get the existing named ranges. This is much faster than rebuilding.
   const namesRange = ss.getRangeByName(`${sheetName}_NAMES`);
   const livesRange = ss.getRangeByName(`${sheetName}_LIVES`);
   const revivesRange = ss.getRangeByName(`${sheetName}_REVIVES`);
@@ -5806,93 +5807,116 @@ function updateSurvElimSheet(ss, config, memberData, contestType) {
   const picksRange = ss.getRangeByName(`${sheetName}_PICKS`);
   
   if (!namesRange || !picksRange) {
-    Logger.log(`⚠️ Required named ranges for '${sheetName}' not found. Run the sheet builder.`);
+    Logger.log(`⚠️ Required named ranges for '${sheetName}' not found.`);
     return;
   }
 
   const memberNamesOnSheet = namesRange.getValues().flat();
+  const picksData = picksRange.getValues(); 
   
-  const picksData = picksRange.getValues(); // Get the full 2D array of picks
-  
-  // Create a map of name -> row index for fast lookups.
-  const nameToRowIndexMap = new Map(memberNamesOnSheet.map((name, index) => [name.toLowerCase(), index]));
-
-  // --- 3. Prepare new data arrays for writing ---
+  // Prepare Arrays for Batch Writing
   const newLivesData = [];
   const newRevivesData = [];
   const newEliminatedData = [];
-  let done = true;
-  let membersRemaining = memberNamesOnSheet.length;
+  const newEliminatedBackgrounds = [];
+  const newNameBackgrounds = [];
+  const newNameFontLines = [];
+  const newPickBackgrounds = []; 
+  const newPickFontLines = [];
+
   let poolLivesRemaining = 0;
   let totalRevives = 0;
-  // 4. Loop through the members AS THEY APPEAR ON THE SHEET.
-  memberNamesOnSheet.forEach(name => {
-    const member = Object.values(memberData.members).find(m => m.name.toLowerCase() === name.toLowerCase());
+  let membersRemaining = 0;
+
+  // FIX: Get the correct lives count from config using the full key (e.g. survivorLives)
+  const totalLivesConfig = parseInt(config[contestType + 'Lives'], 10) || 1;
+
+  memberNamesOnSheet.forEach((name, rowIndex) => {
+    const member = Object.values(memberData.members).find(m => m.name && m.name.toLowerCase() === name.toLowerCase());
     
     if (member) {
-      const livesKey = contestType === 'survivor' ? 'sL' : 'eL';
-      const revivesKey = contestType === 'survivor' ? 'sR' : 'eR';
-      const livesArray = member[livesKey] || [];
-      const currentLives = livesArray.length > 0 ? livesArray[livesArray.length - 1] : (config[`${contestType}Lives`] || 1);
-      const totalLives = parseInt(config[`${contestType}Lives`], 10) || 1;
-      if (done && currentLives > 0) done = false;
-      // a) Build the "Dots of Life" string.
-      const livesDots = totalLives > 1 ? '🟢'.repeat(currentLives) + '⚫'.repeat(Math.max(0, totalLives - currentLives)) : (currentLives > 0 ? '🟢' : '❌') ;
+      const prefix = contestType.substring(0,1).toLowerCase(); // 's' or 'e'
+      const livesArray = member[prefix + 'L'] || [];
+      const currentLives = livesArray.length > 0 ? livesArray[livesArray.length - 1] : totalLivesConfig;
+
+      // 1. Lives Dots Calculation
+      const livesDots = totalLivesConfig > 1 
+        ? '🟢'.repeat(currentLives) + '⚫'.repeat(Math.max(0, totalLivesConfig - currentLives)) 
+        : (currentLives > 0 ? '🟢' : '❌');
       newLivesData.push([livesDots]);
       poolLivesRemaining += currentLives;
-      // b) Get the revives count.
-      newRevivesData.push([member[revivesKey] || 0]);
-      totalRevives += member[revivesKey];
-      // c) Get the elimination week.
-      const elimWeek = member[`${contestType.toLowerCase().substring(0,1)}O`];
-      newEliminatedData.push([elimWeek ? `Week ${elimWeek}` : '']);
 
-      // d) Update the pick colors for this member.
-      const rowIndex = nameToRowIndexMap.get(name.toLowerCase());
-      const evalKey = contestType === 'survivor' ? 'sE' : 'eE';
-      const evals = member[evalKey] || [];
-      evals.forEach((isCorrect, weekIndex) => {
-        const colIndex = weekIndex; // Assuming week columns start right after the fixed columns
-        if (picksData[rowIndex][colIndex] !== '') {
-          const cell = picksRange.getCell(rowIndex + 1, colIndex + 1);
-          if (isCorrect === true) {
-            cell.setBackground('#c7fcc7').setFontLine(null);
-          } else if (isCorrect === false) {
-            cell.setBackground('#ffccd6').setFontLine('line-through');
-          }
-        }
-      });
-      const nameCell = namesRange.getCell(rowIndex + 1, namesRange.getColumn());
-      if (currentLives == 0) {
-        nameCell.setBackground('#ffccd6').setFontLine('line-through');
-        membersRemaining--;
+      // 2. Revives & Elimination Status
+      newRevivesData.push([member[prefix + 'R'] || 0]);
+      totalRevives += (member[prefix + 'R'] || 0);
+      const elimWeek = member[prefix + 'O'];
+      newEliminatedData.push([elimWeek ? `OUT [WK${elimWeek}]` : 'IN']);
+      newEliminatedBackgrounds.push([elimWeek ? '#ffccd6' : '#c7fcc7']);
+
+      // 3. Name Formatting
+      if (currentLives === 0) {
+        newNameBackgrounds.push(['#ffccd6']); 
+        newNameFontLines.push(['line-through']);
       } else {
-        nameCell.setBackground('#c7fcc7').setFontLine(null);
+        newNameBackgrounds.push(['#c7fcc7']); 
+        newNameFontLines.push(['none']);
+        membersRemaining++;
       }
 
+      // 4. Pick Grid Formatting
+      const evals = member[prefix + 'E'] || [];
+      const rowPickColors = [];
+      const rowPickFonts = [];
+
+      for (let colIndex = 0; colIndex < picksData[0].length; colIndex++) {
+        const pickOnSheet = picksData[rowIndex][colIndex];
+        const isCorrect = evals[colIndex];
+
+        if (!pickOnSheet || pickOnSheet.toString().trim() === "") {
+          rowPickColors.push(null); 
+          rowPickFonts.push('none');
+        } else if (isCorrect === true) {
+          rowPickColors.push('#c7fcc7'); 
+          rowPickFonts.push('none');
+        } else if (isCorrect === false) {
+          rowPickColors.push('#ffccd6'); 
+          rowPickFonts.push('line-through'); 
+        } else {
+          rowPickColors.push('#fffdcc'); 
+          rowPickFonts.push('none');
+        }
+      }
+      newPickBackgrounds.push(rowPickColors);
+      newPickFontLines.push(rowPickFonts);
+
     } else {
-      // If a member on the sheet isn't in our data, push blank values.
       newLivesData.push(['']);
       newRevivesData.push(['']);
       newEliminatedData.push(['']);
+      newNameBackgrounds.push([null]);
+      newNameFontLines.push(['none']);
+      newPickBackgrounds.push(Array(picksData[0].length).fill(null));
+      newPickFontLines.push(Array(picksData[0].length).fill('none'));
     }
   });
 
-  // Set final row info
+  // EXECUTE BATCH UPDATES
+  livesRange.setValues(newLivesData);
+  revivesRange.setValues(newRevivesData);
+  eliminatedRange.setValues(newEliminatedData);
+  eliminatedRange.setBackgrounds(newEliminatedBackgrounds);
+  namesRange.setBackgrounds(newNameBackgrounds);
+  namesRange.setFontLines(newNameFontLines);
+  picksRange.setBackgrounds(newPickBackgrounds);
+  picksRange.setFontLines(newPickFontLines);
+
+  // Update Totals
   sheet.getRange(livesRange.getLastRow() + 1, livesRange.getColumn()).setValue(poolLivesRemaining);
   sheet.getRange(revivesRange.getLastRow() + 1, revivesRange.getColumn()).setValue(totalRevives);
   sheet.getRange(eliminatedRange.getLastRow() + 1, eliminatedRange.getColumn()).setValue(membersRemaining);
 
-  // --- 5. Write the updated data to the sheet in a few, efficient calls ---
-  livesRange.setValues(newLivesData);
-  revivesRange.setValues(newRevivesData);
-  eliminatedRange.setValues(newEliminatedData);
-
-  Logger.log(`✅ Successfully updated '${sheetName}' sheet.`);
+  Logger.log(`✅ Refreshed '${sheetName}' visuals. Dots based on ${totalLivesConfig} max lives.`);
 }
-
-
-
 
 /**
  * FUNCTIONS FOR TRIGGER AND UPDATE SURVIVOR/ELIMINATOR STATUS
@@ -5967,83 +5991,55 @@ function deleteOnEditTrigger() {
  * @param {Object} e The event object passed by the onEdit trigger.
  */
 function onEditTrigger(e) {
+  // 1. FAST GUARD: Is it a single cell?
   const range = e.range;
-  const ss = fetchSpreadsheet();
+  if (range.getNumRows() > 1 || range.getNumColumns() > 1) return;
+
+  // 2. FAST GUARD: Get basic info without API calls where possible
   const sheet = range.getSheet();
   const sheetName = sheet.getName();
+  const editedRow = range.getRow();
+  const editedCol = range.getColumn();
   
-  // --- Guard Clause 1: Was it a single cell edit? ---
-  if (range.getNumRows() > 1 || range.getNumColumns() > 1) {
-    return;
-  }
-
   let week = null;
-  
-  // --- Check 1: Was the edit on the main NFL_OUTCOMES sheet? ---
+
+  // --- Check 1: Main Outcomes Sheet ---
   if (sheetName === `${LEAGUE}_OUTCOMES`) {
-    const editedRow = range.getRow();
-    const editedCol = range.getColumn();
-    // Check if the edit is in the data area (below headers) and in an odd-numbered (Winner) column.
+    // Only care if editing row 4 or below, and if it's an outcome column
     if (editedRow > 3) {
       week = Math.ceil(editedCol / 2);
     }
-  }
-  // --- Check 2: Was the edit on a weekly sheet (e.g., "Week 3")? ---
+  } 
+  // --- Check 2: Weekly Sheet ---
   else if (sheetName.startsWith(weeklySheetPrefix)) {
-    // Now, use a regex to be more precise and extract the week number.
     const weekRegex = new RegExp(`^${weeklySheetPrefix}(\\d{1,2})$`);
     const match = sheetName.match(weekRegex);
-    
-    if (match && match[1]) { // 'match[1]' contains the captured digits
-      const potentialWeek = parseInt(match[1], 10);
-      
-      // Check if the edited cell is within one of the outcome named ranges
-      const outcomeRange = ss.getRangeByName(`${LEAGUE}_PICKEM_OUTCOMES_${potentialWeek}`);
-      const marginRange = ss.getRangeByName(`${LEAGUE}_PICKEM_OUTCOMES_${potentialWeek}_MARGIN`);
-      
-      // Check if the edited range is within either of these named ranges.
-      // This is a more robust check than comparing A1 notations.
-      if ( (outcomeRange && rangesOverlap(range, outcomeRange)) || (marginRange && rangesOverlap(range, marginRange)) ) {
-        week = potentialWeek;
-      }
+    if (match) {
+      week = parseInt(match[1], 10);
+      // We'll verify the specific range later inside the 'heavy lifter' to save time here
     }
   }
 
-  // --- Guard Clause 2: If we didn't identify a relevant week, exit. ---
-  if (week === null) {
-    return;
-  }
+  if (week === null) return;
 
-  // --- Guard Clause 3: Final check to see if a form was even created for this week. ---
-  const formsData = fetchProperties('forms');
-  if (!formsData[week]) {
-    Logger.log(`❌ Edit detected for Week ${week}, but no form exists. Aborting process.`);
-    return;
-  }
+  // 3. SEMI-FAST GUARD: Now we do ONE property fetch
+  const formsData = JSON.parse(PropertiesService.getDocumentProperties().getProperty('forms') || "{}");
+  if (!formsData[week]) return;
 
-  // --- If all checks pass, call the heavy lifter ---
-  Logger.log(`🔀 Change detected for Week ${week}. Processing scores...`);
+  // 4. CALL HEAVY LIFTER
+  // Use a SpreadsheetApp toast to let the user know background work is happening
+  e.source.toast(`Updating Week ${week} scores...`, "📊 Processing");
   
   try {
-    evalSurvElimStatus(week, sheetName);
-    ss.toast(`✅ Pool Statuses for Week ${week} have been updated!`);
+    // Pass the week and sheetName to your evaluator
+    evalSurvElimStatus(week); 
+    e.source.toast(`Week ${week} status updated!`, "✅ Success");
   } catch (err) {
-    ss.toast(`Error: ${err.message}`, '❌ Update Failed', 10);
-     Logger.log(`❌ Update Failed | Error: ${err.stack}`)
-    // Revert the change that triggered the error to signal failure to the user.
-    if (e.oldValue !== undefined) {
-      range.setValue(e.oldValue);
-    }
-  }
-  
-  function rangesOverlap(range1, range2) {
-    return range1.getSheet().getName() === range2.getSheet().getName() &&
-      range1.getLastRow() >= range2.getRow() &&
-      range2.getLastRow() >= range1.getRow() &&
-      range1.getLastColumn() >= range2.getColumn() &&
-      range2.getLastColumn() >= range1.getColumn();
+    Logger.log(`Error: ${err.stack}`);
+    e.source.toast("Update failed. Check logs.", "❌ Error");
   }
 }
+
 
 /**
  * Evaluates and updates Survivor and Eliminator statuses for a given week.
@@ -6052,75 +6048,73 @@ function onEditTrigger(e) {
  * @param {string} sourceSheetName The name of the sheet that triggered the edit.
  */
 function evalSurvElimStatus(week, sourceSheetName) {
-  const ss = fetchSpreadsheet();
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
   const docProps = PropertiesService.getDocumentProperties();
+  
+  // FIX 1: Load 'configuration' into config, NOT 'members'
   const config = JSON.parse(docProps.getProperty('configuration')) || {};
-  let memberData = JSON.parse(docProps.getProperty('members')) || {};
+  const memberData = JSON.parse(docProps.getProperty('members')) || {};
   const formsData = JSON.parse(docProps.getProperty('forms')) || {};
   
   const weeklySheetName = `${weeklySheetPrefix}${week}`;
   const weeklySheet = ss.getSheetByName(weeklySheetName);
 
-  // --- Step 1: Sync Outcome Data (if triggered from a weekly sheet) ---
+  // --- Step 1: Sync Outcome Data ---
   if (weeklySheet && sourceSheetName === weeklySheetName) {
     const weeklyOutcomesRange = ss.getRangeByName(`${LEAGUE}_PICKEM_OUTCOMES_${week}`);
-    const weeklyMarginsRange = ss.getRangeByName(`${LEAGUE}_PICKEM_OUTCOMES_${week}_MARGIN`);
     const masterOutcomesRange = ss.getRangeByName(`${LEAGUE}_OUTCOMES_${week}`);
-    const masterMarginsRange = ss.getRangeByName(`${LEAGUE}_OUTCOMES_${week}_MARGIN`);
-
-    // This is a simple, direct sync.
-    masterOutcomesRange.setValues(weeklyOutcomesRange.getValues()[0].map(value => [value]));
-    masterMarginsRange.setValues(weeklyMarginsRange.getValues()[0].map(value => [value]));
-    Logger.log(`🔄 Synced outcomes from '${weeklySheet.getName()}' to the master OUTCOMES sheet.`);
+    if (weeklyOutcomesRange && masterOutcomesRange) {
+      masterOutcomesRange.setValues(weeklyOutcomesRange.getValues()[0].map(v => [v]));
+    }
   }
 
   // --- Step 2: Gather Official Outcomes ---
   const winners = ss.getRangeByName(`${LEAGUE}_OUTCOMES_${week}`).getValues().flat();
   const margins = ss.getRangeByName(`${LEAGUE}_OUTCOMES_${week}_MARGIN`).getValues().flat();
-  
   const gamePlan = formsData[week]?.gamePlan;
-  if (!gamePlan || !gamePlan.games) {
-    throw new Error(`⚠️ Could not find a valid gamePlan with games for Week ${week}.`);
+
+  if (!gamePlan) {
+    Logger.log(`❌ Aborting: No gamePlan found for Week ${week}`);
+    return;
   }
 
-  // const matchups = gamePlan.games.map(g => `${g.awayTeam} @ ${g.homeTeam}`);
-  
   const outcomeMap = new Map();
   gamePlan.games.forEach((game, index) => {
-    const winner = winners[index];
-    if (winner && winner.trim() !== '') {
-      const matchupKey = `${game.awayTeam} @ ${game.homeTeam}`;
-      const loser = (winner === 'TIE') ? 'TIE' : (winner === game.awayTeam ? game.homeTeam : game.awayTeam);
-      
-      outcomeMap.set(matchupKey, {
-        winner: winner,
-        loser: loser,
-        margin: parseFloat(margins[index]) || 0,
-        spread: game.spread // Carry the original spread along for ATS calcs
-      });
-    }
+    const winnerRaw = winners[index];
+    const winner = (winnerRaw && winnerRaw.toString().trim() !== "") ? winnerRaw.toString().trim() : null;
+    const matchupKey = `${game.awayTeam} @ ${game.homeTeam}`;
+    
+    outcomeMap.set(matchupKey, {
+      winner: winner,
+      loser: (winner === 'TIE') ? 'TIE' : (winner === game.awayTeam ? game.homeTeam : game.awayTeam),
+      margin: parseFloat(margins[index]) || 0,
+      spread: game.spread
+    });
   });
-  Logger.log(`🏗 Built Outcome Map for Week ${week}: Found ${outcomeMap.size} completed games.`);
-  // --- Step 3: Process Survivor Sheet ---
-  if (gamePlan.survivorInclude && week >= config.survivorStartWeek) {
+
+  Logger.log(`🏗 Map Built. Found ${Array.from(outcomeMap.values()).filter(o => o.winner).length} winners.`);
+
+  // --- Step 3 & 4: Process Contests ---
+  // FIX 2: Use Number() to ensure string "1" matches number 1
+  if (config.survivorInclude && week >= Number(config.survivorStartWeek)) {
+    Logger.log("🚀 Entering Survivor Processing...");
     processContest(ss, week, 'SURVIVOR', memberData, outcomeMap, config);
   }
 
-  // --- Step 4: Process Eliminator Sheet ---
-  if (gamePlan.eliminatorInclude && week >= config.eliminatorStartWeek) {
+  if (config.eliminatorInclude && week >= Number(config.eliminatorStartWeek)) {
+    Logger.log("🚀 Entering Eliminator Processing...");
     processContest(ss, week, 'ELIMINATOR', memberData, outcomeMap, config);
   }
   
-  // --- Step 5: Save Updated Member Data ---
+  // Save ALL updates
   saveProperties('members', memberData);
+  saveProperties('configuration', config);
 
-  // --- Step 6: (Optional) Check for contest end ---
-  if (config.survivorInclude) {
-    updateSurvElimSheet(ss, config, memberData, 'survivor');
-  }
-  if (config.eliminatorInclude) {
-    updateSurvElimSheet(ss, config, memberData, 'eliminator');
-  }
+  // --- Step 6: Visual Refresh ---
+  if (config.survivorInclude) updateSurvElimSheet(ss, config, memberData, 'survivor');
+  if (config.eliminatorInclude) updateSurvElimSheet(ss, config, memberData, 'eliminator');
+
+  ss.toast(`Week ${week} status updated!`, "✅ SUCCESS");
 }
 
 /**
@@ -6136,7 +6130,6 @@ function evalSurvElimStatus(week, sourceSheetName) {
  * @returns {Object} The modified and updated memberData object.
  */
 function processContest(ss, week, contestType, memberData, outcomeMap, config) {
-  // Report on members before diving in:
   const sheet = ss.getSheetByName(contestType.toUpperCase());
   if (!sheet) return memberData;
 
@@ -6147,101 +6140,119 @@ function processContest(ss, week, contestType, memberData, outcomeMap, config) {
       nameToIdMap.set(memberData.members[id].name.toLowerCase(), id);
     }
   }
-  // Define the keys we will use based on the contest type
+
   const picksKey = contestType === 'SURVIVOR' ? 'sP' : 'eP';
   const evalKey = contestType === 'SURVIVOR' ? 'sE' : 'eE';
-  const isAts = config[`${contestType.toLowerCase()}Ats`] 
   const livesKey = contestType === 'SURVIVOR' ? 'sL' : 'eL';
+  const outKey = contestType.toLowerCase().substring(0, 1) + 'O';
+  
+  const isAts = config[`${contestType.toLowerCase()}Ats`];
   const livesSetting = config[`${contestType.toLowerCase()}Lives`] || 1;
   const startWeek = config[`${contestType.toLowerCase()}StartWeek`] || 1;
   const picks = ss.getRangeByName(`${contestType}_PICKS`).getValues();
+
   let poolLives = 0, poolMembers = [], poolMembersEliminated = [];
+  let pendingGamesDetected = false;
+
   names.forEach((name, rowIndex) => {
     const memberId = nameToIdMap.get(name.trim().toLowerCase());
     if (!memberId) return;
 
     const member = memberData.members[memberId];
     const pickAbbr = picks[rowIndex][week - 1]?.toString().match(/[A-Z]{2,3}/)?.[0];
-    if (!pickAbbr) return;
     
+    if (!pickAbbr) return;
+
     // --- Update Pick History ---
     if (!member[picksKey]) member[picksKey] = [];
     member[picksKey][week - 1] = pickAbbr;
 
     // --- Determine Outcome ---
-    const game = Array.from(outcomeMap.keys()).find(key => key.includes(pickAbbr));
-    if (!game) return;
+    const gameKey = Array.from(outcomeMap.keys()).find(key => key.includes(pickAbbr));
+    const outcome = outcomeMap.get(gameKey);
 
-    const outcome = outcomeMap.get(game);
-    let isCorrect = false;
-
-    if (isAts) {
-      isCorrect = calculateAtsResult(pickAbbr, outcome.winner, outcome.loser, outcome.margin, outcome.spread);
-      if (contestType === 'ELIMINATOR') isCorrect = !isCorrect; // Flip logic for Eliminator
-    } else { // Standard win/loss logic
-      if (contestType === 'SURVIVOR') isCorrect = (outcome.winner === pickAbbr);
-      if (contestType === 'ELIMINATOR') isCorrect = (outcome.loser === pickAbbr);
-    }
-    
-    // --- 3. Initialize and Update Evaluation History (sE/eE) ---
     if (!member[evalKey]) member[evalKey] = [];
+    if (!member[livesKey]) member[livesKey] = [];
+
+    // Determine the number of lives at the START of this week.
+    let livesAtStartOfWeek = (week == startWeek) 
+      ? parseInt(livesSetting, 10) 
+      : (member[livesKey][week - 2] || 0);
+
+    let isCorrect = null; // Default to null (Pending)
+
+    // --- LOGIC FIX: Check if game is completed ---
+    if (!outcome || outcome.winner === null) {
+      // Game hasn't finished. Do not mark wrong, do not subtract lives.
+      isCorrect = null; 
+      pendingGamesDetected = true;
+    } else {
+      // Game IS finished, evaluate result
+      if (isAts) {
+        isCorrect = calculateAtsResult(pickAbbr, outcome.winner, outcome.loser, outcome.margin, outcome.spread);
+        if (contestType === 'ELIMINATOR') isCorrect = !isCorrect;
+      } else {
+        if (contestType === 'SURVIVOR') isCorrect = (outcome.winner === pickAbbr || outcome.winner === 'TIE');
+        if (contestType === 'ELIMINATOR') isCorrect = (outcome.loser === pickAbbr);
+      }
+    }
+
     member[evalKey][week - 1] = isCorrect;
 
-    // --- 4. [THE NEW LOGIC] Calculate and Update Lives History (sL/eL) ---
-    if (!member[livesKey]) member[livesKey] = [];
-    
-    // Determine the number of lives at the START of this week.
-    let livesAtStartOfWeek;
-    if (week == startWeek) {
-        // If it's the first week of the contest, they start with the configured amount.
-        livesAtStartOfWeek = parseInt(livesSetting, 10);
-    } else {
-        // Otherwise, they start with the number of lives they had at the END of the previous week.
-        // The `|| 0` handles cases where they might have missed a week.
-        livesAtStartOfWeek = member[livesKey][week - 2] || 0;
-    }
-    
-    // Calculate lives at the END of this week.
+    // --- Update Lives History ---
     let livesAtEndOfWeek = livesAtStartOfWeek;
-    if (!isCorrect && livesAtStartOfWeek > 0) {
-      livesAtEndOfWeek--; // Decrement a life for an incorrect pick.
-    }
     
-    // Save the final life count for this week.
+    // Only subtract a life if the game is finished AND they were wrong
+    if (isCorrect === false && livesAtStartOfWeek > 0) {
+      livesAtEndOfWeek--;
+    }
+
     member[livesKey][week - 1] = livesAtEndOfWeek;
-    
-    // Update the elimination week if they just ran out of lives.
+
+    // Handle elimination marker
     if (livesAtEndOfWeek === 0 && livesAtStartOfWeek > 0) {
-        member[`${contestType.toLowerCase().substring(0,1)}O`] = week; // Out week notation
-        Logger.log(`😵 ${member.name} was eliminated from the ${contestType.toLowerCase()} pool this week!`);
-    } else {
-      delete member[`${contestType.toLowerCase().substring(0,1)}O`]; // Out week removal
+      member[outKey] = week;
+      Logger.log(`😵 ${member.name} eliminated from ${contestType} in Week ${week}`);
+    } else if (livesAtEndOfWeek > 0) {
+      delete member[outKey]; // Remove marker if they are revived or still in
     }
+
+    // Counters for the completion check
     poolLives += livesAtEndOfWeek;
     if (livesAtEndOfWeek > 0) poolMembers.push(names[rowIndex]);
     if (livesAtStartOfWeek > 0 && livesAtEndOfWeek == 0) poolMembersEliminated.push(names[rowIndex]);
-
   });
 
-  let completionString;
-  if (poolMembers.length > 1) {
-    Logger.log(`🧮 ${contestType} remaining pool lives: ${poolLives}`);
+  // --- Completion Check Logic ---
+  // If games are still pending, we NEVER declare the pool finished.
+  if (pendingGamesDetected) {
+    Logger.log(`⏳ ${contestType}: Some games are still pending. Skipping completion check.`);
     config[`${contestType.toLowerCase()}Active`] = true;
-  } else if (poolMembers.length <= 1) {
-    if ( poolMembers.length == 1) {
-      Logger.log(`🏆 ${contestType} POOL COMPLETED! The final member standing was ${poolMembers[0]}!`);
-      completionString = `🏆 ${poolMembers} is the sole remaining ${contestType.toUpperCase()} CHAMPION!`;
+  } else {
+    let completionString;
+    if (poolMembers.length > 1) {
+      Logger.log(`🧮 ${contestType} lives remaining: ${poolLives}`);
+      config[`${contestType.toLowerCase()}Active`] = true;
     } else {
-      Logger.log(`🏆 ${contestType} POOL COMPLETED! The final members who were eliminated were ${poolMembersEliminated}.`);
-      completionString = `The following members were eliminated in the previous week as the last standing participants:\n🔹` + poolMembersEliminated.join(`\n🔹 `);
+      if (poolMembers.length == 1) {
+        Logger.log(`🏆 ${contestType} COMPLETED! Winner: ${poolMembers[0]}`);
+        completionString = `🏆 ${poolMembers[0]} is the sole remaining ${contestType} CHAMPION!`;
+      } else {
+        Logger.log(`🏆 ${contestType} COMPLETED! Last stand: ${poolMembersEliminated.join(', ')}`);
+        completionString = `The pool ended with a multi-way elimination:\n🔹 ` + poolMembersEliminated.join(`\n🔹 `);
+      }
+
+      const activeKey = `${contestType.toLowerCase()}Active`;
+      // If the key is undefined (first run) or true, show the alert
+      if (config[activeKey] !== false) {
+        const ui = SpreadsheetApp.getUi();
+        ui.alert(`✔️ ${contestType} COMPLETE!`, `${completionString}\n\nTo restart, update the Start Week in Config.`, ui.ButtonSet.OK);
+      }
+      config[`${contestType.toLowerCase()}Active`] = false;
     }
-    const ui = fetchUi();
-    if (config[`${contestType.toLowerCase()}Active`]) {
-      ui.alert(`✔️ ${contestType} COMPLETE!`,`Your ${contestType.toLowerCase()} pool was completed this week.\n\n${completionString}\n\nIf you'd like to restart the pool, go to configuration and set the start week to a new week past week ${week}.`, ui.ButtonSet.OK);
-    }
-    config[`${contestType.toLowerCase()}Active`] = false;
   }
-  saveProperties('configuration',config);
+
+  saveProperties('configuration', config);
   return memberData;
 }
 
@@ -7796,7 +7807,7 @@ function survElimSheet(ss,config,memberData,sheetType) {
   sheet.getRange(1,revivesCol).setValue('REVIVES');
   sheet.setColumnWidth(revivesCol,50);
   let eliminatedCol = 4;
-  sheet.getRange(1,eliminatedCol).setValue('ELIMINATED');
+  sheet.getRange(1,eliminatedCol).setValue('STATUS');
   sheet.setColumnWidth(eliminatedCol,100);
   
   const weeks = Array.from({ length: WEEKS }, (_, index) => index + 1).filter(week => !WEEKS_TO_EXCLUDE.includes(week));
