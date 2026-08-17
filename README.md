@@ -209,5 +209,93 @@ Hopeful improvements for future versions:
 
 -------------------------
 
+In the event the API is failing frequently, I've looked into creating a Cloudflare Worker to enable fetching from a non-Google source with a free Cloudflare account--content below was my process of walking through this (I already had a Cloudflare account) and deploying it. I believe the URL tweak I just made to start this 2026 season may resolve any issues, but please try this process first if you're getting API failures frequently:
+
+**Cloudflare Worker Setup**
+1. Create a free CloudFlare account, then use the search box to find the "Workers & Pages" option.
+
+2. Select "Create Application"
+<img width="1104" height="431" alt="image" src="https://github.com/user-attachments/assets/f70aec7a-7945-499d-a808-ac9f068e386c" />
+
+3. Select "Start with Hello world!"
+<img width="895" height="496" alt="image" src="https://github.com/user-attachments/assets/706f7393-8bed-49cf-a015-a8fb1431cccc" />
+
+4. Give it a name if you like, then "Deploy":
+<img width="897" height="629" alt="image" src="https://github.com/user-attachments/assets/8400331c-fab0-4f2a-a990-37089c7312ac" />
+
+5. You then should come to a landing page for the Worker, where you'll need to select the "Edit Code" button in the upper right:
+<img width="1095" height="782" alt="image" src="https://github.com/user-attachments/assets/828158d1-2b12-45d3-87b6-120a3463f68e" />
+
+6. Paste in the new code (below image) to the "worker.js" box (replacing the contents--my screenshot looks different) and then click "Deploy" and go back:
+<img width="953" height="659" alt="image" src="https://github.com/user-attachments/assets/0ea63574-4b8f-4e84-8d48-03eaf2a97685" />
+
+
+Cloudflare Worker Code for Generic Tunnel:
+```
+export default {
+  async fetch(request) {
+    const url = new URL(request.url);
+    const targetUrl = url.searchParams.get("url");
+
+    // 1. Ensure a target URL was actually passed into the parameter
+    if (!targetUrl) {
+      return new Response("Missing 'url' query parameter.", { status: 400 });
+    }
+
+    try {
+      // 2. Validate and cleanly instantiate the target URL string
+      const validatedUrl = new URL(targetUrl);
+
+      // 3. Enforce high-compatibility, modern browser headers to bypass server firewalls
+      const headers = new Headers();
+      headers.set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36");
+      headers.set("Accept", "application/json, text/plain, */*");
+      headers.set("Accept-Language", "en-US,en;q=0.9");
+      
+      // Mirror the domain of the target site as the Origin/Referer to look organic
+      headers.set("Origin", validatedUrl.origin);
+      headers.set("Referer", validatedUrl.origin + "/");
+
+      // 4. Build and execute the clean, masked request profile
+      const modifiedRequest = new Request(validatedUrl.toString(), {
+        method: request.method,
+        headers: headers,
+        redirect: "follow"
+      });
+
+      const response = await fetch(modifiedRequest);
+
+      // 5. Inject standard global CORS headers so Google Sheets never drops the response
+      const responseHeaders = new Headers(response.headers);
+      responseHeaders.set("Access-Control-Allow-Origin", "*");
+      responseHeaders.set("Access-Control-Allow-Methods", "GET, HEAD, POST, OPTIONS");
+      responseHeaders.set("Access-Control-Allow-Headers", "*");
+      
+      return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: responseHeaders
+      });
+
+    } catch (error) {
+      // Output a clean text message if the target URL itself fails to resolve
+      return new Response("Proxy Mapping Error: " + error.message, { status: 500 });
+    }
+  }
+};
+
+```
+
+7. Copy the URL from the top bar that ends in "workers.dev" to your clipboard (e.g. "picks-tunnel.[your subdomain value].workers.dev"), then it'll need to sit before the "SCOREBOARD" variable within your code with "?url=" following it, like so:
+
+```
+const SCOREBOARD = 
+    LEAGUE == "NFL" ? "picks-tunnel.[your subdomain value].workers.dev?url=https://site.web.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard" :
+    (LEAGUE == "NCAAF" ? "https://site.web.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard" : null);
+```
+
+
+
+
 Thanks for checking out the project and for making it to the end!
 
