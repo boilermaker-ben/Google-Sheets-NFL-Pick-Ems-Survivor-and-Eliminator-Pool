@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    body { font-family: 'Montserrat', Arial, sans-serif; font-size: 11px; padding: 15px; margin: 0; background: #f4f6f8; }
+    
+    /* Spinner */
+    #loading-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(255, 255, 255, 0.85); display: flex; justify-content: center; align-items: center; z-index: 100; }
+    .spinner { border: 5px solid #f3f3f3; border-top: 5px solid #013369; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    .hidden { display: none !important; }
+
+    /* Header Styling */
+    .header-bar { background: #013369; color: white; padding: 12px 20px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+    .header-info { display: flex; align-items: center; gap: 20px; }
+    .header-info strong { font-size: 18px; color: #fff; }
+    .contest-pill { background: rgba(255,255,255,0.15); padding: 4px 10px; border-radius: 4px; font-size: 12px; border: 1px solid rgba(255,255,255,0.3); }
+
+    .mode-buttons { display: flex; gap: 10px; }
+    .mode-btn { padding: 6px 14px; font-weight: bold; font-size: 14px; border-radius: 4px; cursor: pointer; border: 1px solid rgba(255,255,255,0.4); background: rgba(255,255,255,0.1); color: white; transition: 0.2s; }
+    .mode-btn.active { background: white !important; color: #013369 !important; opacity: 1 !important; filter: none !important; }
+    .mode-btn.not-included { opacity: 0.4; filter: grayscale(1); cursor: help; }
+    .mode-btn:hover { background: rgba(255,255,255,0.2); }
+
+    /* Table Logic */
+    .table-container { background: white; border-radius: 4px; overflow: auto; max-height: 620px; border: 1px solid #ddd; }
+    table { border-collapse: collapse; white-space: nowrap; width: 100%; }
+    
+    th { background: #e8eaed; border: 1px solid #bbb; text-align: center; position: sticky; top: 0; z-index: 10; height: 35px; box-sizing: border-box; }
+    .sub-head { top: 35px; height: 25px; font-size: 10px; font-weight: bold; background: #f1f3f4; z-index: 9; }
+    
+    td { padding: 8px 6px; border: 1px solid #eee; text-align: center; height: 40px; box-sizing: border-box; }
+    
+    .group-light { background-color: #ffffff; }
+    .group-dark { background-color: #f8f9fa; }
+    .gap-right { border-right: 3px solid #013369 !important; }
+
+    input[type="text"], input[type="number"] { width: 100%; box-sizing: border-box; border: 1px solid #ccc; padding: 5px; font-size: 11px; border-radius: 2px; }
+    
+    /* Small Eval Input */
+    .eval-input { width: 18px !important; padding: 2px !important; text-align: center; font-size: 10px !important; }
+
+    input[type="checkbox"] { width: 15px; height: 15px; accent-color: #013369; cursor: pointer; }
+
+    .col-name { width: 150px; min-width: 150px; text-align: left; }
+    .sticky-col { position: sticky; left: 0; background: #fff; z-index: 11; border-right: 2px solid #bbb !important; }
+    
+    .btn-row { margin-top: 15px; display: flex; justify-content: flex-end; gap: 10px; }
+    .save-btn { background: #013369; color: white; padding: 10px 25px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; }
+  </style>
+</head>
+<body>
+
+  <div id="loading-overlay"> <div class="spinner"></div> </div>
+
+  <div class="header-bar">
+    <div class="header-info" id="header-info"></div>
+    <div class="mode-buttons" id="mode-toggles"></div>
+  </div>
+
+  <div class="table-container">
+    <table id="editor-table">
+      <thead id="table-head"></thead>
+      <tbody id="table-body"></tbody>
+    </table>
+  </div>
+
+  <div class="btn-row">
+    <button style="padding:10px 20px; border-radius:4px; border:1px solid #ccc; cursor:pointer;" onclick="google.script.host.close()">Cancel</button>
+    <button class="save-btn" onclick="gatherAndSave()">Save Master Changes</button>
+  </div>
+
+  <script>
+    let localMemberData = {}, localConfig = {}, currentMode = 'survivor';
+
+    document.addEventListener('DOMContentLoaded', () => {
+      google.script.run.withSuccessHandler(data => {
+        localMemberData = data.memberData; localConfig = data.config;
+        initToggles(); updateHeader(); renderTable(); 
+        document.getElementById('loading-overlay').classList.add('hidden');
+      }).getManualEditorData();
+    });
+
+    function initToggles() {
+      const container = document.getElementById('mode-toggles');
+      const sInc = localConfig.survivorInclude;
+      const eInc = localConfig.eliminatorInclude;
+      
+      container.innerHTML = `
+        <button class="mode-btn ${currentMode === 'survivor' ? 'active' : ''} ${!sInc ? 'not-included' : ''}" 
+                id="btn-surv" onclick="switchMode('survivor')">👑</button>
+        <button class="mode-btn ${currentMode === 'eliminator' ? 'active' : ''} ${!eInc ? 'not-included' : ''}" 
+                id="btn-elim" onclick="switchMode('eliminator')">💀</button>
+      `;
+    }
+
+    function updateHeader() {
+      const c = localConfig;
+      const mode = currentMode;
+      const startWk = c[mode + 'StartWeek'] || 1;
+      const lives = c[mode + 'Lives'] || 1;
+
+      document.getElementById('header-info').innerHTML = `
+        <strong>${c.groupName || 'Manager'} (${c.year || ''})</strong>
+        <div class="contest-pill"><b>${mode.toUpperCase()}</b> | Start: Wk ${startWk} | Lives: ${lives}</div>
+      `;
+    }
+
+    function switchMode(mode) {
+      currentMode = mode;
+      initToggles(); updateHeader(); renderTable();
+    }
+
+    function renderTable() {
+      const mData = localMemberData;
+      const prefix = currentMode.slice(0,1);    
+
+      let h1 = `<tr><th rowspan="2" class="sticky-col col-name">Member Name</th><th rowspan="2">Act</th><th rowspan="2">Pd</th><th rowspan="2">Picks</th><th colspan="18">Weekly Evaluations (1/0/null)</th><th rowspan="2">Lives</th><th rowspan="2">Out</th><th rowspan="2">Rev</th></tr>`;
+      let h2 = `<tr>`;
+      for (let i = 1; i <= 18; i++) {
+        let cls = (i % 5 === 0 && i !== 18) ? 'gap-right' : '';
+        h2 += `<th class="sub-head ${cls}">${i}</th>`;
+      }
+      h2 += `</tr>`;
+      document.getElementById('table-head').innerHTML = h1 + h2;
+
+      let body = '';
+      mData.memberOrder.forEach(id => {
+        const m = mData.members[id];
+        body += `<tr data-id="${id}">
+          <td class="sticky-col col-name"><input type="text" class="field-name" value="${m.name}"></td>
+          <td><input type="checkbox" class="field-active" ${m.active ? 'checked' : ''}></td>
+          <td><input type="checkbox" class="field-paid" ${m.paid ? 'checked' : ''}></td>
+          <td><input type="text" class="field-${prefix}P" value="${(m[prefix+'P']||[]).join(',')}" style="width:100px"></td>`;
+        
+        // Eval Inputs (1, 0, or null)
+        for (let i = 0; i < 18; i++) {
+          let val = (m[prefix+'E'] && m[prefix+'E'][i] !== null) ? m[prefix+'E'][i] : '';
+          // Convert boolean to 1/0 if data is old
+          if (val === true) val = 1;
+          if (val === false) val = 0;
+
+          let groupClass = (Math.floor(i / 5) % 2 === 0) ? 'group-light' : 'group-dark';
+          let gapClass = ((i+1) % 5 === 0 && (i+1) !== 18) ? 'gap-right' : '';
+          body += `<td class="${groupClass} ${gapClass}"><input type="text" class="eval-input" data-week="${i}" value="${val}" maxlength="1"></td>`;
+        }
+
+        body += `<td><input type="text" class="field-${prefix}L" value="${(m[prefix+'L']||[]).join(',')}" style="width:80px"></td>
+                 <td><input type="number" class="field-${prefix}O" value="${m[prefix+'O']||''}" style="width:45px"></td>
+                 <td><input type="text" class="field-${prefix}R" value="${Array.isArray(m[prefix+'R'])?m[prefix+'R'].join(','):m[prefix+'R']||''}" style="width:80px"></td>
+        </tr>`;
+      });
+      document.getElementById('table-body').innerHTML = body;
+    }
+
+    function gatherAndSave() {
+      document.getElementById('loading-overlay').classList.remove('hidden');
+      const payload = {};
+      const rows = document.querySelectorAll('#table-body tr');
+      const prefix = currentMode.slice(0, 1);
+      
+      rows.forEach(row => {
+        const id = row.getAttribute('data-id');
+        
+        // Collect 1/0/null eval array
+        const evalInputs = row.querySelectorAll('.eval-input');
+        const evalArray = Array.from(evalInputs).map(input => {
+          const v = input.value.trim();
+          if (v === '1') return 1;
+          if (v === '0') return 0;
+          return null;
+        });
+
+        payload[id] = {
+          name: row.querySelector('.field-name').value,
+          active: row.querySelector('.field-active').checked,
+          paid: row.querySelector('.field-paid').checked,
+          [`${prefix}P`]: row.querySelector(`.field-${prefix}P`).value,
+          [`${prefix}E`]: evalArray,
+          [`${prefix}L`]: row.querySelector(`.field-${prefix}L`).value,
+          [`${prefix}O`]: row.querySelector(`.field-${prefix}O`).value,
+          [`${prefix}R`]: row.querySelector(`.field-${prefix}R`).value
+        };
+      });
+
+      google.script.run.withSuccessHandler((msg) => {
+        alert(msg); 
+        google.script.host.close();
+      }).saveManualMemberData(payload);
+    }
+  </script>
+</body>
+</html>
