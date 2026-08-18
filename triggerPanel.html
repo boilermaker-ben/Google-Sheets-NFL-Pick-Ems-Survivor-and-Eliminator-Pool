@@ -17,14 +17,19 @@
     .btn-primary:hover { background-color: #2067b3; }
     .btn-secondary { background-color: #D50A0A; color: white; }
     .btn-secondary:hover { background-color: #ff3d3d; }
+    .btn-secondary:disabled { background-color: #bababa; cursor: not-allowed; }
+    #loading-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(255, 255, 255, 0.85); display: flex; justify-content: center; align-items: center; z-index: 100; }
+    .spinner { border: 5px solid #f3f3f3; border-top: 5px solid #013369; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    .hidden { display: none !important; }
   </style>
 </head>
 <body>
-  <div id="loader"><p>Loading current settings...</p></div>
+  <div id="loading-overlay"> <div class="spinner"></div> </div>
 
-  <div id="content" class="hidden">
-    <h3>Set Weekly Auto-Fetch</h3>
-    <p>Schedule a time for the script to automatically fetch the latest game spreads and over/under data each week. This helps ensure your forms are always up to date.</p>
+  <div id="content">
+    <h3 id="title">Set Weekly Auto-Fetch</h3>
+    <p id="description">Schedule a time for the script to automatically fetch the latest game spreads and over/under data each week to ensure your forms are fresh.</p>
 
     <div class="form-row">
       <label for="day-select">Day of Week:</label>
@@ -74,17 +79,20 @@
     });
     
     function populateCurrentSettings(triggerInfo) {
-      if (triggerInfo) {
+      if (triggerInfo?.configured) {
         document.getElementById('day-select').value = triggerInfo.day;
         document.getElementById('hour-select').value = triggerInfo.hour;
+        document.getElementById('description').textContent = "You currently have a trigger scheduled for the given time below. Make changes or delete the scheduled auto-fetch from here. It's recommended to automatically fetch the latest game spreads and over/under data each week to ensure your forms are fresh.";
+        document.getElementById('title').textContent = "Update Weekly Auto-Fetch";
         document.getElementById('delete-btn').disabled = false;
       } else {
         // No trigger is set, so select a sensible default (e.g., Wednesday at 10 AM)
         document.getElementById('day-select').value = 'WEDNESDAY';
         document.getElementById('hour-select').value = '10';
         document.getElementById('delete-btn').disabled = true; // Nothing to delete
+        // document.getElementById('delete-btn').className = 'btn-primary-disabled';
       }
-      document.getElementById('loader').style.display = 'none';
+      document.getElementById('loading-overlay').classList.add('hidden');
       document.getElementById('content').classList.remove('hidden');
     }
 
@@ -94,6 +102,7 @@
       
       document.getElementById('save-btn').textContent = 'Saving...';
       document.getElementById('save-btn').disabled = true;
+      document.getElementById('loading-overlay').classList.remove('hidden');
 
       google.script.run
         .withSuccessHandler(() => google.script.host.close())
@@ -101,6 +110,7 @@
           alert(err.message);
           document.getElementById('save-btn').textContent = 'Save Schedule';
           document.getElementById('save-btn').disabled = false;
+          document.getElementById('save-btn').classList.remove('btn-primary');
         })
         .setWeeklyFetchTrigger({ day: day, hour: hour });
     }
