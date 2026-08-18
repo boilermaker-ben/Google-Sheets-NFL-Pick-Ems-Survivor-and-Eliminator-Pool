@@ -1,7 +1,7 @@
 const VERSION = '1.2.1';
 /** GOOGLE SHEETS FOOTBALL PICK 'EMS, SURVIVOR, & ELIMINATOR TOOL | 2025 Edition
  * Script Library for League Creator & Management Platform
- * 08/17/2026
+ * 08/18/2026
  * 
  * Created by Ben Powers
  * ben.powers.creative@gmail.com
@@ -39,7 +39,7 @@ const VERSION = '1.2.1';
  *    🔽 Deploy Extra Tracking Sheets - helps create all additional sheets for weekly pick 'em tracking
  *  🧙 AUTOMATION:
  *    📡 Spread Auto-Fetch Panel - lets you set a time for the schedule data (and spreads) to automatically be udpated
- *    ✔️ Enable 👑&💀 Trigger - required for processing updates to Survivor/Eliminator evals (only visible if Survivor or Eliminator Present)
+ *    ✅ Enable 👑&💀 Trigger - required for processing updates to Survivor/Eliminator evals (only visible if Survivor or Eliminator Present)
  *    ❌ Disable 👑&💀 Trigger - remove if causing issues or want to run without it for a while (only visible if Survivor or Eliminator Present)
  * 
  *   ------------
@@ -98,7 +98,7 @@ function onOpen() {
       let subMenu = ui.createMenu('🧙 Automation')
         .addItem('📡 Spread Auto-Fetch Panel','showAutoFetchPanel');
       if (contest) {
-        subMenu.addItem(`✔️ Enable ${survElimIcons} Triggers`,'createOnEditTrigger')
+        subMenu.addItem(`✅ Enable ${survElimIcons} Triggers`,'createOnEditTrigger')
           .addItem(`❌ Disable ${survElimIcons} Triggers`,'deleteOnEditTrigger');
       }
       menu.addSubMenu(subMenu);
@@ -979,43 +979,6 @@ function fetchConfigurationSidebarData() {
   }
 }
 
-function checkDocumentConfiguration() {
-  Logger.log(`Fetching configuration. Please review report in Sheets tab...`);
-  try {
-    const ss = fetchSpreadsheet();
-    const ui = fetchUi();
-    let str = '';
-    const props = fetchProperties('configuration');
-    Object.keys(props).forEach(key => {
-      let subStr = '\n';
-      if (typeof props[key] == 'object') {
-        subStr += key + ': {\n';
-        Object.keys(props[key]).forEach(subKey => {
-          if (typeof props[key][subKey] == 'object') {
-            subStr += '-' + subKey + ': {\n';
-            Object.keys(props[key][subKey]).forEach(subSubKey => {
-              subStr += '--' + subSubKey + ': ' + props[key][subKey][subSubKey] + '\n';
-            });
-            subStr += '--}\n';
-          } else {
-            subStr += '-' + subKey + ': ' + props[key][subKey] + '\n';
-          }
-        });
-        subStr += '-}\n';
-      } else {
-          subStr += '-' + key + ': ' + props[key] + '\n';
-      }
-      str += (key + ': ' + (typeof props[key] === 'boolean' ? (props[key] ? '✅\n' : '❌\n') : (typeof props[key] == 'object' ? subStr : props[key] + '\n' )));
-    });
-
-    ui.alert(str,ui.ButtonSet.OK);
-  } catch (err) {
-    Logger.log(`❌ Failed to retrieve members sidebar data: ${err.stack}`);
-    return { properties: {} };
-  }
-}
-
-
 //------------------------------------------------------------------------
 // SUPPORT POPUP FOR HELP - Loads HTML "supportPrompt.html" file
 function showSupportDialog() {
@@ -1148,50 +1111,52 @@ function setupSheets() {
  * @returns {Object} A success or error message object to be sent back to the client.
  */
 function processReviveMember(data) {
-  // Support both HTML panels: one uses .week, one uses .startWeek
-  const memberId = data.memberId;
-  const gameType = data.gameType;
-  const weekNum = data.week || data.startWeek;
-  
+  const { memberId, gameType, week } = data;
+
   if (!memberId || !gameType || !week) {
     throw new Error("Invalid request. Missing ID, Type, or Week.");
   }
 
   try {
-    const memberData = getProperties('members');
+    const memberData = fetchProperties('members');
     const member = memberData.members[memberId];
-    const config = getProperties('configuration');
+    const config = fetchProperties('configuration');
 
     const livesKey = gameType === 'survivor' ? 'sL' : 'eL';
     const revivesKey = gameType === 'survivor' ? 'sR' : 'eR';
-    const eliminatedKey = `${gameType.substring(0,1).toLowerCase()}O`; // sO or eO
+    const eliminatedKey = `${gameType.substring(0,1).toLowerCase()}O`;
     const startingLives = parseInt(config[`${gameType}Lives`], 10) || 1;
     
     if (!member[livesKey]) member[livesKey] = [];
 
-    // --- CRITICAL UPDATE ---
-    // Update the week of revival to full lives
+    // --- 1. LIVES RESET ---
     member[livesKey][week - 1] = startingLives;
-
-    // IMPORTANT: If they were eliminated previously, they might have 0s 
-    // in subsequent weeks of the array. We need to clear those out.
+    // Clear out subsequent zeros to ensure they stay revived in future weeks
     for (let i = week; i < member[livesKey].length; i++) {
       member[livesKey][i] = startingLives;
     }
 
-    // Increment revives count
-    member[revivesKey] = (member[revivesKey] || 0) + 1;
+    // --- 2. REVIVE ARRAY LOGIC ---
+    // Ensure the revive property is an array
+    if (!Array.isArray(member[revivesKey])) {
+      let legacyValue = parseInt(member[revivesKey]) || 0;
+      member[revivesKey] = [];
+      // If there was an old integer count, we put it at index 0 (Week 1) as a placeholder
+      if (legacyValue > 0) member[revivesKey][0] = legacyValue;
+    }
     
-    // Remove the elimination week marker (sO/eO)
+    // Increment the count for the specific week index
+    const currentVal = member[revivesKey][week - 1] || 0;
+    member[revivesKey][week - 1] = currentVal + 1;
+    
+    // --- 3. STATUS CLEANUP ---
     delete member[eliminatedKey];
     
-    // Save to Document Properties
     saveProperties('members', memberData);
 
-    // This return matches what your HTML success handlers expect
     return { 
       success: true, 
-      message: `🌅 ${member.name} has been revived for Week ${weekNum}!`,
+      message: `🌅 ${member.name} has been revived for Week ${week}!`,
       updatedMemberData: memberData 
     };
 
@@ -1363,14 +1328,14 @@ function createNewMember(name, isPaid, config, joinWeek) {
     joinDate: new Date().toISOString(),
     
     // Survivor Properties
-    sR: 0,
+    sR: [...pastWeekPadding],
     sP: [...pastWeekPadding],
     sE: [...pastWeekPadding],
     sL: [...pastWeekPadding], // The 'lives array' starts with padding for past weeks
     sO: null,
     
     // Eliminator Properties
-    eR: 0,
+    eR: [...pastWeekPadding],
     eP: [...pastWeekPadding],
     eE: [...pastWeekPadding],
     eL: [...pastWeekPadding],
@@ -1603,6 +1568,8 @@ function syncSurvElimDataToSheet(memberData) {
  * Updates the data object and then refreshes the spreadsheet visuals.
  */
 function recalculateAndReviveFromWeek(payload) {
+
+  Logger.log(JSON.stringify(payload));
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     
@@ -1612,7 +1579,7 @@ function recalculateAndReviveFromWeek(payload) {
     
     // 2. Refresh the Spreadsheet Visuals
     // We pass the updatedMemberData directly so updateSurvElimSheet doesn't have to re-fetch it
-    const config = getProperties('configuration');
+    const config = fetchProperties('configuration');
     updateSurvElimSheet(ss, config, result.updatedMemberData, payload.gameType);
 
     return result; // Return success to HTML to hide loader and alert user
@@ -5002,8 +4969,6 @@ function updateScheduleData(ss,gamePlan) {
   }
 }
 
-
-
 /**
  * The main function to launch the "Auto-Fetch Settings" panel.
  * This should be called from a menu item.
@@ -5022,17 +4987,20 @@ function showAutoFetchPanel() {
  */
 function getWeeklyFetchTrigger() {
   const allTriggers = ScriptApp.getProjectTriggers();
+  let triggerInfo = { configured : false };
   for (const trigger of allTriggers) {
     if (trigger.getHandlerFunction() === 'runWeeklyFetch') {
       // Unfortunately, Apps Script doesn't let us read the day/hour directly.
       // We must store this information in properties when we create the trigger.
-      const triggerInfo = PropertiesService.getDocumentProperties().getProperty('weeklyFetchTriggerInfo');
+      triggerInfo = JSON.parse(PropertiesService.getDocumentProperties().getProperty('weeklyFetchTriggerInfo'));
       if (triggerInfo) {
-        return JSON.parse(triggerInfo);
+        triggerInfo.configured = true;
+        Logger.log(JSON.stringify(triggerInfo))
+        return triggerInfo;
       }
     }
   }
-  return null; // No trigger found
+  return triggerInfo; // No trigger found
 }
 
 /**
@@ -5847,8 +5815,20 @@ function updateSurvElimSheet(ss, config, memberData, contestType) {
       poolLivesRemaining += currentLives;
 
       // 2. Revives & Elimination Status
-      newRevivesData.push([member[prefix + 'R'] || 0]);
-      totalRevives += (member[prefix + 'R'] || 0);
+      const revivesEntry = member[prefix + 'R'];
+      let memberRevivesCount = 0;
+
+      if (Array.isArray(revivesEntry)) {
+        // Sum the array, treating any null/undefined slots as 0
+        memberRevivesCount = revivesEntry.reduce((sum, val) => sum + (parseInt(val) || 0), 0);
+      } else {
+        // Handle legacy integer or empty state
+        memberRevivesCount = parseInt(revivesEntry) || 0;
+      }
+
+      newRevivesData.push([memberRevivesCount]);
+      totalRevives += memberRevivesCount;
+      
       const elimWeek = member[prefix + 'O'];
       newEliminatedData.push([elimWeek ? `OUT [WK${elimWeek}]` : 'IN']);
       newEliminatedBackgrounds.push([elimWeek ? '#ffccd6' : '#c7fcc7']);
@@ -5875,14 +5855,15 @@ function updateSurvElimSheet(ss, config, memberData, contestType) {
         if (!pickOnSheet || pickOnSheet.toString().trim() === "") {
           rowPickColors.push(null); 
           rowPickFonts.push('none');
-        } else if (isCorrect === true) {
-          rowPickColors.push('#c7fcc7'); 
+        } else if (isCorrect === 1 || isCorrect === true) {
+          rowPickColors.push('#c7fcc7'); // Green
           rowPickFonts.push('none');
-        } else if (isCorrect === false) {
-          rowPickColors.push('#ffccd6'); 
+        } else if (isCorrect === 0 || isCorrect === false) {
+          rowPickColors.push('#ffccd6'); // Red
           rowPickFonts.push('line-through'); 
         } else {
-          rowPickColors.push('#fffdcc'); 
+          // Pending
+          rowPickColors.push('#fffdd4'); // Yellow
           rowPickFonts.push('none');
         }
       }
@@ -6469,419 +6450,6 @@ function removeNewUserQuestion(week) {
     ss.toast('Failed to remove the list item of \"New User\" from the form.');
   }
 }
-
-// ============================================================================================================================================
-// UTILITIES
-// ============================================================================================================================================
-
-/**
- * Displays a clean modal dialog with a link for the user to click.
- * This is the standard way to direct a user to a URL from a server-side script.
- *
- * @param {string} url The URL the link should point to.
- * @param {string} title The title for the dialog window.
- * @param {string} linkText The text to display for the link itself.
- */
-function showLinkDialog(url, title, linkText, subText) {
-  const htmlContent = `
-    <div style="font-family: 'Montserrat', sans-serif; text-align: center; padding: 20px;">
-      <p style="font-size: 16px;">
-        <a href="${url}" target="_blank" onclick="google.script.host.close()" 
-           style="font-weight: bold; text-decoration: none; background-color: #013369; color: white; padding: 10px 20px; border-radius: 5px;">
-          ${linkText}
-        </a>
-      </p>
-      ${subText ? '<div style="font-size: 12px;">' + subText + '</div>' : ''}
-    </div>
-  `;
-  const htmlOutput = HtmlService.createHtmlOutput(htmlContent).setWidth(400).setHeight(180);
-  SpreadsheetApp.getUi().showModalDialog(htmlOutput, title);
-}
-
-/**
- * Displays a polished dialog with "Edit," "Open," and "Copy Link"
- * action buttons for a newly created form.
- *
- * @param {Object} newFormsData An object containing the form's URLs and other details.
- * @param {number} week The week number for which the form was created.
- */
-function showFormActionsDialog(newFormsData, week) {
-  // Destructure the URLs from the input object for easy access
-  const { editUrl, publishedUrl } = newFormsData;
-  const htmlContent = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <base target="_top">
-      <style>
-        body { font-family: 'Montserrat', Arial, sans-serif; padding: 10px; text-align: center; }
-        h2 { color: #013369; margin-top: 0; }
-        p { font-size: 14px; color: #333; }
-        .button-row { display: flex; gap: 10px; justify-content: center; margin-top: 20px; }
-        .btn { padding: 8px 15px;  font-size: 14px;  font-weight: 600;  border: none;  border-radius: 5px;  cursor: pointer;  color: white;  text-decoration: none; display: flex;  align-items: center;  justify-content: center;  gap: 5px; }
-        .btn-primary { background-color: #013369; }
-        .btn-primary:hover { background-color: #2067b3; }
-        .btn-secondary { background-color: #878787; }
-        .btn-secondary:hover { background-color: #A8A8A8; }
-        .btn-alert { background-color: #ff913d; }
-        .btn-alert:hover { background-color: #e86705; }
-        button.btn-alert { color: white; }
-      </style>
-    </head>
-    <body>
-      <h2>✅ Success!</h2>
-      <p>Your form for Week ${week} has been created. Your form ${newFormsData.gamePlan.membershipLocked ? 'is open to new members.' : 'only accepts submissions from existing members.'} Copy and share the link with your pool members.</p>
-      <div class="button-row">
-        <a href="${editUrl}" target="_blank" class="btn btn-secondary">📝 Edit Form</a>
-        <a href="${publishedUrl}" target="_blank" class="btn btn-primary">📂 Open Form</a>
-        <button id="copy-btn" class="btn btn-alert">📤 Copy Link</button>
-      </div>
-      <script>
-        document.getElementById('copy-btn').onclick = function() {
-          const linkToCopy = "${publishedUrl}";
-          const button = this;
-          navigator.clipboard.writeText(linkToCopy).then(() => {
-            button.textContent = '✅ Copied!';
-            button.disabled = true;
-            setTimeout(() => {
-              button.textContent = '📤 Copy Link';
-              button.disabled = false;
-            }, 2000);
-          }).catch(err => {
-            Logger.log('Failed to copy: ', err);
-            prompt("Please copy this link manually:", linkToCopy);
-          });
-        };
-      </script>
-    </body>
-    </html>
-  `;
-  
-  const htmlOutput = HtmlService.createHtmlOutput(htmlContent).setWidth(450).setHeight(200);
-  SpreadsheetApp.getUi().showModalDialog(htmlOutput, `Week ${week} Form Created`);
-}
-
-
-/**
- * Generates a simple, robust, and sufficiently unique ID string.
- * Creates an ID like "id_1234567890".
- *
- * @returns {string} A new unique ID.
- */
-function generateUniqueId() {
-  const randomPart = Math.random().toString(36).substring(3, 15).toUpperCase();
-  return `id_${randomPart}`;
-}
-
-// RESET Function to reset and create menu for runFirst
-function resetSpreadsheet() {
-  const ui = SpreadsheetApp.getUi();
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  Logger.log(`↩️ Return to spreadsheet for prompts`);
-  let prompt = ui.alert(`❗ RESET?`,'Reset spreadsheet and delete all data?', ui.ButtonSet.YES_NO);
-  if (prompt == 'YES') {
-    
-    let promptTwo = ui.alert('Are you sure? This would be very difficult to recover from.',ui.ButtonSet.YES_NO);
-    if (promptTwo == 'YES') {
-      let ranges = ss.getNamedRanges();
-      for (let a = 0; a < ranges.length; a++){
-        ranges[a].remove();
-      }
-      let sheets = ss.getSheets();
-      let baseSheet = ss.insertSheet();
-      for (let a = 0; a < sheets.length; a++){
-        ss.deleteSheet(sheets[a]);
-      }
-      let protections = ss.getProtections(SpreadsheetApp.ProtectionType.SHEET);
-      for (let a = 0; a < protections.length; a++){
-        protections[a].remove();
-      }
-      protections = ss.getProtections(SpreadsheetApp.ProtectionType.RANGE);
-      for (let a = 0; a < protections.length; a++){
-        protections[a].remove();
-      }      
-      baseSheet.setName('Sheet1');
-
-      // Deletes initialization, time zone, and any other response-associated properites
-      let properties = PropertiesService.getDocumentProperties();
-      properties.deleteAllProperties();
-
-      deleteTriggers();
-
-      initializeMenu();
-
-    } else {
-      ss.toast('Canceled reset');
-    }
-  } else {
-    ss.toast('Canceled reset');
-  }
-  
-}
-
-// FETCH SPREADSHEET - Checks that the 'ss' variable passed into a script is not null, undefined, or a non-spreadsheet
-function fetchSpreadsheet(ss) {
-  try {
-    if (!ss) {
-      return SpreadsheetApp.getActiveSpreadsheet();
-    }
-    if (ss && typeof ss.getSheets === 'function' && typeof ss.getId === 'function') {
-      return ss;
-    } else {
-      throw new Error('Invalid Spreadsheet object');
-    }
-  } catch (err) {
-    if (ss !== null && ss !== undefined) {
-      Logger.log('ALERT: The function \'' + (new Error()).stack.split('\n')[2].trim().split(' ')[1] + '\' passed ' + typeof ss + ' \'' + ss + '\' to the \'fetchSpreadsheet\' function.');
-      Logger.log(err.stack);
-    }
-    ss = SpreadsheetApp.getActiveSpreadsheet();
-  }
-  return ss;
-}
-
-// FETCH UI - Checks that the 'ui' variable passed into a script is not null, undefined, or a non-UI
-function fetchUi(ui) {
-  try{
-    if (typeof ui.showModalDialog !== 'function') {
-      throw new Error('Non-UI passed');
-    }
-  }
-  catch (err) {
-    if (ui !== null && ui !== undefined) {
-      Logger.log('ALERT: The function \'' + (new Error()).stack.split('\n')[2].trim().split(' ')[1] + '\' passed ' + typeof ui + ' \'' + ui + '\' to the \'fetchUi\' function.');
-    }
-    ui = SpreadsheetApp.getUi();
-  }
-  return ui;
-}
-
-// SERVICE Function to remove all triggers on project
-function deleteTriggers() {
-  let triggers = ScriptApp.getProjectTriggers();
-  for (let a = 0; a < triggers.length; a++) {
-    ScriptApp.deleteTrigger(triggers[a]);
-  }
-}
-
-// ADJUST ROWS - Cleans up rows of a sheet by providing the total rows that currently exist with data
-function adjustRows(sheet,rows,verbose){
-  let maxRows = sheet.getMaxRows(); 
-  if (rows == undefined || rows == null) {
-    rows = sheet.getLastRow();
-  }
-  if (rows > 0 && rows > maxRows) {
-    sheet.insertRowsAfter(maxRows,(rows-maxRows));
-    if(verbose) return Logger.log('Added ' + (rows-maxRows) + ' rows');
-  } else if (rows < maxRows && rows != 0){
-    sheet.deleteRows((rows+1), (maxRows-rows));
-    if(verbose) return Logger.log('Removed ' + (maxRows - rows) + ' rows');
-  } else {
-    if(verbose) return Logger.log('Rows not adjusted');
-  }
-}
-
-// ADJUST COLUMNS - Cleans up columns of a sheet by providing the total columns that currently exist with data
-function adjustColumns(sheet,columns,verbose){
-  let maxColumns = sheet.getMaxColumns(); 
-  if (columns == undefined || columns == null) {
-    columns = sheet.getLastColumn();
-  }
-  if (columns > 0 && columns > maxColumns) {
-    sheet.insertColumnsAfter(maxColumns,(columns-maxColumns));
-    if(verbose) return Logger.log('Added ' + (columns-maxColumns) + ' columns');
-  }  else if (columns < maxColumns && columns != 0){
-    sheet.deleteColumns((columns+1), (maxColumns-columns));
-    if(verbose) return Logger.log('Removed ' + (maxColumns - columns) + ' column(s)');
-  } else {
-    if(verbose) return Logger.log('Columns not adjusted');
-  }
-}
-
-// GENERATES HEX GRADIENT - Provide a start and end and a count of values and this function generates a HEX gradient. Midpoint value is optional.
-function hexGradient(start, end, count, midpoint) { // start and end in either 3 or 6 digit hex values, count is total values in array to return
-  if (count < 2 || count.isNaN) {
-    Logger.log('ERROR: Please provide a \'count\' value of 2 or greater');
-    return null;
-  } else {
-    count = Math.ceil(count);
-    if (midpoint == null || midpoint == undefined) {
-      // strip the leading # if it's there
-      start = start.replace(/^\s*#|\s*$/g, '');
-      end = end.replace(/^\s*#|\s*$/g, '');
-
-      // convert 3 char codes --> 6, e.g. `E0F` --> `EE00FF`
-      if(start.length == 3){
-        start = start.replace(/(.)/g, '$1$1');
-      }
-
-      if(end.length == 3){
-        end = end.replace(/(.)/g, '$1$1');
-      }
-
-      let arr = ['#'+start];
-      let tmpRed, tmpGreen, tmpBlue;
-
-      // get colors
-      let startRed = parseInt(start.substr(0, 2), 16),
-          startGreen = parseInt(start.substr(2, 2), 16),
-          startBlue = parseInt(start.substr(4, 2), 16);
-      let endRed = parseInt(end.substr(0, 2), 16),
-          endGreen = parseInt(end.substr(2, 2), 16),
-          endBlue = parseInt(end.substr(4, 2), 16);
-      let stepRed = (endRed-startRed)/(count-1),
-          stepGreen = (endGreen-startGreen)/(count-1),
-          stepBlue = (endBlue-startBlue)/(count-1);
-      
-      for (let a = 1; a < count-1; a++) {
-        // calculate the step differential for each color
-        tmpRed = ((stepRed * a) + startRed).toString(16).split('.')[0];
-        tmpGreen = ((stepGreen * a) + startGreen).toString(16).split('.')[0];
-        tmpBlue = ((stepBlue * a) + startBlue).toString(16).split('.')[0];
-        // ensure 2 digits by color
-        if( tmpRed.length == 1 ) tmpRed = '0' + tmpRed;
-        if( tmpGreen.length == 1 ) tmpGreen = '0' + tmpGreen;
-        if( tmpBlue.length == 1 ) tmpBlue = '0' + tmpBlue;
-        arr.push(('#' + tmpRed + tmpGreen + tmpBlue).toUpperCase());
-      }
-      arr.push('#'+end);
-      return arr;
-    } else {
-      count = Math.ceil(count);
-      if (count % 2 == 0) {
-        count++;
-        // Logger.log('Even number provided with midpoint, increasing count to ' + count);
-      }
-      let half = Math.ceil(count/2);
-      let arr = hexGradient(start,midpoint,half);
-      arr.pop();
-      let arr2 = hexGradient(midpoint,end,half);
-      arr = arr.concat(arr2);
-      return arr;
-    }
-  }
-}
-
-// ENSURE ARRAY IS RECTANGULAR - a function to ensure that an array has blank values if it fails to have a full set of columns per row
-function makeArrayRectangular(arr) {
-  const maxLength = Math.max(...arr.map(row => row.length));
-  for (let a = 0; a < arr.length; a++) {
-    // While the row's length is less than the maximum length, push a placeholder value
-    while (arr[a].length < maxLength) {
-      arr[a].push('');
-    }
-  }
-  return arr;
-}
-
-// GET TIMEZONE
-function timezoneSet() {
-  // Get the value for the script property timezone
-  const scriptProperties = PropertiesService.getDocumentProperties();
-  const tz = scriptProperties.getProperty('tz');
-  if (tz != null) {
-    return true;
-  } else {
-    Logger.log('No timezone confirmation has been done yet');
-    return false;
-  }
-}
-
-// SET PROPRTY - sets a script property based on an inputted name (string) and a value (string/array/object) (essentially this ia global variable)
-function setProperty(property,value){
-  const scriptProperties = PropertiesService.getDocumentProperties();
-  if (typeof value === 'object' && !Array.isArray(value) && value !== null) {
-    scriptProperties.setProperty(property,JSON.stringify(value));
-  } else {
-    scriptProperties.setProperty(property,value);
-  }
-}
-
-// OPEN URL - Quick script to open a new tab with the newly created form, in this case
-function openUrl(url,week){
-  if (!url || typeof url !== 'string') {
-    throw new Error("Invalid URL provided.");
-  }
-  if (week == null) {
-    week = SpreadsheetApp.getActiveSpreadsheet().getRangeByName('WEEK').getValue();
-  }
-  if (week == undefined) {
-    week = fetchWeek();
-  }
-
-  // Create the HTML content with the Montserrat font
-  let htmlContent = `
-    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet">
-    <div style="font-family: 'Montserrat', sans-serif; text-align: center; padding: 20px;">
-      <p style="font-size: 22px;"><a href="${url}" target="_blank" style="font-weight: bold;">Click for Week ` + week + ` Form</a></p>
-    </div>
-  `;
-
-  let htmlOutput = HtmlService.createHtmlOutput(htmlContent)
-    .setWidth(350)
-    .setHeight(180);
-  
-  SpreadsheetApp.getUi().showModalDialog(htmlOutput, ' ');
-}
-
-// VIEW USER PROPERTIES - Shows all set variables within Google user properties
-// This is a back-end and unused script, these variables aren't isolated to the sheet/script but used by the form/sheet connection when triggering onSubmit calls
-function viewUserProperties() {
-  let userProperties = PropertiesService.getUserProperties().getProperties();
-  Logger.log(`User Properties:`);
-  for (let key in userProperties) {
-    Logger.log(key + ': ' + userProperties[key]);
-  }
-}
-
-// VIEW SCRIPT PROPERTIES - Shows all set variables within Google user properties
-// This is a back-end and unused script, these variables aren't isolated to the sheet/script but used by the form/sheet connection when triggering onSubmit calls
-function viewScriptProperties() {
-  let scriptProperties = PropertiesService.getScriptProperties().getProperties();
-  Logger.log('Script Properties:');
-  for (let key in scriptProperties) {
-    Logger.log(key + ': ' + scriptProperties[key]);
-  }
-}
-
-// VIEW DOCUMENT PROPERTIES - Shows all set variables within Google user properties
-// This is a back-end and unused script, these variables aren't isolated to the sheet/script but used by the form/sheet connection when triggering onSubmit calls
-function viewDocumentProperties() {
-  let documentProperties = PropertiesService.getDocumentProperties().getProperties();
-  Logger.log('Document Properties:');
-  for (let key in documentProperties) {
-    Logger.log(key + ': ' + documentProperties[key]);
-  }
-}
-
-// VIEW RESPONSES - Shows all set variables within Google user properties
-// This is a back-end and unused script, these variables aren't isolated to the sheet/script but used by the form/sheet connection when triggering onSubmit calls
-function viewResponseJSON(week) {
-  week = week || 1
-  let docProps = PropertiesService.getDocumentProperties();
-  let formsData = JSON.parse(docProps.getProperty('forms')) || {};
-  const databaseSheet = getDatabaseSheet();
-  const responseSheet = databaseSheet.getSheetByName(`WK${week}`);
-  
-  // Parse the latest, de-duplicated picks from the response sheet
-  const memberData = JSON.parse(docProps.getProperty('members')) || {};
-  const parsedPicks = parseAllPicksFromSheet(responseSheet, memberData);
-  Logger.log(`Week ${week} Pick Responses:`);
-  for (let key in parsedPicks) {
-    Logger.log(key + ': ' + JSON.stringify(parsedPicks[key]));
-  }
-}
-
-  
-
-/**
- * A simple toast message helper.
- */
-function showToast(message,ss) {
-  ss = fetchSpreadsheet(ss);
-  ss.toast(message);
-}
-
 
 // ============================================================================================================================================
 // CORE SHEETS
@@ -7686,10 +7254,10 @@ function mnfSheet(ss,memberData) {
   sheet.clearConditionalFormatRules(); 
 
   // SET MNF NAMES Range
-  let rangeMnfNames = sheet.getRange('R2C1:R'+(rows-1)+'C1');
+  let rangeMnfNames = sheet.getRange(`R2C1:R${rows-1}C1`);
   ss.setNamedRange('MNF_NAMES',rangeMnfNames); 
   // MNF TOTAL GRADIENT RULE
-  let rangeMnfTot = sheet.getRange('R2C2:R'+(rows-1)+'C2');
+  let rangeMnfTot = sheet.getRange(`R2C2:R${rows-1}C2`);
   ss.setNamedRange('MNF',rangeMnfTot);
   let formatRuleMnfTot = SpreadsheetApp.newConditionalFormatRule()
     .setGradientMaxpointWithValue("#C9FFDF", SpreadsheetApp.InterpolationType.NUMBER, '=max(indirect("MNF"))') // Max value of all correct picks
@@ -7698,7 +7266,7 @@ function mnfSheet(ss,memberData) {
     .setRanges([rangeMnfTot])
     .build();
   // MNF AVERAGES GRADIENT RULE
-  let rangeMnfAvg = sheet.getRange('R'+rows+'C2:R'+rows+'C'+(weeks.length+2));
+  let rangeMnfAvg = sheet.getRange(`R${rows}C2:R${rows}C${weeks.length+2}`);
   let formatRuleMnfAvg = SpreadsheetApp.newConditionalFormatRule()
     .setGradientMaxpointWithValue("#C9FFDF", SpreadsheetApp.InterpolationType.NUMBER, "1")
     .setGradientMidpointWithValue("#FFFFFF", SpreadsheetApp.InterpolationType.NUMBER, "0.5")
@@ -7706,7 +7274,7 @@ function mnfSheet(ss,memberData) {
     .setRanges([rangeMnfAvg])
     .build();
   // MNF SHEET GRADIENT RULE
-  range = sheet.getRange('R2C3:R'+(rows-1)+'C'+(weeks.length+2));
+  range = sheet.getRange(`R2C3:R${rows-1}C${weeks.length+2}`);
   ss.setNamedRange('MNF_WEEKLY',range);
   let formatRuleTwoCorrect = SpreadsheetApp.newConditionalFormatRule()
     .whenNumberEqualTo(2)
@@ -9889,4 +9457,525 @@ function calculateWildcardScore(playerPicksRange) {
   }
 
   return finalScores;
+}
+
+
+// ============================================================================================================================================
+// UTILITIES
+// ============================================================================================================================================
+
+/**
+ * Displays a clean modal dialog with a link for the user to click.
+ * This is the standard way to direct a user to a URL from a server-side script.
+ *
+ * @param {string} url The URL the link should point to.
+ * @param {string} title The title for the dialog window.
+ * @param {string} linkText The text to display for the link itself.
+ */
+function showLinkDialog(url, title, linkText, subText) {
+  const htmlContent = `
+    <div style="font-family: 'Montserrat', sans-serif; text-align: center; padding: 20px;">
+      <p style="font-size: 16px;">
+        <a href="${url}" target="_blank" onclick="google.script.host.close()" 
+           style="font-weight: bold; text-decoration: none; background-color: #013369; color: white; padding: 10px 20px; border-radius: 5px;">
+          ${linkText}
+        </a>
+      </p>
+      ${subText ? '<div style="font-size: 12px;">' + subText + '</div>' : ''}
+    </div>
+  `;
+  const htmlOutput = HtmlService.createHtmlOutput(htmlContent).setWidth(400).setHeight(180);
+  SpreadsheetApp.getUi().showModalDialog(htmlOutput, title);
+}
+
+/**
+ * Displays a polished dialog with "Edit," "Open," and "Copy Link"
+ * action buttons for a newly created form.
+ *
+ * @param {Object} newFormsData An object containing the form's URLs and other details.
+ * @param {number} week The week number for which the form was created.
+ */
+function showFormActionsDialog(newFormsData, week) {
+  // Destructure the URLs from the input object for easy access
+  const { editUrl, publishedUrl } = newFormsData;
+  const htmlContent = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <base target="_top">
+      <style>
+        body { font-family: 'Montserrat', Arial, sans-serif; padding: 10px; text-align: center; }
+        h2 { color: #013369; margin-top: 0; }
+        p { font-size: 14px; color: #333; }
+        .button-row { display: flex; gap: 10px; justify-content: center; margin-top: 20px; }
+        .btn { padding: 8px 15px;  font-size: 14px;  font-weight: 600;  border: none;  border-radius: 5px;  cursor: pointer;  color: white;  text-decoration: none; display: flex;  align-items: center;  justify-content: center;  gap: 5px; }
+        .btn-primary { background-color: #013369; }
+        .btn-primary:hover { background-color: #2067b3; }
+        .btn-secondary { background-color: #878787; }
+        .btn-secondary:hover { background-color: #A8A8A8; }
+        .btn-alert { background-color: #ff913d; }
+        .btn-alert:hover { background-color: #e86705; }
+        button.btn-alert { color: white; }
+      </style>
+    </head>
+    <body>
+      <h2>✅ Success!</h2>
+      <p>Your form for Week ${week} has been created. Your form ${newFormsData.gamePlan.membershipLocked ? 'is open to new members.' : 'only accepts submissions from existing members.'} Copy and share the link with your pool members.</p>
+      <div class="button-row">
+        <a href="${editUrl}" target="_blank" class="btn btn-secondary">📝 Edit Form</a>
+        <a href="${publishedUrl}" target="_blank" class="btn btn-primary">📂 Open Form</a>
+        <button id="copy-btn" class="btn btn-alert">📤 Copy Link</button>
+      </div>
+      <script>
+        document.getElementById('copy-btn').onclick = function() {
+          const linkToCopy = "${publishedUrl}";
+          const button = this;
+          navigator.clipboard.writeText(linkToCopy).then(() => {
+            button.textContent = '✅ Copied!';
+            button.disabled = true;
+            setTimeout(() => {
+              button.textContent = '📤 Copy Link';
+              button.disabled = false;
+            }, 2000);
+          }).catch(err => {
+            Logger.log('Failed to copy: ', err);
+            prompt("Please copy this link manually:", linkToCopy);
+          });
+        };
+      </script>
+    </body>
+    </html>
+  `;
+  
+  const htmlOutput = HtmlService.createHtmlOutput(htmlContent).setWidth(450).setHeight(200);
+  SpreadsheetApp.getUi().showModalDialog(htmlOutput, `Week ${week} Form Created`);
+}
+
+
+/**
+ * Generates a simple, robust, and sufficiently unique ID string.
+ * Creates an ID like "id_1234567890".
+ *
+ * @returns {string} A new unique ID.
+ */
+function generateUniqueId() {
+  const randomPart = Math.random().toString(36).substring(3, 15).toUpperCase();
+  return `id_${randomPart}`;
+}
+
+// RESET Function to reset and create menu for runFirst
+function resetSpreadsheet() {
+  const ui = SpreadsheetApp.getUi();
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  Logger.log(`↩️ Return to spreadsheet for prompts`);
+  let prompt = ui.alert(`❗ RESET?`,'Reset spreadsheet and delete all data?', ui.ButtonSet.YES_NO);
+  if (prompt == 'YES') {
+    
+    let promptTwo = ui.alert('Are you sure? This would be very difficult to recover from.',ui.ButtonSet.YES_NO);
+    if (promptTwo == 'YES') {
+      let ranges = ss.getNamedRanges();
+      for (let a = 0; a < ranges.length; a++){
+        ranges[a].remove();
+      }
+      let sheets = ss.getSheets();
+      let baseSheet = ss.insertSheet();
+      for (let a = 0; a < sheets.length; a++){
+        ss.deleteSheet(sheets[a]);
+      }
+      let protections = ss.getProtections(SpreadsheetApp.ProtectionType.SHEET);
+      for (let a = 0; a < protections.length; a++){
+        protections[a].remove();
+      }
+      protections = ss.getProtections(SpreadsheetApp.ProtectionType.RANGE);
+      for (let a = 0; a < protections.length; a++){
+        protections[a].remove();
+      }      
+      baseSheet.setName('Sheet1');
+
+      // Deletes initialization, time zone, and any other response-associated properites
+      let properties = PropertiesService.getDocumentProperties();
+      properties.deleteAllProperties();
+
+      deleteTriggers();
+
+      initializeMenu();
+
+    } else {
+      ss.toast('Canceled reset');
+    }
+  } else {
+    ss.toast('Canceled reset');
+  }
+  
+}
+
+// FETCH SPREADSHEET - Checks that the 'ss' variable passed into a script is not null, undefined, or a non-spreadsheet
+function fetchSpreadsheet(ss) {
+  try {
+    if (!ss) {
+      return SpreadsheetApp.getActiveSpreadsheet();
+    }
+    if (ss && typeof ss.getSheets === 'function' && typeof ss.getId === 'function') {
+      return ss;
+    } else {
+      throw new Error('Invalid Spreadsheet object');
+    }
+  } catch (err) {
+    if (ss !== null && ss !== undefined) {
+      Logger.log('ALERT: The function \'' + (new Error()).stack.split('\n')[2].trim().split(' ')[1] + '\' passed ' + typeof ss + ' \'' + ss + '\' to the \'fetchSpreadsheet\' function.');
+      Logger.log(err.stack);
+    }
+    ss = SpreadsheetApp.getActiveSpreadsheet();
+  }
+  return ss;
+}
+
+// FETCH UI - Checks that the 'ui' variable passed into a script is not null, undefined, or a non-UI
+function fetchUi(ui) {
+  try{
+    if (typeof ui.showModalDialog !== 'function') {
+      throw new Error('Non-UI passed');
+    }
+  }
+  catch (err) {
+    if (ui !== null && ui !== undefined) {
+      Logger.log('ALERT: The function \'' + (new Error()).stack.split('\n')[2].trim().split(' ')[1] + '\' passed ' + typeof ui + ' \'' + ui + '\' to the \'fetchUi\' function.');
+    }
+    ui = SpreadsheetApp.getUi();
+  }
+  return ui;
+}
+
+// SERVICE Function to remove all triggers on project
+function deleteTriggers() {
+  let triggers = ScriptApp.getProjectTriggers();
+  for (let a = 0; a < triggers.length; a++) {
+    ScriptApp.deleteTrigger(triggers[a]);
+  }
+}
+
+// ADJUST ROWS - Cleans up rows of a sheet by providing the total rows that currently exist with data
+function adjustRows(sheet,rows,verbose){
+  let maxRows = sheet.getMaxRows(); 
+  if (rows == undefined || rows == null) {
+    rows = sheet.getLastRow();
+  }
+  if (rows > 0 && rows > maxRows) {
+    sheet.insertRowsAfter(maxRows,(rows-maxRows));
+    if(verbose) return Logger.log('Added ' + (rows-maxRows) + ' rows');
+  } else if (rows < maxRows && rows != 0){
+    sheet.deleteRows((rows+1), (maxRows-rows));
+    if(verbose) return Logger.log('Removed ' + (maxRows - rows) + ' rows');
+  } else {
+    if(verbose) return Logger.log('Rows not adjusted');
+  }
+}
+
+// ADJUST COLUMNS - Cleans up columns of a sheet by providing the total columns that currently exist with data
+function adjustColumns(sheet,columns,verbose){
+  let maxColumns = sheet.getMaxColumns(); 
+  if (columns == undefined || columns == null) {
+    columns = sheet.getLastColumn();
+  }
+  if (columns > 0 && columns > maxColumns) {
+    sheet.insertColumnsAfter(maxColumns,(columns-maxColumns));
+    if(verbose) return Logger.log('Added ' + (columns-maxColumns) + ' columns');
+  }  else if (columns < maxColumns && columns != 0){
+    sheet.deleteColumns((columns+1), (maxColumns-columns));
+    if(verbose) return Logger.log('Removed ' + (maxColumns - columns) + ' column(s)');
+  } else {
+    if(verbose) return Logger.log('Columns not adjusted');
+  }
+}
+
+// GENERATES HEX GRADIENT - Provide a start and end and a count of values and this function generates a HEX gradient. Midpoint value is optional.
+function hexGradient(start, end, count, midpoint) { // start and end in either 3 or 6 digit hex values, count is total values in array to return
+  if (count < 2 || count.isNaN) {
+    Logger.log('ERROR: Please provide a \'count\' value of 2 or greater');
+    return null;
+  } else {
+    count = Math.ceil(count);
+    if (midpoint == null || midpoint == undefined) {
+      // strip the leading # if it's there
+      start = start.replace(/^\s*#|\s*$/g, '');
+      end = end.replace(/^\s*#|\s*$/g, '');
+
+      // convert 3 char codes --> 6, e.g. `E0F` --> `EE00FF`
+      if(start.length == 3){
+        start = start.replace(/(.)/g, '$1$1');
+      }
+
+      if(end.length == 3){
+        end = end.replace(/(.)/g, '$1$1');
+      }
+
+      let arr = ['#'+start];
+      let tmpRed, tmpGreen, tmpBlue;
+
+      // get colors
+      let startRed = parseInt(start.substr(0, 2), 16),
+          startGreen = parseInt(start.substr(2, 2), 16),
+          startBlue = parseInt(start.substr(4, 2), 16);
+      let endRed = parseInt(end.substr(0, 2), 16),
+          endGreen = parseInt(end.substr(2, 2), 16),
+          endBlue = parseInt(end.substr(4, 2), 16);
+      let stepRed = (endRed-startRed)/(count-1),
+          stepGreen = (endGreen-startGreen)/(count-1),
+          stepBlue = (endBlue-startBlue)/(count-1);
+      
+      for (let a = 1; a < count-1; a++) {
+        // calculate the step differential for each color
+        tmpRed = ((stepRed * a) + startRed).toString(16).split('.')[0];
+        tmpGreen = ((stepGreen * a) + startGreen).toString(16).split('.')[0];
+        tmpBlue = ((stepBlue * a) + startBlue).toString(16).split('.')[0];
+        // ensure 2 digits by color
+        if( tmpRed.length == 1 ) tmpRed = '0' + tmpRed;
+        if( tmpGreen.length == 1 ) tmpGreen = '0' + tmpGreen;
+        if( tmpBlue.length == 1 ) tmpBlue = '0' + tmpBlue;
+        arr.push(('#' + tmpRed + tmpGreen + tmpBlue).toUpperCase());
+      }
+      arr.push('#'+end);
+      return arr;
+    } else {
+      count = Math.ceil(count);
+      if (count % 2 == 0) {
+        count++;
+        // Logger.log('Even number provided with midpoint, increasing count to ' + count);
+      }
+      let half = Math.ceil(count/2);
+      let arr = hexGradient(start,midpoint,half);
+      arr.pop();
+      let arr2 = hexGradient(midpoint,end,half);
+      arr = arr.concat(arr2);
+      return arr;
+    }
+  }
+}
+
+// ENSURE ARRAY IS RECTANGULAR - a function to ensure that an array has blank values if it fails to have a full set of columns per row
+function makeArrayRectangular(arr) {
+  const maxLength = Math.max(...arr.map(row => row.length));
+  for (let a = 0; a < arr.length; a++) {
+    // While the row's length is less than the maximum length, push a placeholder value
+    while (arr[a].length < maxLength) {
+      arr[a].push('');
+    }
+  }
+  return arr;
+}
+
+// GET TIMEZONE
+function timezoneSet() {
+  // Get the value for the script property timezone
+  const scriptProperties = PropertiesService.getDocumentProperties();
+  const tz = scriptProperties.getProperty('tz');
+  if (tz != null) {
+    return true;
+  } else {
+    Logger.log('No timezone confirmation has been done yet');
+    return false;
+  }
+}
+
+// SET PROPRTY - sets a script property based on an inputted name (string) and a value (string/array/object) (essentially this ia global variable)
+function setProperty(property,value){
+  const scriptProperties = PropertiesService.getDocumentProperties();
+  if (typeof value === 'object' && !Array.isArray(value) && value !== null) {
+    scriptProperties.setProperty(property,JSON.stringify(value));
+  } else {
+    scriptProperties.setProperty(property,value);
+  }
+}
+
+// OPEN URL - Quick script to open a new tab with the newly created form, in this case
+function openUrl(url,week){
+  if (!url || typeof url !== 'string') {
+    throw new Error("Invalid URL provided.");
+  }
+  if (week == null) {
+    week = SpreadsheetApp.getActiveSpreadsheet().getRangeByName('WEEK').getValue();
+  }
+  if (week == undefined) {
+    week = fetchWeek();
+  }
+
+  // Create the HTML content with the Montserrat font
+  let htmlContent = `
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet">
+    <div style="font-family: 'Montserrat', sans-serif; text-align: center; padding: 20px;">
+      <p style="font-size: 22px;"><a href="${url}" target="_blank" style="font-weight: bold;">Click for Week ` + week + ` Form</a></p>
+    </div>
+  `;
+
+  let htmlOutput = HtmlService.createHtmlOutput(htmlContent)
+    .setWidth(350)
+    .setHeight(180);
+  
+  SpreadsheetApp.getUi().showModalDialog(htmlOutput, ' ');
+}
+
+/**
+ * A simple toast message helper.
+ */
+function showToast(message,ss) {
+  ss = fetchSpreadsheet(ss);
+  ss.toast(message);
+}
+
+
+// ============================================================================================================================================
+// DEBUG TOOLS
+// ============================================================================================================================================
+
+
+// FRONTEND CONFIGURATION REVIEW - Brings up an alert in the Google Sheet to show what configuration variables are set
+// This is a back-end and unused script for general usage
+function checkDocumentConfiguration() {
+  Logger.log(`Fetching configuration. Please review report in Sheets tab...`);
+  try {
+    const ss = fetchSpreadsheet();
+    const ui = fetchUi();
+    let str = '';
+    const props = fetchProperties('configuration');
+    Object.keys(props).forEach(key => {
+      let subStr = '\n';
+      if (typeof props[key] == 'object') {
+        subStr += key + ': {\n';
+        Object.keys(props[key]).forEach(subKey => {
+          if (typeof props[key][subKey] == 'object') {
+            subStr += '-' + subKey + ': {\n';
+            Object.keys(props[key][subKey]).forEach(subSubKey => {
+              subStr += '--' + subSubKey + ': ' + props[key][subKey][subSubKey] + '\n';
+            });
+            subStr += '--}\n';
+          } else {
+            subStr += '-' + subKey + ': ' + props[key][subKey] + '\n';
+          }
+        });
+        subStr += '-}\n';
+      } else {
+          subStr += '-' + key + ': ' + props[key] + '\n';
+      }
+      str += (key + ': ' + (typeof props[key] === 'boolean' ? (props[key] ? '✅\n' : '❌\n') : (typeof props[key] == 'object' ? subStr : props[key] + '\n' )));
+    });
+
+    ui.alert(str,ui.ButtonSet.OK);
+  } catch (err) {
+    Logger.log(`❌ Failed to retrieve members sidebar data: ${err.stack}`);
+    return { properties: {} };
+  }
+}
+
+// VIEW USER PROPERTIES - Shows all set variables within Google user properties
+// This is a back-end and unused script, these variables aren't isolated to the sheet/script but used by the form/sheet connection when triggering onSubmit calls
+function viewUserProperties() {
+  let userProperties = PropertiesService.getUserProperties().getProperties();
+  Logger.log(`User Properties:`);
+  for (let key in userProperties) {
+    Logger.log(key + ': ' + userProperties[key]);
+  }
+}
+
+// VIEW SCRIPT PROPERTIES - Shows all set variables within Google user properties
+// This is a back-end and unused script, these variables aren't isolated to the sheet/script but used by the form/sheet connection when triggering onSubmit calls
+function viewScriptProperties() {
+  let scriptProperties = PropertiesService.getScriptProperties().getProperties();
+  Logger.log('Script Properties:');
+  for (let key in scriptProperties) {
+    Logger.log(key + ': ' + scriptProperties[key]);
+  }
+}
+
+// VIEW DOCUMENT PROPERTIES - Shows all set variables within Google user properties
+// This is a back-end and unused script, these variables aren't isolated to the sheet/script but used by the form/sheet connection when triggering onSubmit calls
+function viewDocumentProperties() {
+  let documentProperties = PropertiesService.getDocumentProperties().getProperties();
+  Logger.log('Document Properties:');
+  for (let key in documentProperties) {
+    Logger.log(key + ': ' + documentProperties[key]);
+  }
+}
+
+// VIEW RESPONSES - Shows all set variables within Google user properties
+// This is a back-end and unused script, these variables aren't isolated to the sheet/script but used by the form/sheet connection when triggering onSubmit calls
+function viewResponseJSON(week) {
+  week = week || 1
+  let docProps = PropertiesService.getDocumentProperties();
+  let formsData = JSON.parse(docProps.getProperty('forms')) || {};
+  const databaseSheet = getDatabaseSheet();
+  const responseSheet = databaseSheet.getSheetByName(`WK${week}`);
+  
+  // Parse the latest, de-duplicated picks from the response sheet
+  const memberData = JSON.parse(docProps.getProperty('members')) || {};
+  const parsedPicks = parseAllPicksFromSheet(responseSheet, memberData);
+  Logger.log(`Week ${week} Pick Responses:`);
+  for (let key in parsedPicks) {
+    Logger.log(key + ': ' + JSON.stringify(parsedPicks[key]));
+  }
+}
+
+/**
+ * Opens the Manual Member Data Editor modal.
+ */
+function memberDataPanel() {
+  const html = HtmlService.createHtmlOutputFromFile('memberDataPanel')
+      .setWidth(1300)
+      .setHeight(850)
+      .setTitle('Master JSON Member Editor');
+  SpreadsheetApp.getUi().showModalDialog(html, 'Master JSON Member Editor');
+}
+
+function getManualEditorData() {
+  return {
+    memberData: JSON.parse(PropertiesService.getDocumentProperties().getProperty('members')) || {},
+    config: JSON.parse(PropertiesService.getDocumentProperties().getProperty('configuration')) || {}
+  };
+}
+
+function saveManualMemberData(payload) {
+  try {
+    const memberData = JSON.parse(PropertiesService.getDocumentProperties().getProperty('members')) || {};
+
+    const toArray = (str) => {
+      if (!str) return [];
+      return str.split(',').map(v => {
+        v = v.trim();
+        if (v === 'null' || v === '') return null;
+        return isNaN(v) ? v : parseInt(v);
+      });
+    };
+
+    for (const id in payload) {
+      const p = payload[id];
+      const m = memberData.members[id];
+      if (!m) continue;
+
+      m.name = p.name;
+      m.active = (p.active === true);
+      m.paid = (p.paid === true);
+
+      // Process Survivor
+      if (p.sP !== undefined) {
+        m.sP = toArray(p.sP);
+        m.sL = toArray(p.sL);
+        m.sR = toArray(p.sR);
+        m.sE = p.sE; // This is now a clean array of booleans from the client
+        m.sO = p.sO === "" ? null : parseInt(p.sO);
+      }
+
+      // Process Eliminator
+      if (p.eP !== undefined) {
+        m.eP = toArray(p.eP);
+        m.eL = toArray(p.eL);
+        m.eR = toArray(p.eR);
+        m.eE = p.eE; // Array of booleans
+        m.eO = p.eO === "" ? null : parseInt(p.eO);
+      }
+    }
+
+    saveProperties('members', memberData);
+    return "✅ Master JSON data saved successfully!";
+  } catch (err) {
+    throw new Error(err.message);
+  }
 }
