@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    /* Using your existing, consistent styles */
+    body { font-family: 'Montserrat', Arial, sans-serif; padding: 20px; }
+    h3 { color: #013369; margin-top: 0; }
+    p { font-size: 13px; color: #555; line-height: 1.5; }
+    .hidden { display: none !important; }
+    .form-row { display: flex; align-items: center; gap: 15px; margin: 20px 0; }
+    label { font-weight: 600; }
+    select { padding: 8px 12px; border-radius: 4px; border: 1px solid #ccc; font-size: 14px; }
+    .button-row { display: flex; gap: 8px; margin-top: 30px; border-top: 1px solid #eee; padding-top: 20px; }
+    .btn { flex: 1; padding: 8px 14px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; font-weight: 600; }
+    .btn-primary { background-color: #013369; color: white; }
+    .btn-primary:hover { background-color: #2067b3; }
+    .btn-secondary { background-color: #D50A0A; color: white; }
+    .btn-secondary:hover { background-color: #ff3d3d; }
+  </style>
+</head>
+<body>
+  <div id="loader"><p>Loading current settings...</p></div>
+
+  <div id="content" class="hidden">
+    <h3>Set Weekly Auto-Fetch</h3>
+    <p>Schedule a time for the script to automatically fetch the latest game spreads and over/under data each week. This helps ensure your forms are always up to date.</p>
+
+    <div class="form-row">
+      <label for="day-select">Day of Week:</label>
+      <select id="day-select">
+        <option value="TUESDAY">Tuesday</option>
+        <option value="WEDNESDAY">Wednesday</option>
+        <option value="THURSDAY">Thursday</option>
+        <option value="FRIDAY">Friday</option>
+        <option value="SATURDAY">Saturday</option>
+      </select>
+
+      <label for="hour-select">Time (Hour):</label>
+      <select id="hour-select">
+        <!-- Options will be added by JavaScript -->
+      </select>
+    </div>
+
+    <div class="button-row">
+      <button id="delete-btn" type="button" class="btn btn-secondary">Disable Auto-Fetch</button>
+      <button id="save-btn" type="button" class="btn btn-primary">Save Schedule</button>
+    </div>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      // Populate the hour dropdown
+      const hourSelect = document.getElementById('hour-select');
+      for (let i = 0; i < 24; i++) {
+        // Format for 12-hour clock with AM/PM
+        const displayHour = i % 12 === 0 ? 12 : i % 12;
+        const ampm = i < 12 ? 'AM' : 'PM';
+        const option = document.createElement('option');
+        option.value = i; // Store the 24-hour value
+        option.textContent = `${displayHour} ${ampm}`;
+        hourSelect.appendChild(option);
+      }
+      
+      // Add event listeners
+      document.getElementById('save-btn').addEventListener('click', handleSave);
+      document.getElementById('delete-btn').addEventListener('click', handleDelete);
+      
+      // Fetch the current trigger settings
+      google.script.run
+        .withSuccessHandler(populateCurrentSettings)
+        .withFailureHandler(err => alert(err.message))
+        .getWeeklyFetchTrigger();
+    });
+    
+    function populateCurrentSettings(triggerInfo) {
+      if (triggerInfo) {
+        document.getElementById('day-select').value = triggerInfo.day;
+        document.getElementById('hour-select').value = triggerInfo.hour;
+        document.getElementById('delete-btn').disabled = false;
+      } else {
+        // No trigger is set, so select a sensible default (e.g., Wednesday at 10 AM)
+        document.getElementById('day-select').value = 'WEDNESDAY';
+        document.getElementById('hour-select').value = '10';
+        document.getElementById('delete-btn').disabled = true; // Nothing to delete
+      }
+      document.getElementById('loader').style.display = 'none';
+      document.getElementById('content').classList.remove('hidden');
+    }
+
+    function handleSave() {
+      const day = document.getElementById('day-select').value;
+      const hour = document.getElementById('hour-select').value;
+      
+      document.getElementById('save-btn').textContent = 'Saving...';
+      document.getElementById('save-btn').disabled = true;
+
+      google.script.run
+        .withSuccessHandler(() => google.script.host.close())
+        .withFailureHandler(err => {
+          alert(err.message);
+          document.getElementById('save-btn').textContent = 'Save Schedule';
+          document.getElementById('save-btn').disabled = false;
+        })
+        .setWeeklyFetchTrigger({ day: day, hour: hour });
+    }
+
+    function handleDelete() {
+      if (confirm("Are you sure you want to disable the weekly auto-fetch?")) {
+        document.getElementById('delete-btn').textContent = 'Disabling...';
+        document.getElementById('delete-btn').disabled = true;
+        
+        google.script.run
+          .withSuccessHandler(() => google.script.host.close())
+          .withFailureHandler(err => {
+            alert(err.message);
+            document.getElementById('delete-btn').textContent = 'Disable Auto-Fetch';
+            document.getElementById('delete-btn').disabled = false;
+          })
+          .deleteWeeklyFetchTrigger();
+      }
+    }
+  </script>
+</body>
+</html>
