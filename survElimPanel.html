@@ -57,7 +57,25 @@
     /* Member Controls */
     .member-control-area { background: white; padding: 12px 20px; border-bottom: 1px solid #ddd; display: flex; align-items: center; gap: 20px; }
     .lives-cell input { width: 35px; text-align: center; border: 1px solid #ccc; border-radius: 3px; padding: 4px; }
-    
+    .pick-cell select {
+      width: 60%;
+      max-width: 180px;
+      border: 1px solid #ccc;
+      border-radius: 3px;
+      padding: 4px;
+      background-color: #fff;
+      font-family: 'Montserrat', Arial, sans-serif;
+    }
+    .pick-name-cell select {
+      width: 50%;
+      max-width: 180px;
+      border: 1px solid #ccc;
+      border-radius: 3px;
+      padding: 4px;
+      background-color: #fff;
+      font-family: 'Montserrat', Arial, sans-serif;
+    }
+
     /* Buttons */
     .btn-row { padding: 15px 20px; background: white; border-top: 1px solid #ddd; display: flex; gap: 10px; }
     .btn-main { flex: 1; padding: 10px; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; font-size: 14px; }
@@ -83,7 +101,7 @@
   <div class="header-container">
     <div class="header-line">
       <div class="header-info">
-        <strong id="league-title">Manager</strong>
+        <strong id="league-title"></strong>
         <span id="league-year" class="info-pill"></span>
       </div>
       <div id="mode-buttons-container" class="mode-buttons"></div>
@@ -94,7 +112,9 @@
   <div class="member-control-area">
     <div>
       <label>Member:</label><br>
-      <select id="member-select" style="width: 160px; padding: 5px;"></select>
+    </div>
+    <div>
+      <select id="member-select" style="width: 160px; padding: 5px;" class="pick-name-cell"></select>
     </div>
     <div id="member-lives-display" style="font-size: 22px;"></div>
   </div>
@@ -234,7 +254,7 @@
           resText = '❔'; 
         }
 
-        let optionsHtml = '<option value="">-- No Pick --</option>';
+        let optionsHtml = '<option value="">None</option>';
         allTeams.forEach(t => {
           optionsHtml += `<option value="${t}" ${t === currentPick ? 'selected' : ''}>${config.hideEmojis?'':(leagueData[t].mascot||'🏈')} ${t}</option>`;
         });
