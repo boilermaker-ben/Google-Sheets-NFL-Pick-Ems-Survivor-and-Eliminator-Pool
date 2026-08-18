@@ -40,7 +40,7 @@ const VERSION = '1.2.1';
  *  🧙 AUTOMATION:
  *    📡 Spread Auto-Fetch Panel - lets you set a time for the schedule data (and spreads) to automatically be udpated
  *    ✅ Enable 👑&💀 Trigger - required for processing updates to Survivor/Eliminator evals (only visible if Survivor or Eliminator Present)
- *    ❌ Disable 👑&💀 Trigger - remove if causing issues or want to run without it for a while (only visible if Survivor or Eliminator Present)
+ *    ⭕ Disable 👑&💀 Trigger - remove if causing issues or want to run without it for a while (only visible if Survivor or Eliminator Present)
  * 
  *   ------------
  * 
@@ -99,7 +99,7 @@ function onOpen() {
         .addItem('📡 Spread Auto-Fetch Panel','showAutoFetchPanel');
       if (contest) {
         subMenu.addItem(`✅ Enable ${survElimIcons} Triggers`,'createOnEditTrigger')
-          .addItem(`❌ Disable ${survElimIcons} Triggers`,'deleteOnEditTrigger');
+          .addItem(`⭕ Disable ${survElimIcons} Triggers`,'deleteOnEditTrigger');
       }
       menu.addSubMenu(subMenu);
     } else {
@@ -6155,20 +6155,16 @@ function processContest(ss, week, contestType, memberData, outcomeMap, config) {
     if (!member[evalKey]) member[evalKey] = [];
     if (!member[livesKey]) member[livesKey] = [];
 
-    // Determine the number of lives at the START of this week.
     let livesAtStartOfWeek = (week == startWeek) 
       ? parseInt(livesSetting, 10) 
       : (member[livesKey][week - 2] || 0);
 
     let isCorrect = null; // Default to null (Pending)
 
-    // --- LOGIC FIX: Check if game is completed ---
     if (!outcome || outcome.winner === null) {
-      // Game hasn't finished. Do not mark wrong, do not subtract lives.
       isCorrect = null; 
       pendingGamesDetected = true;
     } else {
-      // Game IS finished, evaluate result
       if (isAts) {
         isCorrect = calculateAtsResult(pickAbbr, outcome.winner, outcome.loser, outcome.margin, outcome.spread);
         if (contestType === 'ELIMINATOR') isCorrect = !isCorrect;
@@ -6178,12 +6174,14 @@ function processContest(ss, week, contestType, memberData, outcomeMap, config) {
       }
     }
 
-    member[evalKey][week - 1] = isCorrect;
+    // Explicitly map True -> 1, False -> 0, and keep Null as Null
+    member[evalKey][week - 1] = (isCorrect === null) ? null : (isCorrect ? 1 : 0);
 
     // --- Update Lives History ---
     let livesAtEndOfWeek = livesAtStartOfWeek;
     
-    // Only subtract a life if the game is finished AND they were wrong
+    // This stays safe because (null === false) is false. 
+    // Lives only drop if isCorrect is explicitly false.
     if (isCorrect === false && livesAtStartOfWeek > 0) {
       livesAtEndOfWeek--;
     }
