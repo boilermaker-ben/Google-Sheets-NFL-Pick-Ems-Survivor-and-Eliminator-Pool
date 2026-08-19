@@ -3740,7 +3740,7 @@ function launchFormBuilder() {
     }
   } catch (err) {
     Logger.log(`⚠️ Error starting form creation: ${err.stack}`);
-    ui.alert(`An error occurred while launching the form builder.`,`⚠️ FORM BUILD ERROR`);
+    ui.alert(`⚠️ FORM BUILD ERROR`,`An error occurred while launching the form builder:\n\n${err.message}`,ui.ButtonSet.OK);
   }
 }
 
@@ -3768,7 +3768,7 @@ function templateCreationPrompt(ss,ui) {
       ss.toast('Form creation canceled by user when running a form building operation',`⛔ FORM CREATION CANCELED`);
       Logger.log(`⛔ Form creation canceled by user`);
     } else {
-      ui.alert(`An unexpected error occurred: ${err.message}`,`⚠️ FORM BUILD ERROR`);
+    ui.alert(`⚠️ FORM BUILD ERROR`,`An unexpected error occurred:\n\n${err.message}`,ui.ButtonSet.OK);
       Logger.log(`⚠️ Error occurred during form building process: ${err.stack}`);
     }
   }
