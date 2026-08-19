@@ -3751,8 +3751,8 @@ function templateCreationPrompt(ss,ui) {
   ui = ui || fetchUi();
   try {
     const templateForm = getTemplateForm();
+       if (!templateForm) return;
     Logger.log(`📄 Template Form ${templateForm.getId()}`);
-    if (!templateForm) return;
 
     let response = ui.alert(
       '🎨 Customize Form Theme (One Time Only)',
