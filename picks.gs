@@ -3145,7 +3145,7 @@ function updateSheetsWithApiOutcomes(ss, week, completedGames, formsData, boolea
       }
     }
     if (config.tiebreakerInclude) {
-      const tiebreaker = formsData[week].gamePlan.games[formsData[week].gamePlan.games.length - 1];
+      const tiebreaker = latestKickoffGame(formsData[week].gamePlan.games);
       const tiebreakerMatchup = `${tiebreaker.awayTeam} @ ${tiebreaker.homeTeam}`;
       Logger.log(`⚖️ From the forms data for week ${week}, the final matchup for use as a tiebreaker is ${tiebreakerMatchup}. Checking for outcome availability...`)
       const tiebreakerMatchupDetails = completedGames.find(game => game.shortName === tiebreakerMatchup);
@@ -4669,9 +4669,38 @@ function addContestQuestion(form, contestType, member, isAts, startWeek, allTeam
 }
 
 /**
+ * Returns the game with the latest kickoff in a week.
+ *
+ * The tiebreaker question and the tiebreaker outcome need to refer to the same game, so this
+ * is the single place that decides which one it is and both callers use it.
+ *
+ * @param {Array<Object>} games A week's games, as held on gamePlan.games.
+ * @returns {Object|null} The last game to kick off, or null when there are none.
+ */
+function latestKickoffGame(games) {
+  if (!games || !games.length) return null;
+  // DAY[].index is already chronological across a football week (Wed -4 ... Mon 1)
+  const kickoff = (game) => {
+    let dayIndex = 0;
+    if (game.day !== undefined && DAY[game.day]) {
+      dayIndex = DAY[game.day].index;
+    } else if (game.dayName) {
+      const match = Object.keys(DAY).find(key => DAY[key].name === game.dayName);
+      if (match !== undefined) dayIndex = DAY[match].index;
+    }
+    return (dayIndex * 1440) + ((Number(game.hour) || 0) * 60) + (Number(game.minute) || 0);
+  };
+  let latest = games[0];
+  games.forEach(game => { if (kickoff(game) >= kickoff(latest)) latest = game; });
+  return latest;
+}
+
+/**
  * Builds all Pick'em related questions on the form.
  */
 function buildPickemQuestions(ss, form, gamePlan, config) {
+  // Chosen once, from the latest kickoff, rather than falling out of the loop below
+  const tiebreakerGame = config.tiebreakerInclude ? latestKickoffGame(gamePlan.games) : null;
   let tiebreakerMatchup;
   Logger.log(`🏈 Building Pick'em questions...`);
   gamePlan.games.forEach(game => {
@@ -4682,10 +4711,6 @@ function buildPickemQuestions(ss, form, gamePlan, config) {
     let helpText = `${mnf ? 'Monday Night Football' : game.dayName} at ${formatTime(game.hour, game.minute)}`;
     if (config.pickemsAts && game.spread) helpText += `  | ↔️ Spread: ${game.spread}`;
     if (game.bonus > 1) title += ` (${game.bonus == 3 ? '3️⃣' : '2️⃣'}x Bonus)`;
-    if (config.tiebreakerInclude) {
-      tiebreakerMatchup = `${game.awayTeamLocation} ${game.awayTeamName} at ${game.homeTeamLocation} ${game.homeTeamName}`;
-      tiebreakerOverUnder = game.overUnder;
-    }
     item.setTitle(title)
       .setHelpText(helpText)
       .setChoices([
@@ -4693,10 +4718,12 @@ function buildPickemQuestions(ss, form, gamePlan, config) {
         item.createChoice(`${!config.hideEmojis ? ' ' + LEAGUE_DATA[game.homeTeam].mascot: ''} ${game.homeTeam}`)]) // + LEAGUE_DATA[game.homeTeam].colors_emoji 
       .showOtherOption(false)
       .setRequired(true);
-    ss.toast(`Added pick 'ems question of ${tiebreakerMatchup}`,`${LEAGUE_DATA[game.awayTeam].mascot}@${LEAGUE_DATA[game.homeTeam].mascot}`);
+    ss.toast(`Added pick 'ems question of ${game.awayTeam} @ ${game.homeTeam}`,`${LEAGUE_DATA[game.awayTeam].mascot}@${LEAGUE_DATA[game.homeTeam].mascot}`);
     Logger.log(`🏈 Pick 'Ems: ${LEAGUE_DATA[game.awayTeam].mascot}@${LEAGUE_DATA[game.homeTeam].mascot} created`);
   });
-  if (config.tiebreakerInclude) { // Excludes tiebreaker question if tiebreaker is disabled
+  if (config.tiebreakerInclude && tiebreakerGame) { // Excludes tiebreaker question if tiebreaker is disabled
+    tiebreakerMatchup = `${tiebreakerGame.awayTeamLocation} ${tiebreakerGame.awayTeamName} at ${tiebreakerGame.homeTeamLocation} ${tiebreakerGame.homeTeamName}`;
+    tiebreakerOverUnder = tiebreakerGame.overUnder;
     let numberValidation = FormApp.createTextValidation()
       .setHelpText('Input must be a whole number between 0 and 120')
       .requireWholeNumber()
