@@ -10,7 +10,9 @@
     h2 { color: #013369; margin-top: 0; }
     p { font-size: 14px; color: #333; line-height: 1.6; }
     label { font-weight: 500; }
-    select { width: 100px; padding: 8px; border-radius: 4px; border: 1px solid #ccc; }
+    select { font-size: 14px; font-family: 'Montserrat', Arial, sans-serif; width: 100px; padding: 7px 10px; border-radius: 6px; border: 8px solid #D50A0A; }
+    select#week-select { font-size: 14px; font-family: 'Montserrat', Arial, sans-serif; font-weight: 600; padding: 7px 10px; border-radius: 6px; border: 2px solid #D50A0A; outline: none; cursor: pointer; transition: all 0.2s ease-in-out; }
+    select#week-select option { padding: 6px 10px; font-size: 13px; }
     .warning { background-color: #fff0f0; border: 1px solid #ffdddd; padding: 15px; border-radius: 8px; margin-top: 20px; }
     .warning strong { color: #D50A0A; }
     .button-row { display: flex; gap: 8px; padding: 12px 8px; }
@@ -92,20 +94,41 @@
     .ats-enabled .team-cell { cursor: pointer; transition: transform 0.1s ease-in-out; }
     .ats-enabled .team-cell:hover { transform: scale(1.05); }
     .team-cell.favored { outline: 3px solid #ff913d; outline-offset: 2px; box-shadow: 0 0 10px rgba(255, 145, 61, 0.7); }
-    .favored-team-display { width: 45px; /* Gives space for 3-letter team abbr */ text-align: right; font-weight: bold; font-size: 13px; color: #013369; padding-right: 5px; }
+    .favored-team-display { width: 45px; text-align: right; font-weight: bold; font-size: 13px; color: #013369; padding-right: 5px; }
     input[name="tbRadio"] { appearance: none; -webkit-appearance: none; width: 18px; height: 18px; border: 2px solid #999; border-radius: 50%; outline: none; cursor: pointer; vertical-align: middle; margin: 0; position: relative; transition: all 0.2s ease-in-out; background-color: #fff; }
     input[name="tbRadio"]:hover:not(:disabled) { border-color: #D50A0A; }
     input[name="tbRadio"]:checked { border-color: #D50A0A; background-color: #D50A0A; }
     input[name="tbRadio"]:checked::after { content: ''; position: absolute; top: 50%; left: 50%; width: 6px; height: 6px; border-radius: 50%; background-color: white; transform: translate(-50%, -50%); }
     input[name="tbRadio"]:disabled { border-color: #ccc; background-color: #eee; cursor: not-allowed; }
     th.tb-col, td.tb-col { width: 1%; white-space: nowrap; padding: 8px 12px; text-align: center; }
-    /* Segmented Pill Container */
-    .segmented-control { display: inline-flex; border-radius: 20px; overflow: hidden; border: 1.5px solid #D50A0A; background-color: #ffffff; }
+    .flyout-menu { display: none; position: absolute; top: 100%; left: 0; margin-top: 2px; background-color: #ffffff; min-width: 145px; border: 1px solid #ddd; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); padding: 4px 0; z-index: 1000; flex-direction: column; }
+    .flyout-menu::before { content: ''; position: absolute; top: -8px; left: 0; right: 0; height: 8px; background: transparent; }
+    .flyout-item { display: flex; align-items: center; gap: 8px; padding: 8px 12px; font-size: 12px; font-weight: 600; color: #333; text-decoration: none; background: transparent; border: none; width: 100%; box-sizing: border-box; text-align: left; cursor: pointer; transition: background-color 0.15s ease, color 0.15s ease; font-family: inherit; }
+    .flyout-item:hover { background-color: #f0f4f9; color: #013369; }
+    .dropdown-flyout { position: relative; display: inline-block; vertical-align: middle; }
+    .dropdown-flyout:hover .flyout-menu { display: flex; }
+    .existing-form-badge-btn { height: 32px; font-size: 12px; font-weight: 700; color: #D50A0A; background-color: #fff0f0; border: 2px solid #ffcccc; border-radius: 6px; padding: 0 10px; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; transition: all 0.2s ease-in-out; font-family: inherit; }
+    .existing-form-badge-btn:hover { background-color: #ffe5e5; border-color: #D50A0A; }
+    .existing-form-badge-btn .caret { font-size: 10px; transition: transform 0.2s ease; }
+    .dropdown-flyout:hover .existing-form-badge-btn .caret { transform: rotate(180deg); }
+    .no-form-container {  height: 32px;  font-size: 12px;  font-weight: 700;  color: #00ab75;  background-color: #bbfbe7;  border: 2px solid #89fddb;  border-radius: 6px;  padding: 0 10px;  display: inline-flex;  align-items: center;  gap: 3px; box-sizing: border-box; }
+    .existing-form-badge { font-size: 12px; font-weight: 700; color: #D50A0A; background-color: #fff0f0; border: 1px solid #ffcccc; border-radius: 4px; padding: 4px 6px; display: inline-flex; align-items: center; gap: 3px; }
+    .existing-form-flag { font-size: 12px; font-weight: 700; color: #D50A0A; padding: 4px 6px; display: inline-flex; align-items: center; gap: 3px; }
+    .existing-form-container { height: 26px; font-size: 12px; font-weight: 700; color: #D50A0A; background-color: #fff0f0; border: 3px solid #ffcccc; border-radius: 8px; padding: 4px 4px; display: inline-flex; align-items: center; gap: 3px; }
+    /* .no-form-container { height: 26px; font-size: 12px; font-weight: 700; color: #00ab75; background-color: #bbfbe7; border: 3px solid #89fddb; border-radius: 8px; padding: 4px 8px; display: inline-flex; align-items: center; gap: 3px; } */
+    .btn-mini { padding: 5px 7px; font-size: 12px; font-weight: 600; border: none; border-radius: 4px; cursor: pointer; color: white; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; transition: background-color 0.2s ease; }
+    .btn-mini.btn-alert { background-color: #ff913d; }
+    .btn-mini.btn-alert:hover { background-color: #e86705; }
+    .btn-mini.btn-primary { background-color: #013369; }
+    .btn-mini.btn-primary:hover { background-color: #2067b3; }
+    .btn-mini.btn-secondary { background-color: #878787; }
+    .btn-mini.btn-secondary:hover { background-color: #666; }
+    .segmented-control { display: inline-flex; border-radius: 6px; min-width: 70px; overflow: hidden; border: 2px solid #333333; background-color: #ffffff; }
     .segmented-control input[type="radio"] { display: none; }
-    .segmented-control label { padding: 5px 12px; font-size: 12px; font-weight: 600; color: #D50A0A; cursor: pointer; border-right: 1.5px solid #D50A0A; transition: all 0.2s ease-in-out; user-select: none; display: inline-flex; align-items: center; justify-content: center; }
+    .segmented-control label { padding: 7px 12px; font-size: 12px; font-weight: 600; color: #333333; cursor: pointer; border-right: 2px solid #333333; transition: all 0.2s ease-in-out; user-select: none; display: inline-flex; align-items: center; justify-content: center; }
     .segmented-control label:last-of-type { border-right: none; }
-    .segmented-control label:hover { background-color: #fff0f0; }
-    .segmented-control input[type="radio"]:checked + label { background-color: #D50A0A; color: #ffffff; }
+    .segmented-control label:hover { background-color: #bfdeff; }
+    .segmented-control input[type="radio"]:checked + label { background-color: #013369; color: #ffffff; border: 2px solid #013369;}
   </style>
 </head>
 <body>
@@ -116,9 +139,34 @@
     <div>
       <label for="week-select">Select Week:</label>
       <select id="week-select"></select>
+      <span id="main-existing-container" class="hidden">
+        <!-- Flyout Dropdown for Existing Form -->
+        <div id="existing-form-container" class="dropdown-flyout">
+          <button type="button" class="existing-form-badge-btn" title="Click or hover to view form actions">
+            <span>📋 FORM CREATED</span>
+            <span class="caret">▼</span>
+          </button>
+          <div class="flyout-menu">
+            <a id="btn-open-form" target="_blank" class="flyout-item" title="Open Form in new tab">
+              <span>📂</span> Open Form
+            </a>
+            <a id="btn-edit-form" target="_blank" class="flyout-item" title="Edit Form in Google Forms">
+              <span>📝</span> Edit Form
+            </a>
+            <button type="button" id="btn-copy-form" class="flyout-item" title="Copy Published Link">
+              <span>📤</span> <span id="copy-btn-text">Copy Link</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Static Badge for No Form -->
+        <div id="no-form-container" class="no-form-container">
+          <span title="No Google Form created for this week yet">✨ FORM NEEDED</span>
+        </div>
+      </span>
     </div>
-    <div style="display: flex; align-items: center; gap: 8px;">
-      <span style="font-size: 13px; font-weight: 600; color: #333;">Mode:</span>
+    <div style="display: flex; align-items: center; gap: 6px;">
+      <!-- <span style="font-size: 13px; font-weight: 600; color: #333;">Mode:</span> -->
       <div class="segmented-control" id="mode-selector">
         <input type="radio" id="modeAll" name="selectionMode" value="all" checked onchange="renderTable()">
         <label for="modeAll">All</label>
@@ -153,6 +201,7 @@
     let validitySummary = {};
     let LEAGUE_DATA = {};
     let editedSpreadData = {}; 
+    let existingForms = {};
     let editedData = false;
     let falseAlarm = false;
     let selectionState = {
@@ -194,6 +243,7 @@
 
     function applyInitialData(data) {
       config = data.configuration;
+      existingForms = data.forms || {};
       showSpreads = (config.pickemsInclude && config.pickemsAts) || (config.survivorInclude && config.survivorAts) || (config.eliminatorInclude && config.eliminatorAts);
       showOverUnder = (config.tiebreakerInclude && config.overUnderInclude);
       allMatchups = data.matchupData.available ? data.matchupData.matchups : [];
@@ -237,7 +287,21 @@
       uniqueWeeks.forEach(weekNum => {
         const option = document.createElement('option');
         option.value = weekNum;
-        option.textContent = `Week ${weekNum}`;
+        
+        // Check if form already exists for this week
+        const formExists = existingForms[weekNum] && existingForms[weekNum].formId;
+
+        if (formExists) {
+          option.textContent = `Week ${weekNum}`;
+          option.style.backgroundColor = '#f2f2f2'; // Gray background
+          option.style.color = '#777777';           // Gray text
+        } else {
+          option.textContent = `Week ${weekNum}`;
+          option.style.backgroundColor = '#fffde7'; // Yellow background
+          option.style.color = '#000000';           // Black text
+          option.style.fontWeight = '600';
+        }
+
         weekSelect.appendChild(option);
       });
       
@@ -254,6 +318,7 @@
 
       // Initial render
       updateDisplayForWeek();
+      document.getElementById('main-existing-container').classList.remove('hidden');
       hideLoader();
     }
 
@@ -261,10 +326,66 @@
         bonusMultiplierState = {};
         hasWarnedAboutOverride = false;
         const selectedWeek = document.getElementById('week-select').value;
+        updateExistingFormIndicator(selectedWeek); 
         renderStatusMessage(selectedWeek);
         renderTable(selectedWeek);
         // Dynamic height adjustment should happen after rendering
         adjustDialogHeight(selectedWeek);
+    }
+
+    /**
+     * Checks if a form exists for the selected week and displays the action buttons.
+     */
+    function updateExistingFormIndicator(week) {
+      const existingContainer = document.getElementById('existing-form-container');
+      const nonExistingContainer = document.getElementById('no-form-container');
+      const openBtn = document.getElementById('btn-open-form');
+      const editBtn = document.getElementById('btn-edit-form');
+      const copyBtn = document.getElementById('btn-copy-form');
+      const copyBtnText = document.getElementById('copy-btn-text');
+
+      const form = existingForms[week];
+      
+      if (form && form.formId) {
+        openBtn.href = form.publishedUrl || '#';
+        editBtn.href = form.editUrl || '#';
+        
+        copyBtn.onclick = function(e) {
+          e.stopPropagation();
+          copyToClipboard(form.publishedUrl);
+          copyBtnText.textContent = '✅ Copied!';
+          setTimeout(() => { copyBtnText.textContent = 'Copy Link'; }, 1500);
+        };
+
+        nonExistingContainer.classList.add('hidden');
+        existingContainer.classList.remove('hidden');
+      } else {
+        existingContainer.classList.add('hidden');
+        nonExistingContainer.classList.remove('hidden');
+      }
+    }
+
+    function copyToClipboard(text) {
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).catch(() => {
+          fallbackExecCopy(text);
+        });
+      } else {
+        const textArea = document.createElement("textarea");
+        textArea.value = text;
+        textArea.style.position = "fixed";
+        textArea.style.left = "-999999px";
+        textArea.style.top = "-999999px";
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        try {
+          document.execCommand('copy');
+        } catch (err) {
+          console.error('Failed to copy', err);
+        }
+        document.body.removeChild(textArea);
+      }
     }
 
     function renderStatusMessage(week) {
