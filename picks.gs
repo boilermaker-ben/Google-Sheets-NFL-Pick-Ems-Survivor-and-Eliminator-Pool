@@ -1,7 +1,7 @@
 const VERSION = '1.2.2';
 /** GOOGLE SHEETS FOOTBALL PICK 'EMS, SURVIVOR, & ELIMINATOR TOOL | 2025 Edition
  * Script Library for League Creator & Management Platform
- * 08/19/2026
+ * 08/20/2026
  * 
  * Created by Ben Powers
  * ben.powers.creative@gmail.com
@@ -3350,7 +3350,7 @@ function outcomeDataValidationMapping(week, formsData, namedRangeName) {
 // ============================================================================================================================================
 
 /**
- * [CORRECTED & BULLETPROOF] Gathers and aggregates all data for the dashboard.
+ * Gathers and aggregates all data for the dashboard.
  * This version is resilient to missing or incomplete data properties.
  */
 function getFormDashboardData() {
@@ -3761,7 +3761,7 @@ function launchFormBuilder() {
       templateCreationPrompt(ss);
     } else {
       const htmlTemplate = HtmlService.createTemplateFromFile('formCreatorPanel');
-      const htmlOutput = htmlTemplate.evaluate().setWidth(700).setHeight(210);
+      const htmlOutput = htmlTemplate.evaluate().setWidth(800).setHeight(200);
       SpreadsheetApp.getUi().showModalDialog(htmlOutput, `Create Form${openEnrollment ? ' - Open Enrollment' : ''}`);
     }
   } catch (err) {
@@ -3779,7 +3779,7 @@ function templateCreationPrompt(ss,ui) {
     const templateForm = getTemplateForm();
     if (!templateForm) return;
     Logger.log(`📄 Template Form ${templateForm.getId()}`);
-
+    
     let response = ui.alert(
       '🎨 Customize Form Theme (One Time Only)',
       `Each week's form will utilize this template file to generate a fresh form.\n\nBefore creating your first weekly form, would you like to customize the template?`,
@@ -3807,6 +3807,7 @@ function fetchFormCreationData() {
   try {
     const docProps = PropertiesService.getDocumentProperties();
     const configuration = JSON.parse(docProps.getProperty('configuration'));
+    const forms = JSON.parse(docProps.getProperty('forms')) || {};
     const scheduleAnalysis = analyzeScheduleData(); // Can add input here to then pass along for earliest week creation if desired.
     let apiWeek = null;
     try {
@@ -3815,7 +3816,8 @@ function fetchFormCreationData() {
       Logger.log(`Error in fetching API week for fetchFormCreationData function: ${err.stack}`);
     }
     return {
-      configuration: configuration,
+      configuration,
+      forms,
       matchupData: {
         available: scheduleAnalysis.available,
         matchups: scheduleAnalysis.matchups
@@ -3828,9 +3830,10 @@ function fetchFormCreationData() {
     };
   } catch (err) {
     Logger.log(`⚠️ A critical error occurred in "fetchFormCreationData": ${err.stack}`);
-    // Explicitly return a safe, default object on failure.
+    // Explicitly return mostly empty object on failure.
     return { 
-      configuration: {}, 
+      configuration: {},
+      forms: {},
       matchupData: {
         available: false, matchups: [], },
       validitySummary: {},
