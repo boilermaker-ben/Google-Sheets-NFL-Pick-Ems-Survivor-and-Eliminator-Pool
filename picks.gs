@@ -135,7 +135,7 @@ function timezoneCheck(ui,docProps) {
   }
   ui = fetchUi(ui);
   const tzProp = docProps.getProperty('tz');
-  const tz = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
+  const tz = Session.getScriptTimeZone();
 
   // Confirm timezone setting before continuing
   if (tzProp == null) {
