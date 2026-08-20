@@ -53,8 +53,10 @@
     table { width: 100%; border-collapse: collapse; }
     th, td { padding: 8px; text-align: left; font-size: 12px; border-bottom: 1px solid #ddd; text-align: center; }
     th { background-color: #f2f2f2; font-weight: 600; text-align: center; }
-    .weekday-header { background-color: #013369; color: white; font-weight: 700; text-align: left; }
-    .weekday-header td { padding-top: 10px; padding-bottom: 10px; text-align: left; }
+    .weekday-header { background-color: #013369; color: white; height: 40px; font-weight: 700; text-align: left; }
+    .weekday-header td { padding-top: 10px; padding-bottom: 10px; text-align: left; vertical-align: middle; }
+    .weekday-header .switch { vertical-align: middle; margin-right: 4px; }
+    .weekday-header label { vertical-align: middle; cursor: pointer; font-weight: 700; color: white; }
     tr.disabled td { color: #aaa; background-color: #fafafa; }
     .center-align { text-align: center; }
     .team-cell { font-weight: bold; border-radius: 4px; padding: 4px 6px !important; text-align: center; color: white; }
@@ -96,6 +98,14 @@
     input[name="tbRadio"]:checked { border-color: #D50A0A; background-color: #D50A0A; }
     input[name="tbRadio"]:checked::after { content: ''; position: absolute; top: 50%; left: 50%; width: 6px; height: 6px; border-radius: 50%; background-color: white; transform: translate(-50%, -50%); }
     input[name="tbRadio"]:disabled { border-color: #ccc; background-color: #eee; cursor: not-allowed; }
+    th.tb-col, td.tb-col { width: 1%; white-space: nowrap; padding: 8px 12px; text-align: center; }
+    /* Segmented Pill Container */
+    .segmented-control { display: inline-flex; border-radius: 20px; overflow: hidden; border: 1.5px solid #D50A0A; background-color: #ffffff; }
+    .segmented-control input[type="radio"] { display: none; }
+    .segmented-control label { padding: 5px 12px; font-size: 12px; font-weight: 600; color: #D50A0A; cursor: pointer; border-right: 1.5px solid #D50A0A; transition: all 0.2s ease-in-out; user-select: none; display: inline-flex; align-items: center; justify-content: center; }
+    .segmented-control label:last-of-type { border-right: none; }
+    .segmented-control label:hover { background-color: #fff0f0; }
+    .segmented-control input[type="radio"]:checked + label { background-color: #D50A0A; color: #ffffff; }
   </style>
 </head>
 <body>
@@ -107,11 +117,21 @@
       <label for="week-select">Select Week:</label>
       <select id="week-select"></select>
     </div>
-    <div id="mode-selector">Select:
-      <input type="radio" id="modeAll" name="selectionMode" value="all" checked onchange="renderTable()"> <label for="modeAll">All</label>
-      <input type="radio" id="modeWeekday" name="selectionMode" value="weekday" onchange="renderTable()"> <label for="modeWeekday">Day</label>
-      <input type="radio" id="modeMatchup" name="selectionMode" value="matchup" onchange="renderTable()"> <label for="modeMatchup">Matchup</label>
-      <input type="radio" id="modeCustom" name="selectionMode" value="custom" onchange="renderTable()"> <label for="modeCustom">Custom</label>
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <span style="font-size: 13px; font-weight: 600; color: #333;">Mode:</span>
+      <div class="segmented-control" id="mode-selector">
+        <input type="radio" id="modeAll" name="selectionMode" value="all" checked onchange="renderTable()">
+        <label for="modeAll">All</label>
+
+        <input type="radio" id="modeWeekday" name="selectionMode" value="weekday" onchange="renderTable()">
+        <label for="modeWeekday">Day</label>
+
+        <input type="radio" id="modeMatchup" name="selectionMode" value="matchup" onchange="renderTable()">
+        <label for="modeMatchup">Matchup</label>
+
+        <input type="radio" id="modeCustom" name="selectionMode" value="custom" onchange="renderTable()">
+        <label for="modeCustom">Custom</label>
+      </div>
     </div>
   </div>
   <div id="data-status-message"></div>
@@ -360,7 +380,7 @@
       headerHtml += `<th>Away</th><th>Home</th>
         ${showSpreads ? '<th>Spread</th>' : ''}
         ${showBonus ? '<th>Bonus</th>' : ''}
-        ${showTbColumn ? '<th title="Tiebreaker Game">Tiebreaker</th>' : ''}
+        ${showTbColumn ? '<th class="tb-col" title="Tiebreaker Game">Tiebreaker</th>' : ''}
       </tr>`;
       
       let tableHtml = `
@@ -419,7 +439,7 @@
         // TB Radio button cell
         const isTiebreakerChecked = (gameId === selectedTiebreakerGameId);
         const tbCellHtml = showTbColumn ? `
-          <td style="text-align: center;">
+          <td class="tb-col">
             <input type="radio" name="tbRadio" value="${gameId}" ${isTiebreakerChecked ? 'checked' : ''} ${!isRowEnabled ? 'disabled' : ''}>
           </td>` : '';
 
@@ -462,7 +482,7 @@
         for (const day in gamesByDay) {
           const isDayChecked = selectionState.weekdays[day] !== false;
           let headerContent = (selectionMode === 'weekday') 
-            ? `<label class="switch"><input type="checkbox" name="weekdayToggle" value="${day}" ${isDayChecked ? 'checked' : ''}><span class="slider"></span></label> <label style="margin-left: 5px;">${day}</label>`
+            ? `<label class="switch"><input type="checkbox" name="weekdayToggle" value="${day}" ${isDayChecked ? 'checked' : ''}><span class="slider"></span></label><label for="toggle-${day}">${day}</label>`
             : day;
           
           tableHtml += `<tr class="weekday-header"><td colspan="8">${headerContent}</td></tr>`;
@@ -508,7 +528,7 @@
             handle: '.drag-handle'
         });
       }
-
+      adjustDialogHeight(selectedWeek);
       renderTiebreakerOverUnder();
     }
     
@@ -576,11 +596,46 @@
     }
     
     function adjustDialogHeight(selectedWeek) {
+      selectedWeek = selectedWeek || document.getElementById('week-select').value;
       const weekMatchups = allMatchups.filter(m => m.week == selectedWeek);
-      const baseHeight = document.documentElement.scrollHeight;
-      const heightPerRow = 35; 
-      const calculatedHeight = Math.min(baseHeight + (weekMatchups.length * heightPerRow), 800);
-      google.script.host.setHeight(calculatedHeight);
+      
+      if (weekMatchups.length === 0) {
+        google.script.host.setHeight(250);
+        return;
+      }
+
+      const selectionMode = document.querySelector('input[name="selectionMode"]:checked')?.value || 'all';
+      const isCustomMode = selectionMode === 'custom';
+
+      // 1. Base UI Chrome (Toolbar, Table <thead>, Action Buttons, Body Padding)
+      let calculatedHeight = 235;
+
+      // 2. Status message banner (if active/visible)
+      if (showSpreads) {
+        calculatedHeight += 45;
+      }
+
+      // 3. Day of week section dividers (only exist in non-custom modes)
+      if (!isCustomMode) {
+        const uniqueDays = new Set(weekMatchups.map(g => g.dayName || 'TBD')).size;
+        calculatedHeight += (uniqueDays * 33);
+      } else {
+        calculatedHeight += 24;
+      }
+
+      // 4. Game rows
+      calculatedHeight += (weekMatchups.length * 36);
+
+      // 5. Tiebreaker container at bottom (if active)
+      if (showOverUnder && config.tiebreakerInclude) {
+        calculatedHeight += 65;
+      }
+
+      // 6. Safe screen ceiling: Expands up to 85% of the user's available screen height
+      const screenCeiling = Math.floor((window.screen.availHeight || 800) * 0.95);
+      const finalHeight = Math.min(calculatedHeight, screenCeiling, 1000);
+
+      google.script.host.setHeight(Math.max(finalHeight, 300));
     }
 
     /**
