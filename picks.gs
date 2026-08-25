@@ -1,7 +1,7 @@
 const VERSION = '1.2.2';
 /** GOOGLE SHEETS FOOTBALL PICK 'EMS, SURVIVOR, & ELIMINATOR TOOL | 2025 Edition
  * Script Library for League Creator & Management Platform
- * 08/20/2026
+ * 08/25/2026
  * 
  * Created by Ben Powers
  * ben.powers.creative@gmail.com
@@ -7849,78 +7849,68 @@ function leaderboardSheet(ss, config, memberData) {
   let formatRules = [];
   
   // -------------------------------------------------------------
-  // 1. ROW DEFINITIONS & LAYOUT
+  // Row Variables
   // -------------------------------------------------------------
-  const firstRow         = 1; // Controls: Week, Sort, Contenders Filter
+  const firstRow         = 1; // Controls: Week, Sort
   const subHeaderRow     = 2; // Game Status (✅/⏳) & Weekday
-  const weekDayRow       = 3; // Weekdays for the matchup block, merged for others
-  const matchupRow       = 4; // Main Away @ Home Matchups & Column Emojis
-  const outcomeRow       = 5; // Straight-Up Winner Outcome
-  const spreadOutcomeRow = 6; // ATS Winner Outcome
-  const summaryRow       = 7; // Static Group Stats Row
-  const dataStartRow     = 8; // First Player Row
+  const weekDayRow       = 2; // Weekdays for the matchup block, merged for others
+  const matchupRow       = 3; // Main Away @ Home Matchups & Column Emojis
+  const outcomeRow       = 4; // Straight-Up Winner Outcome
+  const spreadOutcomeRow = 5; // ATS Winner Outcome
+  const summaryRow       = 6; // Static Group Stats Row
+  const dataStartRow     = 7; // First Player Row
   const dataEndRow       = dataStartRow + totalMembers - 1;
   const freezeRow        = summaryRow;
 
   // -------------------------------------------------------------
-  // 2. COLUMN DEFINITIONS
+  // Column Building
   // -------------------------------------------------------------
-  let colHeaders = ['PLAYER'];
-  let colSubHeaders = ['PLAYER'];
-  let colWidths  = [140];
-  let fontSizes  = [11];
-  let subHeaderFontSizes = [7];
+  let colHeaders = [];
+  let colSubHeaders = [];
+  let colNamedRangeReference = [];
+  let colWidths  = [150];
   let survCol, elimCol;
   
-  // A. Season & Pool Totals (From SUMMARY Sheet)
+  // Season & Pool Totals (From SUMMARY Sheet)
   const overallStartCol = 2;
-  if (config.pickemsInclude) {
-    colHeaders.push('⭐', '🥇');
-    colSubHeaders.push('Points Tot','Rank');
-    colWidths.push(60, 60);
-    fontSizes.push(11, 11);
-    subHeaderFontSizes.push(7,7);
-    if (!config.mnfExclude) {
-      colWidths.push(60);
-      colHeaders.push('🌙');
-      colSubHeaders.push('MNF Tot')
-      fontSizes.push(11);
-    }
+  colHeaders.push('⭐', '🥇');
+  colSubHeaders.push('Points Tot','Rank');
+  colNamedRangeReference.push('PICKS','RANK');
+  colWidths.push(60, 60);
+  if (!config.mnfExclude) {
+    colWidths.push(60,60);
+    colHeaders.push('🌙','🌚');
+    colSubHeaders.push('MNF Tot','MNF Rank');
+    colNamedRangeReference.push('MNF','MNF_RANK');
   }
   if (config.survivorInclude) {
-    survCol = colHeaders.length + 1;
+    survCol = colHeaders.length + 2;
     colWidths.push(65, 75);
-    colHeaders.push('👑', '👑');
+    colHeaders.push('👑', '💓');
     colSubHeaders.push('Lives','Status');
-    fontSizes.push(11, 11);
-    subHeaderFontSizes.push(7,7);
+    colNamedRangeReference.push('SURVIVOR_LIVES','SURVIVOR_STATUS');
   }
   if (config.eliminatorInclude) {
-    elimCol = colHeaders.length + 1;
+    elimCol = colHeaders.length + 2;
     colWidths.push(65, 75);
-    colHeaders.push('💀', '💀');
+    colHeaders.push('💀', '💓');
     colSubHeaders.push('Lives','Status');
-    fontSizes.push(11, 11);
-    subHeaderFontSizes.push(7,7);
+    colNamedRangeReference.push('ELIMINATOR_LIVES','ELIMINATOR_STATUS');
   }
-  const overallEndCol = colHeaders.length;
+  const overallEndCol = colHeaders.length + 1;
 
   // B. Active Weekly Performance
   const weeklyStartCol = overallEndCol + 1;
   colHeaders.push('⭐', '🥇', '💯', '🎲', '📊', '🃏'); // Points, Rank, %, Chances, Sparkline, Wildcard
   colSubHeaders.push('Picks','Rank','Percent','Chances','Chances','Wildcard');
   colWidths.push(50, 50, 50, 55, 60, 50);
-  fontSizes.push(14, 14, 14, 14, 14, 14);
-  subHeaderFontSizes.push(7, 7, 7, 7, 7, 7);
 
   let tiebreakerCol = -1;
   if (config.tiebreakerInclude) {
     colWidths.push(50, 50);
     colHeaders.push('⚖️', '📏');
     colSubHeaders.push('Tiebreaker','Difference');
-    fontSizes.push(14, 14);
-    subHeaderFontSizes.push(7,7);
-    tiebreakerCol = colHeaders.length - 1;
+    tiebreakerCol = colHeaders.length;
   }
 
   let commentCol = -1;
@@ -7928,21 +7918,19 @@ function leaderboardSheet(ss, config, memberData) {
     colWidths.push(150);
     colHeaders.push('💬');
     colSubHeaders.push('Comments');
-    fontSizes.push(14);
-    subHeaderFontSizes.push(7);
-    commentCol = colHeaders.length;
+    commentCol = colHeaders.length + 1;
   }
-  const weeklyEndCol = colHeaders.length;
+  const weeklyEndCol = colHeaders.length + 1;
 
   // C. Matchup Columns (Max 16 games)
   const firstMatchupCol = weeklyEndCol + 1;
   const maxWeeklyGames = 16;
   for (let g = 1; g <= maxWeeklyGames; g++) {
     colHeaders.push(`G${g}`);
+    colSubHeaders.push(`N${g}`);
     colWidths.push(52);
-    fontSizes.push(9);
   }
-  const finalMatchupCol = colHeaders.length;
+  const finalMatchupCol = colHeaders.length + 1;
 
   adjustRows(sheet, dataEndRow + 2);
   adjustColumns(sheet, finalMatchupCol);
@@ -7954,108 +7942,131 @@ function leaderboardSheet(ss, config, memberData) {
   fullSheetRange.setFontFamily("Montserrat").setVerticalAlignment("middle");
 
   // -------------------------------------------------------------
-  // 3. CONTROL PANEL (Row 1)
+  // Title and Sorting
   // -------------------------------------------------------------
   sheet.setRowHeight(firstRow, 34);
   sheet.getRange(firstRow, 1, 1, finalMatchupCol).setBackground('#1E1E1E').setFontColor('#FFFFFF');
 
-  // Week Selector (B1)
-  sheet.getRange(firstRow, 1).setValue('WEEK').setFontWeight('bold').setHorizontalAlignment('right').setFontSize(16);
-  const weekCell = sheet.getRange(firstRow, 2);
+  // Title
+  const firstCell = sheet.getRange(firstRow, 1);
+  firstCell.setValue('WEEK').setFontWeight('bold').setHorizontalAlignment('center').setVerticalAlignment('middle').setFontSize(12);
+  
+  // Week Selector
+  const weekCell = sheet.getRange(2,1);
   const weekCellString = weekCell.getA1Notation();
-  const weekCellStringRC = `R${firstRow}C2`;
-  weekCell.setValue(1).setFontWeight('bold').setHorizontalAlignment('center').setFontSize(16);
+  const weekCellStringRC = `R${weekCell.getRow()}C${weekCell.getColumn()}`;
+  weekCell.setValue(fetchWeek() || 1);
   const weekRule = SpreadsheetApp.newDataValidation()
-    .requireValueInList(Array.from({ length: 18 }, (_, i) => `${i + 1}`), true)
+    .requireValueInList(Array.from({ length: 23 }, (_, i) => `${i + 1}`), true)
     .build();
   weekCell.setDataValidation(weekRule);
 
-  // Sort Selector (D1)
-  sheet.getRange(firstRow, 3).setValue('Sort').setFontWeight('bold').setHorizontalAlignment('right').setFontSize(10);
-  const sortCell = sheet.getRange(firstRow, 4);
-  sortCell.setValue('Rank').setFontWeight('bold').setHorizontalAlignment('center').setFontSize(10);
+  // Sort Selector  
+  sheet.getRange(firstRow, 4).setValue('Sort:'); // Moving
+  const sortCell = sheet.getRange(3,1);
+  const sortCellString = sortCell.getA1Notation();
+  const sortOptions = ['Display Order', 'Sorted by Name', 'Sorted by Rank', 'Sorted by Chances'];
+  sortCell.setValue(sortOptions[2]);
   const sortRule = SpreadsheetApp.newDataValidation()
-    .requireValueInList(['Rank', 'Chances', 'Default'], true)
+    .requireValueInList(sortOptions, true)
     .build();
-  sortCell.setDataValidation(sortRule);
+  sortCell.setDataValidation(sortRule).merge();
 
-  // Hide 0% Chances Checkbox (F1)
-  sheet.getRange(firstRow, 5).setValue('Only Contenders').setFontWeight('bold').setHorizontalAlignment('right').setFontSize(10);
-  const filterCell = sheet.getRange(firstRow, 6);
-  filterCell.insertCheckboxes().setHorizontalAlignment('center').setBackground('#000000').setFontColor('#ffffff').setFontSize(14);
-
-  // -------------------------------------------------------------
-  // 4. SECTION HEADERS & GAME PROGRESS BAR (Row 2)
-  // -------------------------------------------------------------
-  sheet.getRange(subHeaderRow,1).setValue('MEMBERS').setBackground('#333333').setFontColor('#FFFFFF').setFontWeight('bold').setHorizontalAlignment('center');
+  // Style selection boxes
+  sheet.getRange(2,1,2,1).setFontColor('#FFFFFF').setBackground('#555555').setFontWeight('bold').setHorizontalAlignment('center');
   
-  if (overallEndCol >= overallStartCol) {
-    sheet.getRange(subHeaderRow, overallStartCol, 1, overallEndCol - overallStartCol + 1).merge()
-         .setValue('SEASON & POOL TOTALS').setBackground('#263238').setFontColor('#ECEFF1').setFontWeight('bold').setHorizontalAlignment('center').setFontSize(9);
-  }
+  const memberCell = sheet.getRange(matchupRow,1);
+  sheet.getRange(matchupRow+1,1,2,1).setFormulaR1C1(`=iferror(if(R${dataStartRow}C1="NO DATA","",counta(R${dataStartRow}C1:R${sheet.getMaxRows()}C1)&" Participants"),"")`).setBackground('#000000').setFontColor('#ffffff').setFontWeight('bold').setFontSize(10).setHorizontalAlignment('center');
+  
+  // -------------------------------------------------------------
+  // Section Headers and Progress Metrics
+  // -------------------------------------------------------------
 
   // Active Weekly Performance Header with Embedded Game Progress
-  const totalGamesFormula = `COUNTA(R${matchupRow}C${firstMatchupCol}:R${matchupRow}C${finalMatchupCol})`;
-  const completedGamesFormula = `COUNTA(R${outcomeRow}C${firstMatchupCol}:R${outcomeRow}C${finalMatchupCol})`;
+  const totalGamesFormula = `columns(indirect("${LEAGUE}_"&${weekCellString}))`;
+  const completedGamesFormula = `counta(indirect("${LEAGUE}_OUTCOMES_"&${weekCellString}))`;
+  const weekProgressFormula = `round(${completedGamesFormula}/${totalGamesFormula},1)`;
   
-  sheet.getRange(firstRow, weeklyStartCol, 1, weeklyEndCol - weeklyStartCol).merge()
+  sheet.getRange(firstRow, weeklyStartCol, 1, weeklyEndCol - weeklyStartCol + (tiebreakerCol > -1 ? 1 : 0)).merge()
       .setValue(`WEEKLY METRICS`).setBackground('#1B5E20').setFontColor('#E8F5E9').setFontWeight('bold').setHorizontalAlignment('center').setFontSize(12);
   
-  sheet.getRange(subHeaderRow, weeklyStartCol, 2, 2).merge()
-       .setValue('="GAME"&char(10)&"PROGRESS"').setBackground('#1B5E20').setFontColor('#FFFFFF').setFontWeight('bold').setHorizontalAlignment('right').setFontSize(9);
+  sheet.getRange(subHeaderRow, weeklyStartCol).merge()
+       .setValue('GAMES').setBackground('#1B5E20').setFontColor('#FFFFFF').setFontWeight('bold').setHorizontalAlignment('right').setFontSize(9);
   
-  const progressTextFormula = `=IFERROR(${completedGamesFormula} & " / " & ${totalGamesFormula} & " (" & TEXT(${completedGamesFormula}/${totalGamesFormula},"0%") & ")", "0%")`;
-  sheet.getRange(subHeaderRow, weeklyStartCol + 2, 2, 2).merge()
-       .setFormulaR1C1(progressTextFormula).setBackground('#1B5E20').setFontColor('#FFFFFF').setFontWeight('bold').setHorizontalAlignment('center').setFontSize(9);
+  const progressTextFormula = `=iferror(${completedGamesFormula} & " / " & ${totalGamesFormula} & " (" & TEXT(${completedGamesFormula}/${totalGamesFormula},"0%") & ")", "0%")`;
+  sheet.getRange(subHeaderRow, weeklyStartCol + 1, 1, 2).merge()
+       .setFormula(progressTextFormula).setBackground('#1B5E20').setFontColor('#FFFFFF').setFontWeight('bold').setHorizontalAlignment('center').setFontSize(9);
 
   const progressSparklineFormula = `=IFERROR(SPARKLINE(${completedGamesFormula}, {"charttype","bar";"max",${totalGamesFormula};"color1","#00E676";"color2","#424242"}),"")`;
-  sheet.getRange(subHeaderRow, weeklyStartCol + 4, 2, weeklyEndCol - (weeklyStartCol + 4) + 1).merge()
-       .setFormulaR1C1(progressSparklineFormula).setBackground('#1B5E20');
+  sheet.getRange(subHeaderRow, weeklyStartCol + 3, 1, weeklyEndCol - (weeklyStartCol + 3) + 1).merge()
+       .setFormula(progressSparklineFormula).setBackground('#1B5E20');
+  
+  // Season-long status Header with Progress
+  const totalWeeks = `if(${weekCellString}>${WEEKS},${WEEKS-WEEKS_TO_EXCLUDE.length},${REGULAR_SEASON})`; // Sets the expectation of regular season unless surpassed into playoffs
+  const completedWeeksFormula = `if(${weekCellString}>0,${weekCellString}-1 + ${weekProgressFormula},1)`;
+  
+  if (overallEndCol >= overallStartCol) {
+    sheet.getRange(firstRow, overallStartCol, 1, overallEndCol - overallStartCol + 1).merge()
+         .setValue('SEASON & POOL TOTALS').setBackground('#263238').setFontColor('#ECEFF1').setFontWeight('bold').setHorizontalAlignment('center').setFontSize(12);
+  }
+
+  // sheet.getRange(firstRow, overallStartCol, 1, overallEndCol - overallStartCol).merge()
+  //     .setValue(`SEASON-LONG METRICS`).setBackground('#1B5E20').setFontColor('#E8F5E9').setFontWeight('bold').setHorizontalAlignment('center').setFontSize(12);
+  
+  sheet.getRange(subHeaderRow, overallStartCol)
+       .setValue('WEEKS').setBackground('#263238').setFontColor('#FFFFFF').setFontWeight('bold').setHorizontalAlignment('right').setFontSize(9);
+  
+  const progressSeasonTextFormula = `=iferror(${completedWeeksFormula} & " / " & ${totalWeeks} & " (" & TEXT(${completedWeeksFormula}/${totalWeeks},"0%") & ")", "0%")`;
+  sheet.getRange(subHeaderRow, overallStartCol + 1, 1, 2).merge()
+       .setFormula(progressSeasonTextFormula).setBackground('#263238').setFontColor('#FFFFFF').setFontWeight('bold').setHorizontalAlignment('center').setFontSize(9);
+
+  const progressSeasonSparklineFormula = `=IFERROR(SPARKLINE(${completedWeeksFormula}, {"charttype","bar";"max",${totalWeeks};"color1","#00E676";"color2","#424242"}),"")`;
+  sheet.getRange(subHeaderRow, overallStartCol + 3, 1, overallEndCol - (overallStartCol + 3) + 1).merge()
+       .setFormula(progressSeasonSparklineFormula).setBackground('#263238');
 
   // Matchups Super-Header
   sheet.getRange(firstRow, firstMatchupCol, 1, maxWeeklyGames).merge()
        .setValue('WEEKLY MATCHUP PICKS').setBackground('#0D47A1').setFontColor('#E3F2FD').setFontWeight('bold').setHorizontalAlignment('center').setFontSize(12);
 
   // -------------------------------------------------------------
-  // 5. MATCHUPS, STATUS & OUTCOMES VIA NAMED RANGES (Rows 3-6)
+  // Matchups and Outcomes
   // -------------------------------------------------------------
   sheet.setRowHeight(matchupRow, 38);
-  sheet.setRowHeight(outcomeRow, 24);
-  sheet.setRowHeight(spreadOutcomeRow, 24);
   sheet.setRowHeight(summaryRow, 28);
 
   // Static Column Emojis / Names
-  sheet.getRange(matchupRow, 1, 1, weeklyEndCol).setValues([colHeaders.slice(0, weeklyEndCol)])
-       .setBackground('#000000').setFontColor('#FFFFFF').setFontWeight('bold').setFontSize(16).setHorizontalAlignment('center');
-  sheet.getRange(outcomeRow, 1, 1, weeklyEndCol).setValues([colSubHeaders.slice(0, weeklyEndCol)])
+  sheet.getRange(matchupRow, 2, 1, weeklyEndCol).setValues([colHeaders.slice(0, weeklyEndCol)])
+       .setBackground('#000000').setFontColor('#FFFFFF').setFontWeight('bold').setFontSize(14).setHorizontalAlignment('center');
+  sheet.getRange(outcomeRow, 2, 1, weeklyEndCol).setValues([colSubHeaders.slice(0, weeklyEndCol)])
        .setBackground('#000000').setFontColor('#FFFFFF').setFontWeight('bold').setFontSize(7).setHorizontalAlignment('center');
 
+  // Sets all font sizes and merges the row of the 
   for (let c = 0; c < weeklyEndCol; c++) {
-    sheet.getRange(matchupRow, c + 1).setFontSize(fontSizes[c]);
+    sheet.getRange(outcomeRow, c + 1, 2, 1).merge();
   }
 
   // Row 4: Matchup Names (Spills from LEAGUE_week)
   sheet.getRange(matchupRow, firstMatchupCol).setFormula(
-    `=IFERROR(INDIRECT("${LEAGUE}_" & ${weekCellString}),"")`
+    `=iferror(indirect("${LEAGUE}_" & ${weekCellString}),"")`
   );
-  sheet.getRange(matchupRow, firstMatchupCol, 1, maxWeeklyGames)
+  sheet.getRange(matchupRow, firstMatchupCol, 1, MAXGAMES)
        .setBackground('#000000').setFontColor('#FFFFFF').setFontSize(9).setFontWeight('bold')
        .setHorizontalAlignment('center').setWrapStrategy(SpreadsheetApp.WrapStrategy.WRAP);
 
   // Row 5: Winner (straight up) for Picks (Spills from LEAGUE_PICKEM_OUTCOMES_week)
-  sheet.getRange(outcomeRow, 1).setValue('WINNER').setFontWeight('bold').setFontSize(9).setBackground('#CFD8DC').setHorizontalAlignment('left');
+  sheet.getRange(outcomeRow, firstMatchupCol, 1, MAXGAMES).setFontWeight('bold').setFontSize(9).setBackground('#CFD8DC').setFontColor('#000000').setHorizontalAlignment('center');
   sheet.getRange(outcomeRow, firstMatchupCol).setFormula(
-    `=IFERROR(INDIRECT("${LEAGUE}_PICKEM_OUTCOMES_" & ${weekCellString}),"")`
+    `=iferror(indirect("${LEAGUE}_PICKEM_OUTCOMES_" & ${weekCellString}),"")`
   );
-  sheet.getRange(outcomeRow, firstMatchupCol, 1, maxWeeklyGames)
+  sheet.getRange(outcomeRow, firstMatchupCol, 1, MAXGAMES)
        .setBackground('#ECEFF1').setFontWeight('bold').setHorizontalAlignment('center');
 
   // Row 6: Winner ATS (Spills from LEAGUE_ATS_OUTCOMES_week)
   sheet.getRange(spreadOutcomeRow, 1).setValue('WINNER (ATS)').setFontWeight('bold').setFontSize(9).setBackground('#CFD8DC').setHorizontalAlignment('left');
   sheet.getRange(spreadOutcomeRow, firstMatchupCol).setFormula(
-    `=IFERROR(INDIRECT("${LEAGUE}_ATS_OUTCOMES_" & ${weekCellString}),"")`
+    `=iferror(indirect("${LEAGUE}_ATS_OUTCOMES_" & ${weekCellString}),"")`
   );
-  sheet.getRange(spreadOutcomeRow, firstMatchupCol, 1, maxWeeklyGames)
+  sheet.getRange(spreadOutcomeRow, firstMatchupCol, 1, MAXGAMES)
        .setBackground('#ECEFF1').setFontWeight('bold').setHorizontalAlignment('center');
 
   if (isAts) {
@@ -8064,27 +8075,19 @@ function leaderboardSheet(ss, config, memberData) {
     sheet.hideRows(spreadOutcomeRow);
   }
 
-  // Row 2: Status (✅ / ⏳)
-  const effectiveOutcomeRow = isAts ? spreadOutcomeRow : outcomeRow;
-  for (let g = 0; g < maxWeeklyGames; g++) {
-    const colIdx = firstMatchupCol + g;
-    sheet.getRange(subHeaderRow, colIdx).setFormulaR1C1(
-      `=iferror(IF(ISBLANK(R${matchupRow}C[0]),"",IF(NOT(ISBLANK(R${effectiveOutcomeRow}C[0])),"✅","⏳")),"")`
-    ).setHorizontalAlignment('center').setBackground('#0D47A1').setFontColor('#E3F2FD').setFontSize(8).setFontWeight('bold');
-  }
-  // Row 3: Weekday Day Name
+  // Row 2: Weekday Day Name
   sheet.getRange(weekDayRow,firstMatchupCol).setFormula(`=iferror(indirect("${LEAGUE}_DAYS_"&${weekCellString}),"")`);
   sheet.getRange(weekDayRow,firstMatchupCol,1,MAXGAMES).setBackground('#000000').setFontColor('#FFFFFF').setHorizontalAlignment('center').setFontSize(7);
   
-  // Row 4: Matchups 
+  // Row 3: Matchups 
   sheet.getRange(matchupRow,firstMatchupCol).setFormula(`=iferror(indirect("${LEAGUE}_"&${weekCellString}),"")`);
   sheet.getRange(matchupRow,firstMatchupCol,1,MAXGAMES).setHorizontalAlignment('center').setFontSize(8).setFontWeight('bold');
   
-  // Row 7: Home/Away Splits Across Matchups
+  // Row 6: Home/Away Splits Across Matchups
   sheet.getRange(summaryRow,firstMatchupCol).setFormula(`=iferror(indirect("${LEAGUE}_BIAS_" & ${weekCellString}),"")`);
   
   // -------------------------------------------------------------
-  // 6. STATIC GROUP STATS SUMMARY ROW (Row 7)
+  // Season-Long Stats
   // -------------------------------------------------------------
   sheet.getRange(summaryRow, 1, 1, finalMatchupCol).setBackground('#ECEFF1').setFontSize(8).setFontWeight('bold').setHorizontalAlignment('center');
   sheet.getRange(summaryRow, 1).setValue('Group Stats').setHorizontalAlignment('left').setFontSize(9);
@@ -8092,25 +8095,36 @@ function leaderboardSheet(ss, config, memberData) {
   const pointsColIdx = weeklyStartCol;
   const rankColIdx   = weeklyStartCol + 1;
   const pctColIdx    = weeklyStartCol + 2;
+  const chancesColIdx    = weeklyStartCol + 3;
   const wildColIdx   = weeklyStartCol + 5;
+  const currentColR1C1 = `R${dataStartRow}C[0]:R${dataEndRow}C[0]`;
 
   sheet.getRange(summaryRow, pointsColIdx).setFormulaR1C1(
-    `=IFERROR(IF(SUM(R${dataStartRow}C[0]:R${dataEndRow}C[0])>0, "AVG:"&CHAR(10)&TEXT(ROUND(AVERAGE(R${dataStartRow}C[0]:R${dataEndRow}C[0]),1),"#.0"),""),"")`
+    `=IFERROR(IF(SUM(${currentColR1C1})>0, "AVG:"&CHAR(10)&TEXT(ROUND(AVERAGE(${currentColR1C1}),1),"#.0"),""),"")`
   );
   sheet.getRange(summaryRow, rankColIdx).setFormulaR1C1(
-    `=IFERROR(IF(COUNTIF(R${dataStartRow}C[0]:R${dataEndRow}C[0],1)>1, COUNTIF(R${dataStartRow}C[0]:R${dataEndRow}C[0],1)&"-Way"&CHAR(10)&"Tie", "Leader:"&CHAR(10)&INDEX(R${dataStartRow}C1:R${dataEndRow}C1, MATCH(1, R${dataStartRow}C[0]:R${dataEndRow}C[0], 0))),"")`
+    `=IFERROR(IF(COUNTIF(${currentColR1C1},1)>1,countif(${currentColR1C1},1)&"-Way"&CHAR(10)&"Tie", "Leader:"&CHAR(10)&INDEX(R${dataStartRow}C1:R${dataEndRow}C1, MATCH(1, ${currentColR1C1}, 0))),"")`
   );
   sheet.getRange(summaryRow, pctColIdx).setFormulaR1C1(
-    `=IFERROR(IF(COUNTA(R${dataStartRow}C[0]:R${dataEndRow}C[0])>0, TEXT(AVERAGE(R${dataStartRow}C[0]:R${dataEndRow}C[0]), "0.0%"),""),"")`
+    `=IFERROR(IF(COUNTA(${currentColR1C1})>0, TEXT(AVERAGE(${currentColR1C1}), "0.0%"),""),"")`
   );
-  sheet.getRange(summaryRow, wildColIdx).setFormulaR1C1(
-    `=IFERROR(IF(SUM(R${dataStartRow}C[0]:R${dataEndRow}C[0])>0, TEXT(AVERAGE(R${dataStartRow}C[0]:R${dataEndRow}C[0]), "0.0%"),""),"")`
+  
+  // Merged combined logic for chances column
+  const countOverZero = `countif(${currentColR1C1},">"&0)`
+  sheet.getRange(summaryRow, chancesColIdx).setFormulaR1C1(`iferror(if(counta(R${dataStartRow}C1:R${dataEndRow}C1)=${countOverZero},"EVERYONE IS IN",if(${countOverZero}>1,${countOverZero}&" MEMBERS"&char(10)&"REMAINING","COMPLETED")),"")`);
+  sheet.getRange(summaryRow, chancesColIdx, 1, 2).merge();
+
+  // Wildcard summation column
+  sheet.getRange(summaryRow, wildColIdx).setFormulaR1C1(`=IFERROR(IF(SUM(${currentColR1C1})>0, TEXT(AVERAGE(${currentColR1C1}), "0.0%"),""),"")`
   );
 
   if (config.tiebreakerInclude) {
-    sheet.getRange(summaryRow, tiebreakerCol).setFormulaR1C1(`=IFERROR("AVG:"&CHAR(10)&ROUND(AVERAGE(R${dataStartRow}C[0]:R${dataEndRow}C[0]),1),"")`);
-    sheet.getRange(summaryRow, tiebreakerCol + 1).setFormulaR1C1(`=IFERROR("AVG:"&CHAR(10)&ROUND(AVERAGE(R${dataStartRow}C[0]:R${dataEndRow}C[0]),1),"")`);
+    sheet.getRange(summaryRow, tiebreakerCol).setFormulaR1C1(`=IFERROR("AVG:"&CHAR(10)&ROUND(AVERAGE(${currentColR1C1}),1),"")`);
+    sheet.getRange(summaryRow, tiebreakerCol + 1).setFormulaR1C1(`=IFERROR("AVG:"&CHAR(10)&ROUND(AVERAGE(${currentColR1C1}),1),"")`);
   }
+
+  // Comment counta / null
+  if (!config.commentsExclude) sheet.getRange(summaryRow, commentCol).setFormulaR1C1(`iferror(if(counta(${currentColR1C1})>0,counta(${currentColR1C1})&" COMMENT"&if(counta(${currentColR1C1})>1,"S",""),"NO COMMENTS"),"")`);
 
   // BIAS COLOR SCHEMES (copy from weeklySheet())
   let homeAwayPercents = [90,80,70,60,50];
@@ -8139,83 +8153,70 @@ function leaderboardSheet(ss, config, memberData) {
   }
 
   // -------------------------------------------------------------
-  // 7. COLUMN A: SORTED & FILTERED PLAYER NAMES
+  // Filtering Function
   // -------------------------------------------------------------
-  // Pulls NAMES_week, RNK_week, CHANCES_week and applies sort & contenders filter
-  const colAFormula = `=LET(
-    names, INDIRECT("NAMES_" & ${weekCellString}),
-    ranks, IFERROR(INDIRECT("RNK_" & ${weekCellString}), 999),
-    chances, IFERROR(INDIRECT("CHANCES_" & ${weekCellString}), 0),
-    hideZero, $F$1,
-
-    filtered, FILTER(
-      {names, ranks, chances, SEQUENCE(ROWS(names), 1, 1, 1)},
-      IF(hideZero, chances > 0, ROW(names) > 0)
-    ),
-
-    fNames, INDEX(filtered,,1),
-    fRanks, INDEX(filtered,,2),
-    fChances, INDEX(filtered,,3),
-    fSeq, INDEX(filtered,,4),
-
-    sortKey, IFS($D$1="Rank", fRanks, $D$1="Chances", -fChances, $D$1="Default", fSeq, TRUE, fSeq),
-
-    IFERROR(SORT(fNames, sortKey, 1), names)
-  )`;
+  // Pulls NAMES_week, RNK_week, CHANCES_week and applies sort filter
+  const colAFormula = `=iferror(let(
+    names, indirect("NAMES_"&${weekCellString}),
+    ranks, iferror(indirect("RNK_"&${weekCellString}), 999),
+    chances, iferror(indirect("CHANCES_"&${weekCellString}), 0),
+    data, {names, ranks, chances, sequence(rows(names), 1, 1, 1)},
+    
+    index(
+      if(${sortCellString}="Sorted by Chances",
+        sort(data, 3, false, 2, true),
+        let(
+          sortCol, switch(${sortCellString}, "Sorted by Name", 1, "Sorted by Rank", 2, "Display Order", 4, 4),
+          sort(data, sortCol, true)
+        )
+      ),
+      , 1
+    )
+  ), "NO DATA")`;
 
   sheet.getRange(dataStartRow, 1).setFormula(colAFormula);
 
   // -------------------------------------------------------------
-  // 8. DATA LOOKUPS VIA XLOOKUP & NAMED RANGES
+  // Weekly Lookups
   // -------------------------------------------------------------
-  for (let r = dataStartRow; r <= dataEndRow; r++) {
-    const playerCell = `R${r}C1`;
-  
-    // A. Season & Pool Totals (XLOOKUP into SUMMARY sheet)
-    if (config.pickemsInclude) {
-      sheet.getRange(r, 2).setFormulaR1C1(`=IFERROR(IF(${playerCell}="","",XLOOKUP(${playerCell},SUMMARY_NAMES,SUMMARY!$B$2:$B)),"")`); // TOT ⭐
-      sheet.getRange(r, 3).setFormulaR1C1(`=IFERROR(IF(${playerCell}="","",XLOOKUP(${playerCell},SUMMARY_NAMES,SUMMARY!$C$2:$C)),"")`); // TOT 🥇
-      if (!config.mnfExclude) {
-        sheet.getRange(r, 4).setFormulaR1C1(`=IFERROR(IF(${playerCell}="","",XLOOKUP(${playerCell},SUMMARY_NAMES,TOT_MNF_CORRECT,))),"")`);
-      }
-    }
-    if (config.survivorInclude) {
-      sheet.getRange(r, survCol).setFormulaR1C1(`=IFERROR(IF(${playerCell}="","", XLOOKUP(${playerCell}, SUMMARY_NAMES, INDEX(SUMMARY!$A$2:$Z, 0, MATCH("SURVIVOR LIVES", SUMMARY!$1:$1, 0)))),"")`);
-      sheet.getRange(r, survCol + 1).setFormulaR1C1(`=IFERROR(IF(${playerCell}="","", XLOOKUP(${playerCell}, SUMMARY_NAMES, INDEX(SUMMARY!$A$2:$Z, 0, MATCH("SURVIVOR STATUS", SUMMARY!$1:$1, 0)))),"")`);
-    }
-    if (config.eliminatorInclude) {
-      sheet.getRange(r, elimCol).setFormulaR1C1(`=IFERROR(IF(${playerCell}="","", XLOOKUP(${playerCell}, SUMMARY_NAMES, INDEX(SUMMARY!$A$2:$Z, 0, MATCH("ELIMINATOR LIVES", SUMMARY!$1:$1, 0)))),"")`);
-      sheet.getRange(r, elimCol + 1).setFormulaR1C1(`=IFERROR(IF(${playerCell}="","", XLOOKUP(${playerCell}, SUMMARY_NAMES, INDEX(SUMMARY!$A$2:$Z, 0, MATCH("ELIMINATOR STATUS", SUMMARY!$1:$1, 0)))),"")`);
+  let r;
+  let firstColLetter = firstCell.getA1Notation().match(/^[A-Z]+/)[0];
+  for (let a = 0; a < (dataEndRow - dataStartRow); a++) {
+    r = a + dataStartRow;
+    const playerCell = firstColLetter + r;
+    
+    for (let b = 0; b < colNamedRangeReference.length; b++) {
+      sheet.getRange(r, b+2).setFormula(`=iferror(if(or(${playerCell}="",isblank(${playerCell})),"",xlookup(${playerCell},TOT_NAME,TOT_${colNamedRangeReference[b]})),"")`);
     }
 
     // B. Weekly Performance Lookups (XLOOKUP into active week's named ranges)
-    sheet.getRange(r, weeklyStartCol).setFormulaR1C1(`=IFERROR(IF(${playerCell}="","",XLOOKUP(${playerCell},INDIRECT("NAMES_" & ${weekCellStringRC}),INDIRECT("TOT_"&${weekCellStringRC}))),"")`);
-    sheet.getRange(r, weeklyStartCol + 1).setFormulaR1C1(`=IFERROR(IF(${playerCell}="","",XLOOKUP(${playerCell},INDIRECT("NAMES_" & ${weekCellStringRC}),INDIRECT("RNK_"&${weekCellStringRC}))),"")`);
-    sheet.getRange(r, weeklyStartCol + 2).setFormulaR1C1(`=IFERROR(IF(${playerCell}="","",XLOOKUP(${playerCell},INDIRECT("NAMES_" & ${weekCellStringRC}),INDIRECT("PCT_"&${weekCellStringRC}))),"")`);
-    sheet.getRange(r, weeklyStartCol + 3).setFormulaR1C1(`=IFERROR(IF(${playerCell}="","",XLOOKUP(${playerCell},INDIRECT("NAMES_" & ${weekCellStringRC}),INDIRECT("CHANCES_"&${weekCellStringRC}))),"")`);
+    sheet.getRange(r, weeklyStartCol).setFormula(`=IFERROR(IF(${playerCell}="","",XLOOKUP(${playerCell},INDIRECT("NAMES_" & ${weekCellStringRC}),INDIRECT("TOT_"&${weekCellStringRC}))),"")`);
+    sheet.getRange(r, weeklyStartCol + 1).setFormula(`=IFERROR(IF(${playerCell}="","",XLOOKUP(${playerCell},INDIRECT("NAMES_" & ${weekCellStringRC}),INDIRECT("RNK_"&${weekCellStringRC}))),"")`);
+    sheet.getRange(r, weeklyStartCol + 2).setFormula(`=IFERROR(IF(${playerCell}="","",XLOOKUP(${playerCell},INDIRECT("NAMES_" & ${weekCellStringRC}),INDIRECT("PCT_"&${weekCellStringRC}))),"")`);
+    sheet.getRange(r, weeklyStartCol + 3).setFormula(`=IFERROR(IF(${playerCell}="","",XLOOKUP(${playerCell},INDIRECT("NAMES_" & ${weekCellStringRC}),INDIRECT("CHANCES_"&${weekCellStringRC}))),"")`);
 
     // Sparkline
-    sheet.getRange(r, weeklyStartCol + 4).setFormulaR1C1(
+    sheet.getRange(r, weeklyStartCol + 4).setFormula(
       `=IFERROR(IF(OR(${playerCell}="", ISBLANK(R[0]C[-1])),"", SPARKLINE(MAX(R[0]C[-1], 0.05), {"charttype","bar";"max",1;"color1", IF(R[0]C[-1]=MAX(R${dataStartRow}C[-1]:R${dataEndRow}C[-1]), "#00E676", IF(R[0]C[-1]<(MAX(R${dataStartRow}C[-1]:R${dataEndRow}C[-1])/3), "#FF8A80", "#FFD54F"))})),"")`
     );
 
     // Wildcard
-    sheet.getRange(r, weeklyStartCol + 5).setFormulaR1C1(`=IFERROR(IF(${playerCell}="","", XLOOKUP(${playerCell}, INDIRECT("NAMES_" & ${weekCellStringRC}), INDIRECT("WILDCARD_" & ${weekCellStringRC}))),"")`);
+    sheet.getRange(r, weeklyStartCol + 5).setFormula(`=IFERROR(IF(${playerCell}="","", XLOOKUP(${playerCell}, INDIRECT("NAMES_" & ${weekCellString}), INDIRECT("WILDCARD_" & ${weekCellString}))),"")`);
 
     // Tiebreaker & Diff
     if (config.tiebreakerInclude) {
-      sheet.getRange(r, tiebreakerCol).setFormulaR1C1(`=IFERROR(IF(${playerCell}="","", XLOOKUP(${playerCell}, INDIRECT("NAMES_" & ${weekCellStringRC}), INDIRECT("${LEAGUE}_TIEBREAKER_" & ${weekCellStringRC}))),"")`);
-      sheet.getRange(r, tiebreakerCol + 1).setFormulaR1C1(`=IFERROR(IF(OR(${playerCell}="",ISBLANK(R[0]C[-1]),ISBLANK(INDIRECT("${LEAGUE}_TIEBREAKER_"&${weekCellStringRC}&"_OUTCOME"))),"",ABS(R[0]C[-1]-INDIRECT("${LEAGUE}_TIEBREAKER_"&${weekCellStringRC}&"_OUTCOME"))),"")`);
+      sheet.getRange(r, tiebreakerCol).setFormula(`=IFERROR(IF(${playerCell}="","", XLOOKUP(${playerCell}, INDIRECT("NAMES_" & ${weekCellString}), INDIRECT("${LEAGUE}_TIEBREAKER_" & ${weekCellString}))),"")`);
+      sheet.getRange(r, tiebreakerCol + 1).setFormula(`=IFERROR(IF(OR(${playerCell}="",ISBLANK(R[0]C[-1]),ISBLANK(INDIRECT("${LEAGUE}_TIEBREAKER_"&${weekCellString}&"_OUTCOME"))),"",ABS(R[0]C[-1]-INDIRECT("${LEAGUE}_TIEBREAKER_"&${weekCellString}&"_OUTCOME"))),"")`);
     }
 
     // Comments
     if (!config.commentsExclude) {
-      sheet.getRange(r, commentCol).setFormulaR1C1(`=IFERROR(IF(${playerCell}="","", XLOOKUP(${playerCell}, INDIRECT("NAMES_" & ${weekCellStringRC}), INDIRECT("COMMENTS_" & ${weekCellStringRC}))),"")`);
+      sheet.getRange(r, commentCol).setFormula(`=IFERROR(IF(${playerCell}="","", XLOOKUP(${playerCell}, INDIRECT("NAMES_" & ${weekCellString}), INDIRECT("COMMENTS_" & ${weekCellString}))),"")`);
     }
 
     // C. Matchup Picks Array Spill: XLOOKUP into 2D picks matrix (Spills entire row of picks)
-    sheet.getRange(r, firstMatchupCol).setFormulaR1C1(
-      `=IFERROR(IF(${playerCell}="","", XLOOKUP(${playerCell}, INDIRECT("NAMES_" & ${weekCellStringRC}), INDIRECT("${LEAGUE}_PICKS_" & ${weekCellStringRC}))),"")`
+    sheet.getRange(r, firstMatchupCol).setFormula(
+      `=IFERROR(IF(${playerCell}="","", XLOOKUP(${playerCell}, INDIRECT("NAMES_" & ${weekCellString}), INDIRECT("${LEAGUE}_PICKS_" & ${weekCellString}))),"")`
     );
   }
 
@@ -8223,24 +8224,27 @@ function leaderboardSheet(ss, config, memberData) {
   sheet.getRange(dataStartRow, weeklyStartCol + 2, totalMembers, 1).setNumberFormat('0.0%');
   sheet.getRange(dataStartRow, weeklyStartCol + 3, totalMembers, 1).setNumberFormat('0.0%');
   sheet.getRange(dataStartRow, weeklyStartCol + 5, totalMembers, 1).setNumberFormat('0.0%');
-
-  // -------------------------------------------------------------
-  // 9. BORDERS & FREEZE
-  // -------------------------------------------------------------
-  // sheet.setFrozenRows(freezeRow);
+  sheet.getRange(dataStartRow, firstMatchupCol, totalMembers, finalMatchupCol - firstMatchupCol).setHorizontalAlignment('center');
   sheet.setFrozenColumns(1);
 
-  const sectionColsToBorder = [1, overallEndCol, weeklyEndCol, finalMatchupCol];
-  sectionColsToBorder.forEach(c => {
-    sheet.getRange(1, c, dataEndRow, 1).setBorder(null, null, null, true, null, null, '#424242', SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
-  });
-  sheet.getRange(summaryRow, 1, 1, finalMatchupCol).setBorder(null, null, true, null, null, null, '#424242', SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
-
   // -------------------------------------------------------------
-  // 10. CONDITIONAL FORMATTING (pickColors Gradients)
+  // Conditional Formatting
   // -------------------------------------------------------------
   
   // A. Weekday Backgrounds
+  if (typeof dayColorsFilledObj !== 'undefined') {
+    const dayRange = sheet.getRange(weekDayRow, firstMatchupCol, 1, MAXGAMES);
+    Object.keys(dayColorsFilledObj).forEach(day => {
+      formatRules.push(
+        SpreadsheetApp.newConditionalFormatRule()
+          .whenFormulaSatisfied(`=and(${dayRange.getA1Notation()}="${day}",not(isblank(${sheet.getRange(outcomeRow, firstMatchupCol).getA1Notation()})))`)
+          .setBackground(dayColorsFilledObj[day])
+          .setFontColor('#000000')
+          .setRanges([dayRange])
+          .build()
+      );
+    });
+  }
   if (typeof dayColorsObj !== 'undefined') {
     const dayRange = sheet.getRange(weekDayRow, firstMatchupCol, 1, MAXGAMES);
     Object.keys(dayColorsObj).forEach(day => {
@@ -8254,11 +8258,13 @@ function leaderboardSheet(ss, config, memberData) {
       );
     });
   }
+  
+  const effectiveOutcomeRow = isAts ? spreadOutcomeRow : outcomeRow;
 
   // B. Completed Matchup Headers Dimming
   const matchupHeadersRange = sheet.getRange(matchupRow, firstMatchupCol, 1, maxWeeklyGames);
   const completedMatchupRule = SpreadsheetApp.newConditionalFormatRule()
-    .whenFormulaSatisfied(`=NOT(ISBLANK(R${effectiveOutcomeRow}C[0]))`)
+    .whenFormulaSatisfied(`=NOT(ISBLANK(R${effectiveOutcomeRow}C}C[0]))`)
     .setBackground('#37474F')
     .setFontColor('#80CBC4')
     .setRanges([matchupHeadersRange])
@@ -8321,13 +8327,6 @@ function leaderboardSheet(ss, config, memberData) {
 
   SpreadsheetApp.flush();
   return sheet;
-}
-
-// Helper to look up column index by header text
-function getHeaderColIndex(sheet, text) {
-  const rowVals = sheet.getRange(4, 1, 1, sheet.getMaxColumns()).getValues()[0];
-  const idx = rowVals.indexOf(text);
-  return idx > -1 ? idx + 1 : 2;
 }
 
 // UPDATES SUMMARY SHEET FORMULAS
