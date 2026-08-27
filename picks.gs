@@ -8264,7 +8264,7 @@ function leaderboardSheet(ss, config, memberData) {
   // B. Completed Matchup Headers Dimming
   const matchupHeadersRange = sheet.getRange(matchupRow, firstMatchupCol, 1, maxWeeklyGames);
   const completedMatchupRule = SpreadsheetApp.newConditionalFormatRule()
-    .whenFormulaSatisfied(`=NOT(ISBLANK(R${effectiveOutcomeRow}C}C[0]))`)
+    .whenFormulaSatisfied(`=NOT(ISBLANK(R${effectiveOutcomeRow}C[0]))`)
     .setBackground('#37474F')
     .setFontColor('#80CBC4')
     .setRanges([matchupHeadersRange])
