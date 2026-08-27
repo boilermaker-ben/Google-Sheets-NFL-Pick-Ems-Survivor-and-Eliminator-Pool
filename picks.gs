@@ -8181,7 +8181,7 @@ function leaderboardSheet(ss, config, memberData) {
   // -------------------------------------------------------------
   let r;
   let firstColLetter = firstCell.getA1Notation().match(/^[A-Z]+/)[0];
-  for (let a = 0; a < (dataEndRow - dataStartRow); a++) {
+  for (let a = 0; a <= (dataEndRow - dataStartRow); a++) {
     r = a + dataStartRow;
     const playerCell = firstColLetter + r;
     
