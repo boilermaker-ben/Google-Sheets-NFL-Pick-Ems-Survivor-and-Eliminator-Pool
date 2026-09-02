@@ -1,7 +1,7 @@
 const VERSION = '1.2.2';
 /** GOOGLE SHEETS FOOTBALL PICK 'EMS, SURVIVOR, & ELIMINATOR TOOL | 2025 Edition
  * Script Library for League Creator & Management Platform
- * 09/01/2026
+ * 09/02/2026
  * 
  * Created by Ben Powers
  * ben.powers.creative@gmail.com
@@ -8092,7 +8092,6 @@ function summarySheetFormulas(headers, sheet, totalMembers, ss) {
 }
 
 // LEADERBOARD Sheet Creation
-// LEADERBOARD Sheet Creation
 function leaderboardSheet(ss, config, memberData) {
   ss = ss || fetchSpreadsheet(ss);
   
@@ -8213,13 +8212,10 @@ function leaderboardSheet(ss, config, memberData) {
   }
   const finalMatchupCol = colHeaders.length + 1;
 
-  adjustRows(sheet, dataEndRow + 2);
-  adjustColumns(sheet, finalMatchupCol);
-
   for (let c = 0; c < colWidths.length; c++) {
     sheet.setColumnWidth(c + 1, colWidths[c]);
   }
-  const fullSheetRange = sheet.getRange(1, 1, dataEndRow + 2, finalMatchupCol);
+  const fullSheetRange = sheet.getRange(1, 1, dataEndRow, finalMatchupCol);
   fullSheetRange.setFontFamily("Montserrat").setVerticalAlignment("middle");
 
   // -------------------------------------------------------------
@@ -8253,7 +8249,7 @@ function leaderboardSheet(ss, config, memberData) {
   // Style selection boxes
   sheet.getRange(2, 1, 2, 1).setFontColor('#FFFFFF').setBackground('#555555').setFontWeight('bold').setHorizontalAlignment('center');
   
-  sheet.getRange(matchupRow + 1, 1, 2, 1).setFormulaR1C1(`=IFERROR(IF(R${dataStartRow}C1="NO DATA","", COUNTA(R${dataStartRow}C1:R${sheet.getMaxRows()}C1)&" Participants"),"")`)
+  sheet.getRange(matchupRow + 1, 1, 2, 1).setFormulaR1C1(`=IFERROR(IF(R${dataStartRow}C1="NO DATA","", COUNTA(R${dataStartRow}C1:R${dataEndRow}C1)&" Participants"),"")`)
        .setBackground('#000000').setFontColor('#FFFFFF').setFontWeight('bold').setFontSize(10).setHorizontalAlignment('center');
   
   // -------------------------------------------------------------
@@ -8717,6 +8713,9 @@ function leaderboardSheet(ss, config, memberData) {
   }
 
   sheet.setConditionalFormatRules(formatRules);
+
+  adjustRows(sheet, dataEndRow);
+  adjustColumns(sheet, finalMatchupCol);
 
   SpreadsheetApp.flush();
   Logger.log('✅ LEADERBOARD sheet successfully built with complete conditional formatting.');
