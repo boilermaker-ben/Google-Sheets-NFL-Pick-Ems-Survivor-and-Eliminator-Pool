@@ -1,4 +1,4 @@
-# Google Sheets / Forms NFL Pick'Ems and Survivor Pool, v1.2.0
+# Google Sheets / Forms NFL Pick'Ems and Survivor Pool, v1.2.2
 ## Creation and Management Tool for Running your Own Group
 
 Google Sheet document with multiple script files to generate Google Forms for season-long NFL Pick'Ems or Survivor league management
@@ -24,7 +24,7 @@ Lastly, there are some safeguards Google has in place to avoid allowing users to
 -------------------------
 
 **Notable Changes**
-This newest update to version 1.2.0 includes the following new improved features/changes:
+This newest update to version 1.2.2 includes the following new improved features/changes:
 - **More intuitive setup and initialization tool**
 - Use of **Document Properties** (formerly used _Script_ Properties)
   - Storing timezone, initialization, configuration, members, and form details
@@ -34,7 +34,7 @@ This newest update to version 1.2.0 includes the following new improved features
 -   Allows for overwriting (hover over existing)
 -   Provides ability to manually enter ATS values
 -   Custom selection of matchups (by weekday or individually)
-- Survivor & Eliminator (new):
+- Survivor & **Eliminator (New)**:
   - "Lives" (1-3 for now)
   - "Revive" option
   - Custom start week (should allow for restarts)
@@ -49,6 +49,9 @@ This newest update to version 1.2.0 includes the following new improved features
   - Display form features
   - Preview form responses
   - Show new members who've joined
+- **Survivor/Eliminator** Panel:
+  - Let's you update and manage the picked teams and revive members
+  - Review and adjust the participants picks where needed
 - **Triggers**:
   - To keep the Survivor/Eliminator pools correct (if being used)
   - To automatically fetch spreads (Tuesday-Saturday, provide a time)
@@ -60,15 +63,18 @@ This newest update to version 1.2.0 includes the following new improved features
 
 ## **Table of Contents**
 
-### **1. Example Sheets** - Screenshots of the output from a league done in 2021 (Some of these have yet to be updated to visually represent the new format)
+### **1. Example Sheets** - Screenshots of the output from a league done in 2021/2024 (Some of these have yet to be updated to visually represent the new format)
 
 - NFL_OUTCOMES Sheet
 - WEEKLY Sheet
+- LEADERBOARD Sheet
 - SUMMARY Sheet
 - OVERALL Sheet
 - MNF Sheet
 - SURVIVOR Sheet
 - ELIMINATOR Sheet
+- CONTRARIAN Sheet
+- COUNTS Sheet
   
 ### **2. Example Form** - Screenshot of form from week 18 in 2021
 
@@ -90,6 +96,11 @@ This newest update to version 1.2.0 includes the following new improved features
 <h3 align="center">NFL OUTCOMES Sheet</h3>
 <p align="center">
 <img src="https://benpowerscreative.com/wp-content/uploads/2023/09/googlesheets-pickems-outcomes-sheet.png" width="600" alt="NFL OUTCOMES">
+</p>
+
+<h3 align="center">LEADERBOARD Sheet</h3>
+<p align="center">
+<img width="600" alt="image" src="https://github.com/user-attachments/assets/51079891-e9f1-4d09-9833-87883e3a33e1" />
 </p>
 
 <h3 align="center">SUMMARY Sheet</h3>
@@ -122,6 +133,15 @@ This newest update to version 1.2.0 includes the following new improved features
 <img src="https://benpowerscreative.com/wp-content/uploads/2023/03/googlesheets-picks-example05.png" width="600" alt="SURVIVOR Sheet">
 </p>
 
+<h3 align="center">CONTRARIAN Sheet</h3>
+<p align="center">
+<img width="600" alt="image" src="https://github.com/user-attachments/assets/f1cf8950-a680-448e-8965-a0db3dbb8e11" />
+</p>
+
+<h3 align="center">COUNTS Sheet</h3>
+<p align="center">
+<img width="600" alt="image" src="https://github.com/user-attachments/assets/14a1c055-1452-4330-91ae-64a61e7f2d09" />
+</p>
 
 -------------------------
 
