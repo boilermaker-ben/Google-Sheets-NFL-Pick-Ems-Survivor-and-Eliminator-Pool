@@ -9780,14 +9780,18 @@ function weeklySheet(ss,week,config,forms,memberData,displayEmpty,rebuild) {
     .setRanges([range])
     .build());
 
-  // WILDCARD GRADIENT RULE  '#33ff7a',IF(E3<0.33,'#ffa579','#ffe433')
-  ss.setNamedRange(`WILDCARD_${week}`,sheet.getRange(entryRowStart,wildcardCol,totalMembers,1)); // Range for formatting below includes summary row
-  range.setNumberFormat('##0.0%');
+  // WILDCARD GRADIENT RULE
+  const wildcardRange = sheet.getRange(entryRowStart, wildcardCol, totalMembers, 1);
+  const wildcardWithSummaryRange = sheet.getRange(entryRowStart, wildcardCol, totalMembers + 1, 1);
+  
+  ss.setNamedRange(`WILDCARD_${week}`, wildcardRange);
+  wildcardWithSummaryRange.setNumberFormat('0.0%');
+
   let formatRuleWildcard = SpreadsheetApp.newConditionalFormatRule()
     .setGradientMaxpointWithValue('#fca503', SpreadsheetApp.InterpolationType.NUMBER, '0.50')
     .setGradientMidpointWithValue('#ffe433', SpreadsheetApp.InterpolationType.NUMBER, '0.25')
     .setGradientMinpointWithValue('#7dfffb', SpreadsheetApp.InterpolationType.NUMBER, '0.00')
-    .setRanges([sheet.getRange(entryRowStart,wildcardCol,totalMembers+1,1)])
+    .setRanges([wildcardWithSummaryRange])
     .build();
   formatRules.push(formatRuleWildcard);
 
