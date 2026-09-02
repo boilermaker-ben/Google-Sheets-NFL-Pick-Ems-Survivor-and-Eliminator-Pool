@@ -9930,22 +9930,25 @@ function weeklySheet(ss,week,config,forms,memberData,displayEmpty,rebuild) {
   }
 
   // PREFERENCE COLOR SCHEMES
-  let awayFormula = `=and(regexextract(indirect("R[0]C[0]",false),"[A-Z]{2,3}")=regexextract(indirect("R${matchupRow}C[0]",false),"[A-Z]{2,3}"),value(regexextract(indirect("R[0]C[0]",false),"[0-9\.]+"))>=%%)`; // Replaceable "%%" for inserting percent number
-  let homeFormula = `=and(regexextract(indirect("R[0]C[0]",false),"[A-Z]{2,3}")=regexextract(right(indirect("R${matchupRow}C[0]",false),3),"[A-Z]{2,3}"),value(regexextract(indirect(\"R[0]C[0]",false),"[0-9\.]+"))>=%%)`; // Replaceable "%%" for inserting percent number
-  range = sheet.getRange(summaryRow,firstMatchupCol,1,matchups); // Summary row of matchups
+  let awayFormula = `=and(regexextract(indirect("R[0]C[0]",false),"[A-Z]{2,3}")=regexextract(indirect("R${matchupRow}C[0]",false),"[A-Z]{2,3}"),value(regexextract(indirect("R[0]C[0]",false),"[0-9\.]+"))>=%%)`;
+  let homeFormula = `=and(regexextract(indirect("R[0]C[0]",false),"[A-Z]{2,3}")=regexextract(right(indirect("R${matchupRow}C[0]",false),3),"[A-Z]{2,3}"),value(regexextract(indirect("R[0]C[0]",false),"[0-9\.]+"))>=%%)`;
+  
+  // Explicitly define preferenceRange
+  const preferenceRange = sheet.getRange(summaryRow, firstMatchupCol, 1, matchups);
+  
   homeAwayColors.forEach(rule => {
-    Logger.log(rule.home);
     formatRules.push(SpreadsheetApp.newConditionalFormatRule()
-      .whenFormulaSatisfied(awayFormula.replace('%%',rule.percent))
+      .whenFormulaSatisfied(awayFormula.replace('%%', rule.percent))
       .setBackground(rule.away)
-      .setRanges([preferenceRange]).build());
+      .setRanges([preferenceRange])
+      .build());
 
     formatRules.push(SpreadsheetApp.newConditionalFormatRule()
-      .whenFormulaSatisfied(homeFormula.replace('%%',rule.percent))
+      .whenFormulaSatisfied(homeFormula.replace('%%', rule.percent))
       .setBackground(rule.home)
-      .setRanges([preferenceRange]).build());    
+      .setRanges([preferenceRange])
+      .build());    
   });
-
 
   // MATCHUP WEIGHTING RULE
   let formatRuleWeightedThree, formatRuleWeightedTwo;
