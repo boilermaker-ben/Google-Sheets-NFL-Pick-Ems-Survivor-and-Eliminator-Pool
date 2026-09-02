@@ -5311,55 +5311,52 @@ function launchFormImport() {
  */
 function executePickImport(week, importOnlyStartedGames) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  // --- 1. Fetch All Necessary Data ---
   
+  // 1. Sync first so new users submitting via the form are in memberData
+  syncFormResponses(week);
+
   const docProps = PropertiesService.getDocumentProperties();
-  let config = JSON.parse(docProps.getProperty('configuration')) || {};
-  const memberData = JSON.parse(docProps.getProperty('members')) || {};
-  let formsData = JSON.parse(docProps.getProperty('forms')) || {};
+  let config = JSON.parse(docProps.getProperty('configuration') || '{}');
+  let memberData = JSON.parse(docProps.getProperty('members') || '{}');
+  let formsData = JSON.parse(docProps.getProperty('forms') || '{}');
   const databaseSheet = getDatabaseSheet();
   const responseSheet = databaseSheet.getSheetByName(`WK${week}`);
   
-  // Parse the latest, de-duplicated picks from the response sheet.
+  // Parse latest de-duplicated picks from the backend database
   const parsedPicks = parseAllPicksFromSheet(responseSheet, memberData);
+  
   // --- 2. Handle Pick'em Sheet Population ---
   if (config.pickemsInclude) {
     try {
       const weeklySheetName = `${weeklySheetPrefix}${week}`;
       let sheet = ss.getSheetByName(weeklySheetName);
-      if (!sheet || !ss.getRangeByName(`NAMES_${week}`)) {
-        Logger.log(`🔁 No weekly sheet exists for week ${week}, creating one now...`);
-        ss.toast(`Creating weekly sheet for week ${week}.`,'🔁 CREATING...');
+      let namesRange = ss.getRangeByName(`NAMES_${week}`);
+      let existingNames = namesRange ? namesRange.getValues().flat().filter(n => n && n.toString().trim() !== '') : [];
+
+      // Check if any respondent in parsedPicks is missing from the sheet
+      const hasMissingMembers = Object.keys(parsedPicks).some(id => {
+        const mName = memberData.members[id]?.name;
+        return mName && !existingNames.includes(mName);
+      });
+
+      // If sheet doesn't exist, OR if new members need to be added to the grid:
+      if (!sheet || !namesRange || hasMissingMembers || existingNames.length < memberData.memberOrder.length) {
+        Logger.log(`🔁 Member list expanded. Rebuilding week ${week} sheet layout...`);
+        ss.toast(`Updating week ${week} sheet layout for new member(s)...`, '🔁 UPDATING GRID', 3);
         let displayEmpty = true;
         if (config?.hideNonParticipants) displayEmpty = !config.hideNonParticipants;
-        sheet = weeklySheet(ss,week,config,formsData,memberData,displayEmpty);
+        
+        // rebuild=true uses getExistingWeeklySheetData to preserve existing picks and add new rows
+        sheet = weeklySheet(ss, week, config, formsData, memberData, displayEmpty, true);
+        namesRange = ss.getRangeByName(`NAMES_${week}`);
       }
-      // --- Create Lookup Maps ---
-      // a) Member Name -> Row Index Map (Unchanged)
-      let memberNameRange;
-      try { 
-        memberNameRange = ss.getRangeByName(`NAMES_${week}`);
-      } catch (err) {
-        Logger.log(`❗ Error getting named range for WK${week} names: ${err.stack}`);
-        let memberNameRangeStart = 3, memberNameRangeEnd = 0, index = memberNameRangeStart;
-        while (memberNameRangeEnd < memberNameRangeStart) {
-          if (sheet.getRange(index,1).getValue() == 'PREFERRED') {
-            memberNameRangeEnd = index;
-          }
-          if (index > 100) {
-            throw new Error(`⚠️ Unable to locate NAMES range for week ${week} weekly sheet even with fallback. Failed to import.`);
-          }
-          index++;
-        }
-        memberNameRange = sheet.getRange(memberNameRangeStart,1,memberNameRangeEnd - memberNameRangeStart,1);
-        Logger.log(`✅ Successfully pulled NAMES range by lookup value despite error being thrown.`);
-      }
-      if (!memberNameRange) throw new Error(`⚠️ Unable to locate NAMES range for week ${week} weekly sheet. Failed to import.`);
-      const memberNames = memberNameRange.getValues().flat();
+
+      if (!namesRange) throw new Error(`⚠️ Unable to locate NAMES range for week ${week}. Failed to import.`);
+      
+      const memberNames = namesRange.getValues().flat();
       const memberNameToRowMap = new Map(memberNames.map((name, index) => [name, index]));
 
-      // --- [THE NEW LOGIC] Team-Pair Matching ---
-      // b) Matchup -> Column Index Map
+      // Matchup -> Column Index Map
       const matchupRange = ss.getRangeByName(`${LEAGUE}_${week}`);
       if (!matchupRange) throw new Error(`Named range '${LEAGUE}_${week}' not found.`);
       
@@ -5368,11 +5365,11 @@ function executePickImport(week, importOnlyStartedGames) {
       matchupHeaders.forEach((header, index) => {
         const teams = header.toString().match(/[A-Z]{2,3}/g);
         if (teams && teams.length === 2) {
-          const teamKey = teams.sort().join('-'); // e.g., "BUF-MIA"
+          const teamKey = teams.sort().join('-'); // e.g. "BUF-MIA"
           matchupToColMap.set(teamKey, index);
         }
       });
-      // --- Prepare Data for Writing (Unchanged) ---
+
       const picksRange = ss.getRangeByName(`${LEAGUE}_PICKS_${week}`);
       let tiebreakerRange, tiebreakers;
       if (config.tiebreakerInclude) {
@@ -5390,9 +5387,11 @@ function executePickImport(week, importOnlyStartedGames) {
       const gamePlan = formsData[week]?.gamePlan;
       let startedGames = new Set(getStartedGames());
   
-      // --- 3. Loop Through Parsed Picks and Populate the 2D Array ---
+      // --- 3. Loop Through Parsed Picks and Populate the Grid ---
       for (const memberId in parsedPicks) {
         const member = memberData.members[memberId];
+        if (!member) continue;
+
         const picks = parsedPicks[memberId];
         const rowIndex = memberNameToRowMap.get(member.name);
         if (rowIndex === undefined) continue;
@@ -5400,102 +5399,81 @@ function executePickImport(week, importOnlyStartedGames) {
         for (const question in picks.pickem) {
           const pick = picks.pickem[question];
 
-          // Find the original game from the gamePlan to get the team pair.
           const game = gamePlan.games.find(g => question.includes(g.awayTeamName) && question.includes(g.homeTeamName));
           if (game) {
-            // Apply the import filter first for efficiency
             const matchupShortName = `${game.awayTeam} @ ${game.homeTeam}`;
             const matchupVsName = `${game.awayTeam} VS ${game.homeTeam}`;
             
             if (importOnlyStartedGames && !startedGames.has(matchupShortName) && !startedGames.has(matchupVsName)) {
-              continue; // Skip if it's an upcoming game
+              continue; // Skip unstarted games during partial import
             }
             
-            // --- [THE NEW LOGIC] Find the column using the team-pair key ---
             const teamKey = [game.awayTeam, game.homeTeam].sort().join('-');
             const colIndex = matchupToColMap.get(teamKey);
 
             if (colIndex !== undefined) {
-              // Check if the member's pick is actually one of the teams in the matchup
               if (pick === game.awayTeam || pick === game.homeTeam) {
                 picksData[rowIndex][colIndex] = pick;
               }
             }
           }
         }
-        if (picks.tiebreaker) tiebreakers[rowIndex][0] = picks.tiebreaker;
-        if (picks.comments) comments[rowIndex][0] = picks.comments;
+        if (picks.tiebreaker && tiebreakers && tiebreakers[rowIndex]) tiebreakers[rowIndex][0] = picks.tiebreaker;
+        if (picks.comments && comments && comments[rowIndex]) comments[rowIndex][0] = picks.comments;
       }
       
-      // --- 4. Write Data Back to the Sheet (Unchanged) ---
+      // --- 4. Write Data Back to the Sheet ---
       picksRange.setValues(picksData);
-      if (!importOnlyStartedGames && config.tiebreakerInclude) tiebreakerRange.setValues(tiebreakers);
-      if (!config.commentsExclude) commentRange.setValues(comments);
-      const text = `Successfully imported Pick 'Em data into week '${week}' sheet.`;
-      Logger.log(`✅ ${text}`);
-      ss.toast(text,`✅ PICK 'EMS IMPORTED`)
-      
-      formsData[week].imported = true;
-      saveProperties('forms',formsData);
+      if (!importOnlyStartedGames && config.tiebreakerInclude && tiebreakerRange) tiebreakerRange.setValues(tiebreakers);
+      if (!config.commentsExclude && commentRange) commentRange.setValues(comments);
 
-      if (!config.initialized) {
-        const ui = fetchUi();
-        let prompt = ui.alert(`Season-Long Tracking Sheets Creation`,'Would you like to create all additional tracking sheets now?\n\nThis can be done later via the "Picks" > "Utilities" menu.', ui.ButtonSet.YES_NO);
-        if (prompt == "YES") {
-          try {
-            setupSheets();
-          } catch (err) {
-            ss.toast('Issue creating setup sheets, run again from the utilities menu');
-            Logger.logger('Issue creating setup sheets | ERROR: ' + err.stack);
-          }
-          ss.toast(`Successfully configured all other sheets.`, '✅ SETUP SHEETS SUCCESS');
-          config.initialized = true;
-          saveProperties('configuration',config);
-        } else {
-          ss.toast(`Declined setup of all other sheets, try again via the "Picks" > "Utilities" menu later.`,`❎ NO SETUP SHEETS`);
-        }
-      }
+      Logger.log(`✅ Successfully imported Pick 'Em data into week '${week}' sheet.`);
+      ss.toast(`Imported picks for Week ${week}.`, `✅ PICKS IMPORTED`, 3);
+
     } catch (err) {
-      const text = `Failed to import Pick 'Em data into week '${week}' sheet.`;
-      Logger.log(`${text} | ERROR: ${err.stack}`);
-      ss.toast(text,`❗  PICK 'EMS FAILED`)
-
+      Logger.log(`Failed to import Pick 'Em data into week '${week}' sheet: ${err.stack}`);
+      ss.toast(`Failed to import picks: ${err.message}`, `❗ PICK 'EMS FAILED`, 5);
     }
   }
+
+  // --- 5. Populate Survivor & Eliminator Sheets ---
   if (!importOnlyStartedGames) {
     let survInclude = config.survivorInclude && week >= config.survivorStartWeek;
     const elimInclude = config.eliminatorInclude && week >= config.eliminatorStartWeek;
-    // --- 5. Populate Survivor and Eliminator Sheets ---
+    
     if (survInclude) populateSurvElimSheet(ss, parsedPicks, memberData, config, formsData[week]?.gamePlan, week, 'survivor');
     if (elimInclude) populateSurvElimSheet(ss, parsedPicks, memberData, config, formsData[week]?.gamePlan, week, 'eliminator');
-    // Record picks from applicable survivor/eliminator to the JSON members object
     if (survInclude || elimInclude) recordSurvElimResponses(parsedPicks, memberData, week, survInclude, elimInclude);
-
   } else {
-    const title = ((config.survivorInclude && week >= config.survivorStartWeek) && (config.eliminatorInclude && week >= config.eliminatorStartWeek)) ? `NO SURVIVOR/ELMINATOR YET` : (config.survivorInclude && week >= config.survivorStartWeek) ? `NO SURVIVOR YET` : `NO ELIMINATOR YET`;
-    const notification = ((config.survivorInclude && week >= config.survivorStartWeek) && (config.eliminatorInclude && week >= config.eliminatorStartWeek)) ?
-      `Survivor and Eliminator not imported: user declined to import all matchups.` : (config.survivorInclude && week >= config.survivorStartWeek) ? 
-      `Survivor not imported: user declined to import all matchups.` : (config.eliminatorInclude && week >= config.eliminatorStartWeek) ? `Eliminator not imported: user declined to import all matchups.` : `Currently no Survivor or Eliminator pool to import`;
+    // Restored your original UX notification for partial imports
+    const title = ((config.survivorInclude && week >= config.survivorStartWeek) && (config.eliminatorInclude && week >= config.eliminatorStartWeek)) 
+      ? `NO SURVIVOR/ELIMINATOR YET` 
+      : (config.survivorInclude && week >= config.survivorStartWeek) 
+      ? `NO SURVIVOR YET` 
+      : `NO ELIMINATOR YET`;
+
+    const notification = ((config.survivorInclude && week >= config.survivorStartWeek) && (config.eliminatorInclude && week >= config.eliminatorStartWeek)) 
+      ? `Survivor and Eliminator not imported: user declined to import all matchups.` 
+      : (config.survivorInclude && week >= config.survivorStartWeek) 
+      ? `Survivor not imported: user declined to import all matchups.` 
+      : (config.eliminatorInclude && week >= config.eliminatorStartWeek) 
+      ? `Eliminator not imported: user declined to import all matchups.` 
+      : `Currently no Survivor or Eliminator pool to import`;
+
     Logger.log(`❎ ${notification}`);
-    ss.toast(notification,`❎ ${title}`);    
+    ss.toast(notification, `❎ ${title}`, 4);    
   }
-  
-  // Updates the Outcomes sheet to reflect the games that were actually being evaluated by the form, resets conditional formatting and data validation rules, then checks if Pick 'Ems present, whether any values were in place on the Outcomes sheet already and replaces them after otherwise putting a connection in place back to the weekly sheet
+
+  // Update master OUTCOMES sheet validation
   try {
-    outcomesSheetUpdate(ss,week,config,formsData[week].gamePlan)
-    const text = `✅ Successfully updated the OUTCOMES sheet input ranges for week '${week}' range.`;
-    Logger.log(text);
-    ss.toast(text,`OUTCOMES SHEET UPDATED`);
+    outcomesSheetUpdate(ss, week, config, formsData[week]?.gamePlan);
   } catch (err) {
-    const text = `❗ Failed to update the OUTCOMES sheet input ranges for week '${week}' range.`;
-    Logger.log(text + ' | ERROR: ' + err.stack);
-    ss.toast(text,`OUTCOMES NOT UPDATED`);
+    Logger.log(`Failed to update OUTCOMES sheet: ${err.stack}`);
   }
 
   // --- 6. Finalize and Save ---
   formsData[week].imported = true;
   saveProperties('forms', formsData);
-
   SpreadsheetApp.flush();
 
   return { success: true, message: `✅ Picks for week ${week} have been successfully imported!` };
