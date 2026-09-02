@@ -7585,20 +7585,16 @@ function mnfSheet(ss,memberData) {
   return sheet;  
 }
 
-
-/**
- * Sheet creation tool for the survivor and eliminator sheets
- * 
- */
-function survElimSheet(ss,config,memberData,sheetType) {
+// SURVIVOR/ELIMINATOR Sheet Creation
+function survElimSheet(ss, config, memberData, sheetType) {
   ss = ss || fetchSpreadsheet(ss);
   let docProps;
   if (!config || !memberData) docProps = PropertiesService.getDocumentProperties();
 
-  config = config || JSON.parse(docProps.getProperty('configuration')) || {};
-  memberData = memberData || JSON.parse(docProps.getProperty('members')) || {};
+  config = config || JSON.parse(docProps.getProperty('configuration') || '{}');
+  memberData = memberData || JSON.parse(docProps.getProperty('members') || '{}');
   
-  sheetType = sheetType || 'survivor'; // Default to survivor
+  sheetType = (sheetType || 'survivor').toLowerCase();
   const sheetName = sheetType.toUpperCase();
 
   let sheet = ss.getSheetByName(sheetName);
@@ -7610,89 +7606,99 @@ function survElimSheet(ss,config,memberData,sheetType) {
 
   sheet.setTabColor(survElimTabColors[sheetType]);
 
-  const totalMembers = memberData.memberOrder.length;
-  const members = memberData.memberOrder.map(id => [memberData.members[id]?.name]);
+  const totalMembers = memberData.memberOrder ? memberData.memberOrder.length : 0;
+  const members = memberData.memberOrder ? memberData.memberOrder.map(id => [memberData.members[id]?.name]) : [];
+  const weeks = Array.from({ length: WEEKS }, (_, index) => index + 1).filter(week => !WEEKS_TO_EXCLUDE.includes(week));
 
   let maxRows = sheet.getMaxRows();
   let maxCols = sheet.getMaxColumns();
 
-  let previousDataRange, previousData;
-  if (!fresh){
-    previousDataRange = sheet.getRange(2,3,maxRows-2,WEEKS - WEEKS_TO_EXCLUDE.length);
-    previousData = previousDataRange.getValues();
-    const text = `💾 Gathered previous data for ${sheetName} sheet, recreating sheet now`;
-    Logger.log(text);
-    ss.toast(text,`${sheetName} BACKED UP`);
+  // Backup existing picks if sheet already exists
+  let previousData = null;
+  if (!fresh && maxRows > 2 && maxCols >= 5) {
+    try {
+      const existingCols = Math.min(weeks.length, maxCols - 4);
+      previousData = sheet.getRange(2, 5, maxRows - 2, existingCols).getValues();
+      Logger.log(`💾 Preserved existing picks for ${sheetName} sheet before rebuild.`);
+      ss.toast(`Preserved existing picks for ${sheetName} sheet.`, `${sheetName} BACKED UP`, 3);
+    } catch (e) {
+      Logger.log(`Could not backup previous data: ${e.message}`);
+    }
   }
+  
   sheet.clear();
+  sheet.clearNotes();
+  sheet.clearConditionalFormatRules();
 
-  let rows = totalMembers + 2;
-  if (rows < maxRows) {
-    sheet.deleteRows(rows,maxRows-rows);
-  } else if (rows > maxRows){
-    sheet.insertRows(maxRows,rows-maxRows);
-  }
-  maxRows = sheet.getMaxRows();
-  let cols = WEEKS - WEEKS_TO_EXCLUDE.length + 2;
-  if (cols < maxCols) {
-    sheet.deleteColumns(cols + 1,maxCols-cols);
-  } else if (cols > maxCols) {
-    sheet.insertColumnsAfter(maxCols,cols-maxCols);
-  }
+  // 1. Dimensions: 4 Metadata Columns (Player, Status, Lives, Revives) + Weekly Columns
+  const rows = totalMembers + 2; // Header + Players + Summary Row
+  const cols = weeks.length + 4; // EXACT: 22 weeks + 4 columns = 26 columns
+
+  adjustRows(sheet, rows);
+  adjustColumns(sheet, cols);
   maxCols = sheet.getMaxColumns();
+  maxRows = sheet.getMaxRows();
+
+  // 2. Build Headers
+  sheet.getRange(1, 1).setValue('PLAYER');
+  sheet.getRange(1, 2).setValue('STATUS');
+  sheet.getRange(1, 3).setValue('LIVES');
+  sheet.getRange(1, 4).setValue('REVIVES');
   
-  sheet.getRange(1,1).setValue('PLAYER');
-  let statusCol = 2;
-  sheet.getRange(1,statusCol).setValue('STATUS');
-  sheet.setColumnWidth(statusCol,80);
-  let livesCol = 3;
-  sheet.getRange(1,livesCol).setValue('LIVES');
-  sheet.setColumnWidth(livesCol,80);
-  let revivesCol = 4;
-  sheet.getRange(1,revivesCol).setValue('REVIVES');
-  sheet.setColumnWidth(revivesCol,65);
+  sheet.setColumnWidth(1, 120); // Player
+  sheet.setColumnWidth(2, 80);  // Status
+  sheet.setColumnWidth(3, 80);  // Lives
+  sheet.setColumnWidth(4, 65);  // Revives
   
-  const weeks = Array.from({ length: WEEKS }, (_, index) => index + 1).filter(week => !WEEKS_TO_EXCLUDE.includes(week));
-  
-  for (let a = 0; a < weeks.length; a++ ) {
-    sheet.getRange(1,a+5).setValue(weeks[a]);
-    sheet.setColumnWidth(a+5,30);
+  // Weekly Column Headers (Cols 5 through 26)
+  for (let a = 0; a < weeks.length; a++) {
+    sheet.getRange(1, a + 5).setValue(weeks[a]);
+    sheet.setColumnWidth(a + 5, 30);
   }
 
-  let range = sheet.getRange(1,1,rows,maxCols);
-  range.setHorizontalAlignment('center');
-  range.setVerticalAlignment('middle');
-  range.setFontFamily("Montserrat");
-  range.setFontSize(10);
-  sheet.getRange(2,1,totalMembers,1).setValues(members);
-  sheet.getRange(totalMembers+2,1).setValue('REMAINING');
-  sheet.getRange(1,1,totalMembers+2,1).setHorizontalAlignment('left');
-  sheet.setColumnWidth(1,120);
+  // 3. Base Formatting across ALL 26 Columns
+  const fullBodyRange = sheet.getRange(1, 1, rows, maxCols);
+  fullBodyRange.setHorizontalAlignment('center')
+               .setVerticalAlignment('middle')
+               .setFontFamily("Montserrat")
+               .setFontSize(10);
+
+  // Populate Members
+  if (totalMembers > 0) {
+    sheet.getRange(2, 1, totalMembers, 1).setValues(members);
+  }
+  sheet.getRange(rows, 1).setValue('REMAINING');
+  sheet.getRange(1, 1, rows, 1).setHorizontalAlignment('left');
   
-  range = sheet.getRange(1,1,1,maxCols);
-  range.setBackground('black');
-  range.setFontColor('white');
-  range = sheet.getRange(totalMembers+2,1,1,maxCols);
-  range.setBackground('#e6e6e6');
+  // Header (Row 1) & Summary (Bottom Row) Backgrounds
+  sheet.getRange(1, 1, 1, maxCols).setBackground('black').setFontColor('white').setFontWeight('bold');
+  sheet.getRange(rows, 1, 1, maxCols).setBackground('#e6e6e6').setFontWeight('bold');
   
   sheet.setFrozenColumns(4);
   sheet.setFrozenRows(1);
   
-  ss.setNamedRange(`${sheetName}_NAMES`,sheet.getRange(2,1,totalMembers,1));
-  ss.setNamedRange(`${sheetName}_ELIMINATED`,sheet.getRange(2,2,totalMembers,1))
-  ss.setNamedRange(`${sheetName}_LIVES`,sheet.getRange(2,3,totalMembers,1))
-  ss.setNamedRange(`${sheetName}_REVIVES`,sheet.getRange(2,4,totalMembers,1))
-  ss.setNamedRange(`${sheetName}_PICKS`,sheet.getRange(2,5,totalMembers,weeks.length));
+  // 4. Register Named Ranges (Ensuring exact widths)
+  ss.setNamedRange(`${sheetName}_NAMES`, sheet.getRange(2, 1, totalMembers, 1));
+  ss.setNamedRange(`${sheetName}_ELIMINATED`, sheet.getRange(2, 2, totalMembers, 1));
+  ss.setNamedRange(`${sheetName}_LIVES`, sheet.getRange(2, 3, totalMembers, 1));
+  ss.setNamedRange(`${sheetName}_REVIVES`, sheet.getRange(2, 4, totalMembers, 1));
+  ss.setNamedRange(`${sheetName}_PICKS`, sheet.getRange(2, 5, totalMembers, weeks.length));
 
-  // if (config[`${sheetType}Lives`] == 1) sheet.hideColumns(livesCol);
-  if (!config[`${sheetType}Revives`]) sheet.hideColumns(revivesCol);
-
-  if (!fresh) {
-    previousDataRange.setValues(previousData);
-    const text = `🔄 Previous values restored for ${sheetName} sheet if they were present`;
-    Logger.log(text);
-    ss.toast(text,`${sheetName} RESTORED`);
+  if (!config[`${sheetType}Revives`]) {
+    sheet.hideColumns(4); // Hide Revives column if disabled in config
   }
+
+  // 5. Restore Picks if they existed
+  if (previousData && previousData.length > 0) {
+    const restoreRows = Math.min(totalMembers, previousData.length);
+    const restoreCols = Math.min(weeks.length, previousData[0].length);
+    sheet.getRange(2, 5, restoreRows, restoreCols).setValues(previousData.slice(0, restoreRows).map(r => r.slice(0, restoreCols)));
+    Logger.log(`🔄 Restored previous picks for ${sheetName}.`);
+  }
+
+  // 6. Paint Visuals, Lives Dots, and Colors
+  updateSurvElimSheet(ss, config, memberData, sheetType);
+
   return sheet;
 }
 
