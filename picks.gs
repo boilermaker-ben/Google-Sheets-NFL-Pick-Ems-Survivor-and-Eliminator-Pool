@@ -1,7 +1,7 @@
-const VERSION = '1.2.2';
+const VERSION = '1.2.3';
 /** GOOGLE SHEETS FOOTBALL PICK 'EMS, SURVIVOR, & ELIMINATOR TOOL | 2025 Edition
  * Script Library for League Creator & Management Platform
- * 09/02/2026
+ * 09/03/2026
  * 
  * Created by Ben Powers
  * ben.powers.creative@gmail.com
@@ -26,20 +26,23 @@ const VERSION = '1.2.2';
  *  ⚙️ Configuration - Set pool name, year, ATS options, bonuses, tiebreakers, and rule variations
  *  👥 Member Manager - Add, rearrange, mark paid, revive, or remove league members
  * 
+ *  -----------
+ * 
  *  🏈 Fetch NFL Outcomes - Pull live scores and game results from ESPN to grade picks automatically
  * 
- *  📊 TRACKING SHEETS:
- *    📈 Deploy / Refresh Leaderboard - Multi-metric dynamic dashboard with week selector & sorting
- *    📑 Deploy / Refresh Summary Sheet - Season-long standings, total correct, ranks, and lives
- *    🏆 Deploy / Refresh Winners Sheet - Historical record of weekly winners and payment tracking
- *    ⭐ Deploy / Refresh Totals (TOT) - Weekly and season total correct picks grid
- *    🥇 Deploy / Refresh Ranks (RNK) - Weekly and average rank progression across the season
- *    💯 Deploy / Refresh Percentages (PCT) - Weekly and average win percentage tracking
- *    🌙 Deploy / Refresh MNF Sheet - Monday Night Football record tracking (if enabled)
- *    👑 Deploy / Refresh Survivor Sheet - Survivor grid, lives counter, and pick history (if enabled)
- *    💀 Deploy / Refresh Eliminator Sheet - Eliminator grid, lives counter, and pick history (if enabled)
- *    🃏 Deploy / Refresh Contrarian - Tracks how frequently members pick against group consensus
- *    🔢 Deploy / Refresh Pick Counts - 32-team distribution showing most/least picked NFL teams
+ *  📊 DEPLOY / REFRESH SHEETS (Pick 'Ems Specific - Hidden if Contest Only):
+ *    📈 Leaderboard - Multi-metric dynamic dashboard with week selector & sorting
+ *    🗓️ Season Overview - Season totals, true win %, rank ticker, and 700px progress bar
+ *    📑 Summary Standings - Season standings, ranks, sparklines, and payment tracking
+ *    🏆 Weekly Winners - Historical record of weekly winners and payment checkboxes
+ *    ⭐ Totals (TOT) - Weekly and season total correct picks grid
+ *    🥇 Ranks (RNK) - Weekly and average rank progression across the season
+ *    💯 Percentages (PCT) - Weekly and average win percentage tracking
+ *    🌙 MNF Sheet - Monday Night Football record tracking (if enabled)
+ *    👑 Survivor Sheet - Survivor grid, lives counter, and pick history (if enabled)
+ *    💀 Eliminator Sheet - Eliminator grid, lives counter, and pick history (if enabled)
+ *    🃏 Contrarian Sheet - Tracks how frequently members pick against group consensus
+ *    🔢 Pick Counts Sheet - 32-team distribution showing most/least picked NFL teams
  *    ⚡ Deploy ALL Tracking Sheets - Runs first-time setup or rebuilds all active tracking sheets
  * 
  *  🧰 UTILITIES:
@@ -48,11 +51,14 @@ const VERSION = '1.2.2';
  *    ✏️ Rename a Member - Safely update a member's name across all formulas, sheets, and databases
  *    🧮 Update Formulas - Force recalculation and formula refresh across all summary/aggregate sheets
  *    ✅ Update Outcomes Sheet Validation - Rebuild column rules and validation on the master outcomes tab
+ *    👑 Rebuild Survivor Sheet - Safely rebuilds the Survivor sheet layout and restores picks (if enabled)
+ *    💀 Rebuild Eliminator Sheet - Safely rebuilds the Eliminator sheet layout and restores picks (if enabled)
  * 
  *  🧙 AUTOMATION:
  *    📡 Spread Auto-Fetch Panel - Schedule automated weekly triggers to pull spreads from ESPN
  *    ✅ Enable 👑&💀 Triggers - Install onEdit listener to evaluate survivor/eliminator picks automatically
  *    ⭕ Disable 👑&💀 Triggers - Remove automated background trigger if running manual grading
+ * 
  *   ------------
  * 
  *   ❔ Help & Support - opens an HTML pop-up that has a link to send me an email and this project hosted on GitHub
@@ -66,11 +72,6 @@ const VERSION = '1.2.2';
  * Thanks for checking out the script!
  * 
  * **/
- 
- /**
- * Runs when the spreadsheet is opened. Checks if the script has been
- * initialized for this document and either shows the authorization card or the main menu.
- */
 function onOpen() {
   const docProps = PropertiesService.getDocumentProperties();
   const isInitialized = docProps.getProperty('init') === 'true';
@@ -106,41 +107,55 @@ function onOpen() {
       menu.addSeparator()
           .addItem(`🏈 Fetch ${LEAGUE} Outcomes`, 'launchApiOutcomeImport');
 
-      // --- 📊 TRACKING SHEETS SUBMENU ---
-      let sheetsMenu = ui.createMenu('📊 Tracking Sheets')
-        .addItem('📈 Deploy / Refresh Leaderboard', 'deployLeaderboardSheet')
-        .addItem('📑 Deploy / Refresh Summary Sheet', 'deploySummarySheet')
-        .addItem('🏆 Deploy / Refresh Winners Sheet', 'deployWinnersSheet')
-        .addSeparator()
-        .addItem('⭐ Deploy / Refresh Totals (TOT)', 'deployTotSheet')
-        .addItem('🥇 Deploy / Refresh Ranks (RNK)', 'deployRnkSheet')
-        .addItem('💯 Deploy / Refresh Percentages (PCT)', 'deployPctSheet');
+      // --- 📊 DEPLOY / REFRESH SHEETS SUBMENU (Only visible if Pick 'Ems is active) ---
+      if (config.pickemsInclude) {
+        let sheetsMenu = ui.createMenu('📊 Deploy / Refresh Sheets')
+          .addItem('📈 Leaderboard', 'deployLeaderboardSheet')
+          .addItem('🗓️ Season Overview', 'deploySeasonSheet')
+          .addItem('📑 Summary Standings', 'deploySummarySheet')
+          .addItem('🏆 Weekly Winners', 'deployWinnersSheet')
+          .addSeparator()
+          .addItem('⭐ Totals (TOT)', 'deployTotSheet')
+          .addItem('🥇 Ranks (RNK)', 'deployRnkSheet')
+          .addItem('💯 Percentages (PCT)', 'deployPctSheet');
 
-      if (!config.mnfExclude) {
-        sheetsMenu.addItem('🌙 Deploy / Refresh MNF Sheet', 'deployMnfSheet');
-      }
-      if (config.survivorInclude) {
-        sheetsMenu.addItem('👑 Deploy / Refresh Survivor Sheet', 'deploySurvivorSheet');
-      }
-      if (config.eliminatorInclude) {
-        sheetsMenu.addItem('💀 Deploy / Refresh Eliminator Sheet', 'deployEliminatorSheet');
-      }
+        if (!config.mnfExclude) {
+          sheetsMenu.addItem('🌙 MNF Sheet', 'deployMnfSheet');
+        }
+        if (config.survivorInclude) {
+          sheetsMenu.addItem('👑 Survivor Sheet', 'deploySurvivorSheet');
+        }
+        if (config.eliminatorInclude) {
+          sheetsMenu.addItem('💀 Eliminator Sheet', 'deployEliminatorSheet');
+        }
 
-      sheetsMenu.addSeparator()
-        .addItem('🃏 Deploy / Refresh Contrarian', 'deployContrarianSheet')
-        .addItem('🔢 Deploy / Refresh Pick Counts', 'deployCountsSheet')
-        .addSeparator()
-        .addItem('⚡ Deploy ALL Tracking Sheets', 'setupSheets');
+        sheetsMenu.addSeparator()
+          .addItem('🃏 Contrarian Sheet', 'deployContrarianSheet')
+          .addItem('🔢 Pick Counts Sheet', 'deployCountsSheet')
+          .addSeparator()
+          .addItem('⚡ Deploy ALL Sheets', 'setupSheets');
 
-      menu.addSubMenu(sheetsMenu);
+        menu.addSubMenu(sheetsMenu);
+      }
 
       // --- 🧰 UTILITIES SUBMENU ---
-      menu.addSubMenu(ui.createMenu('🧰 Utilities')
+      let utilMenu = ui.createMenu('🧰 Utilities')
         .addItem(`📅 Update ${LEAGUE} Data`, 'fetchSchedule')
         .addItem('📊 Update Spread Data', 'fetchLatestSpreadsForWeek')
         .addItem('✏️ Rename a Member', 'showRenamePanel')
         .addItem('🧮 Update Formulas', 'allFormulasUpdate')
-        .addItem('✅ Update Outcomes Sheet Validation', 'outcomesSheetUpdatePrompt'));
+        .addItem('✅ Update Outcomes Sheet Validation', 'outcomesSheetUpdatePrompt');
+
+      if (config.survivorInclude) {
+        utilMenu.addSeparator()
+                .addItem('👑 Rebuild Survivor Sheet', 'rebuildSurvivorSheet');
+      }
+      if (config.eliminatorInclude) {
+        if (!config.survivorInclude) utilMenu.addSeparator();
+        utilMenu.addItem('💀 Rebuild Eliminator Sheet', 'rebuildEliminatorSheet');
+      }
+
+      menu.addSubMenu(utilMenu);
 
       // --- 🧙 AUTOMATION SUBMENU ---
       let subMenu = ui.createMenu('🧙 Automation')
@@ -1130,7 +1145,7 @@ function setupSheets() {
       Logger.log(`🏈 Deployed ${LEAGUE} Outcomes sheet`);
     }
 
-    // 2. Baseline Pick'Em Sheets
+    // 2. Baseline Pick'Em Sheets (Only if Pick'Ems is enabled)
     if (config.pickemsInclude) {
       totSheet(ss, memberData);
       ss.toast('Deployed Weekly Totals (TOT) tracking sheet.', '⭐ TOT DEPLOYED', 3);
@@ -1172,12 +1187,13 @@ function setupSheets() {
       try { ss.deleteSheet(ss.getSheetByName('ELIMINATOR')); } catch (e) {}
     }     
     
-    // 4. Summary Aggregation Sheet (Runs after baseline & contest sheets)
+    // 4. Summary Standings Sheet (Runs after baseline & contest sheets)
     summarySheet(ss, memberData, config);
     ss.toast('Deployed Season Standings & Summary sheet.', '📑 SUMMARY DEPLOYED', 3);
     Logger.log('📑 Deployed Summary sheet');
 
-    // 5. New Analytics Sheets (Contrarian & Pick Counts)
+    // 5. Advanced Analytics Sheets (Only if Pick'Ems is enabled)
+    let leadSheet = null;
     if (config.pickemsInclude) {
       contrarianSheet(ss, memberData);
       ss.toast('Deployed Contrarian (Wildcard) pick tracking sheet.', '🃏 CONTRARIAN DEPLOYED', 3);
@@ -1186,17 +1202,17 @@ function setupSheets() {
       countsSheet(ss, memberData);
       ss.toast('Deployed 32-team pick count distribution sheet.', '🔢 COUNTS DEPLOYED', 3);
       Logger.log('🔢 Deployed Counts sheet');
-    }
 
-    // 6. Dynamic Leaderboard Dashboard (Deployed last so all named ranges resolve)
-    let leadSheet = null;
-    if (config.pickemsInclude) {
+      seasonSheet(ss, config, memberData);
+      ss.toast('Deployed Season Trajectory & Progress Bar sheet.', '🗓️ SEASON DEPLOYED', 3);
+      Logger.log('🗓️ Deployed Season sheet');
+
       leadSheet = leaderboardSheet(ss, config, memberData);
       ss.toast('Deployed interactive Leaderboard dashboard.', '📈 LEADERBOARD DEPLOYED', 3);
       Logger.log('📈 Deployed Leaderboard sheet');
     }
 
-    // 7. Cleanup & Focus
+    // 6. Cleanup & Set Active Landing Tab
     try {
       const scheduleSheet = ss.getSheetByName(LEAGUE);
       if (scheduleSheet) scheduleSheet.hideSheet();
@@ -1208,16 +1224,18 @@ function setupSheets() {
       Logger.log("🗑 Deleted default 'Sheet1'");
     }
 
-    // Set active landing tab
+    // Focus on primary tab
     if (leadSheet) {
       leadSheet.activate();
     } else if (ss.getSheetByName('SUMMARY')) {
       ss.getSheetByName('SUMMARY').activate();
     } else if (ss.getSheetByName('SURVIVOR')) {
       ss.getSheetByName('SURVIVOR').activate();
+    } else if (ss.getSheetByName('ELIMINATOR')) {
+      ss.getSheetByName('ELIMINATOR').activate();
     }
 
-    // Mark pool as initialized
+    // Save initialized state
     config.initialized = true;
     saveProperties('configuration', config);
 
@@ -7034,28 +7052,28 @@ function deployTotSheet() {
   const ctx = validatePrerequisitesForSheets();
   if (!ctx) return;
   totSheet(ctx.ss, ctx.memberData);
-  ctx.ss.toast('Weekly Totals (TOT) sheet successfully deployed/updated.', '✅ TOT READY');
+  ctx.ss.toast('Weekly Totals (TOT) sheet successfully deployed/updated.', '⭐ TOT READY');
 }
 
 function deployRnkSheet() {
   const ctx = validatePrerequisitesForSheets();
   if (!ctx) return;
   rnkSheet(ctx.ss, ctx.memberData);
-  ctx.ss.toast('Weekly Ranks (RNK) sheet successfully deployed/updated.', '✅ RNK READY');
+  ctx.ss.toast('Weekly Ranks (RNK) sheet successfully deployed/updated.', '🥇 RNK READY');
 }
 
 function deployPctSheet() {
   const ctx = validatePrerequisitesForSheets();
   if (!ctx) return;
   pctSheet(ctx.ss, ctx.memberData);
-  ctx.ss.toast('Weekly Percentages (PCT) sheet successfully deployed/updated.', '✅ PCT READY');
+  ctx.ss.toast('Weekly Percentages (PCT) sheet successfully deployed/updated.', '💯 PCT READY');
 }
 
 function deployMnfSheet() {
   const ctx = validatePrerequisitesForSheets();
   if (!ctx) return;
   mnfSheet(ctx.ss, ctx.memberData);
-  ctx.ss.toast('Monday Night Football (MNF) sheet successfully deployed/updated.', '✅ MNF READY');
+  ctx.ss.toast('Monday Night Football (MNF) sheet successfully deployed/updated.', '🌙 MNF READY');
 }
 
 function deployWinnersSheet() {
@@ -7063,48 +7081,33 @@ function deployWinnersSheet() {
   if (!ctx) return;
   const year = fetchYear();
   winnersSheet(ctx.ss, year);
-  ctx.ss.toast('Winners sheet successfully deployed/updated.', '✅ WINNERS READY');
+  ctx.ss.toast('Winners sheet successfully deployed/updated.', '🏆 WINNERS READY');
 }
 
 function deploySummarySheet() {
   const ctx = validatePrerequisitesForSheets();
   if (!ctx) return;
   summarySheet(ctx.ss, ctx.memberData, ctx.config);
-  ctx.ss.toast('Summary sheet successfully deployed/updated.', '✅ SUMMARY READY');
+  ctx.ss.toast('Summary sheet successfully deployed/updated.', '📑 SUMMARY READY');
 }
 
 function deploySurvivorSheet() {
   const ctx = validatePrerequisitesForSheets();
   if (!ctx) return;
   survElimSheet(ctx.ss, ctx.config, ctx.memberData, 'survivor');
-  ctx.ss.toast('Survivor sheet successfully deployed/updated.', '✅ SURVIVOR READY');
+  ctx.ss.toast('Survivor sheet successfully deployed/updated.', '👑 SURVIVOR READY');
 }
 
 function deployEliminatorSheet() {
   const ctx = validatePrerequisitesForSheets();
   if (!ctx) return;
   survElimSheet(ctx.ss, ctx.config, ctx.memberData, 'eliminator');
-  ctx.ss.toast('Eliminator sheet successfully deployed/updated.', '✅ ELIMINATOR READY');
-}
-
-function deployContrarianSheet() {
-  const ctx = validatePrerequisitesForSheets();
-  if (!ctx) return;
-  contrarianSheet(ctx.ss, ctx.memberData);
-  ctx.ss.toast('Contrarian sheet successfully deployed/updated.', '✅ CONTRARIAN READY');
-}
-
-function deployCountsSheet() {
-  const ctx = validatePrerequisitesForSheets();
-  if (!ctx) return;
-  countsSheet(ctx.ss, ctx.memberData);
-  ctx.ss.toast('Team Counts / Preferences sheet successfully deployed/updated.', '✅ COUNTS READY');
+  ctx.ss.toast('Eliminator sheet successfully deployed/updated.', '💀 ELIMINATOR READY');
 }
 
 /**
  * Deploys the Leaderboard Sheet independently.
  * Checks for prerequisite sheets (SUMMARY, TOT, etc.) and auto-deploys them if missing
- * so formulas and named ranges do not resolve to #REF!.
  */
 function deployLeaderboardSheet() {
   const ctx = validatePrerequisitesForSheets();
@@ -7130,14 +7133,31 @@ function deployLeaderboardSheet() {
   }
 
   leaderboardSheet(ss, config, memberData);
-  ss.toast('Leaderboard sheet deployed successfully!', '🏆 LEADERBOARD READY');
+  ss.toast('Leaderboard sheet deployed successfully!', '📈 LEADERBOARD READY');
 }
 
+function deployContrarianSheet() {
+  const ctx = validatePrerequisitesForSheets();
+  if (!ctx) return;
+  contrarianSheet(ctx.ss, ctx.memberData);
+  ctx.ss.toast('Contrarian sheet successfully deployed/updated.', '🃏 CONTRARIAN READY');
+}
 
+function deployCountsSheet() {
+  const ctx = validatePrerequisitesForSheets();
+  if (!ctx) return;
+  countsSheet(ctx.ss, ctx.memberData);
+  ctx.ss.toast('Team Counts / Preferences sheet successfully deployed/updated.', '🔢 COUNTS READY');
+}
 
-/** 
- * TOTAL Sheet Creation / Adjustment
-*/
+function deploySeasonSheet() {
+  const ctx = validatePrerequisitesForSheets();
+  if (!ctx) return;
+  seasonSheet(ctx.ss, ctx.config, ctx.memberData);
+  ctx.ss.toast('Season Performance sheet deployed successfully!', '🗓️ SEASON READY');
+}
+
+// TOTAL Sheet Creation / Adjustment
 function totSheet(ss,memberData) {
   ss = fetchSpreadsheet(ss);
   
@@ -7198,12 +7218,14 @@ function totSheet(ss,memberData) {
   sheet.setFrozenRows(1); 
 
   // SET OVERALL NAMES Range
-  let rangeOverallTotNames = sheet.getRange(`R2C1:R${rows}C1`);
-  ss.setNamedRange('TOT_OVERALL_NAMES',rangeOverallTotNames);   
-  let rangeWeekly = sheet.getRange(`R2C3:R${rows}C${weeks.length+2}`);
-  ss.setNamedRange('TOT_WEEKLY',rangeWeekly);
-  let rangeOverallTot = sheet.getRange(`R2C2:R${rows}C2`);
-  ss.setNamedRange('TOT_OVERALL',rangeOverallTot);
+  let rangeOverallTotNames = sheet.getRange(2, 1, totalMembers, 1);
+  ss.setNamedRange('TOT_OVERALL_NAMES', rangeOverallTotNames);   
+  
+  let rangeOverallTot = sheet.getRange(2, 2, totalMembers, 1);
+  ss.setNamedRange('TOT_OVERALL', rangeOverallTot);
+
+  let rangeWeekly = sheet.getRange(2, 3, totalMembers, weeks.length);
+  ss.setNamedRange('TOT_WEEKLY', rangeWeekly);
   
   // CONDITIONAL FORMATTING
   sheet.clearConditionalFormatRules(); 
@@ -7678,6 +7700,86 @@ function survElimSheet(ss, config, memberData, sheetType) {
   updateSurvElimSheet(ss, config, memberData, sheetType);
 
   return sheet;
+}
+
+function rebuildContestSheet(contestType) {
+  contestType = (contestType || 'survivor').toLowerCase();
+  const contestTitle = capitalize(contestType);
+  const icon = contestType === 'survivor' ? '👑' : '💀';
+  const ss = fetchSpreadsheet();
+  const ui = SpreadsheetApp.getUi();
+
+  const docProps = PropertiesService.getDocumentProperties();
+  const config = JSON.parse(docProps.getProperty('configuration') || '{}');
+  const memberData = JSON.parse(docProps.getProperty('members') || '{}');
+
+  if (!config[`${contestType}Include`]) {
+    ui.alert(`⚠️ Not Enabled`, `The ${contestTitle} pool is currently not enabled in your Configuration settings.`, ui.ButtonSet.OK);
+    return;
+  }
+
+  if (!memberData.memberOrder || memberData.memberOrder.length === 0) {
+    ui.alert(`⚠️ Missing Members`, `No member records found to rebuild the ${contestTitle} sheet.`, ui.ButtonSet.OK);
+    return;
+  }
+
+  // 1. Confirmation prompt
+  const response = ui.alert(
+    `${icon} Rebuild ${contestTitle} Sheet?`,
+    `This will safely rebuild the '${contestTitle.toUpperCase()}' sheet layout, restore all member picks from your database, and recalculate all lives and formatting from game outcomes.\n\nDo you want to proceed?`,
+    ui.ButtonSet.YES_NO
+  );
+
+  if (response !== ui.Button.YES) {
+    ss.toast(`Canceled rebuild of ${contestTitle} sheet.`, '🚫 CANCELED', 3);
+    return;
+  }
+
+  try {
+    ss.toast(`Rebuilding ${contestTitle} sheet layout...`, `${icon} REBUILDING...`, 5);
+
+    // 2. Recreate the clean sheet, dimensions, headers, and named ranges
+    const sheet = survElimSheet(ss, config, memberData, contestType);
+
+    // 3. Sync all picks from memberData JSON directly onto the sheet grid
+    syncSurvElimDataToSheet(memberData);
+
+    // 4. Re-evaluate outcomes across all weeks that have forms/outcomes entered
+    const formsData = JSON.parse(docProps.getProperty('forms') || '{}');
+    const weeksWithForms = Object.keys(formsData).map(Number).sort((a, b) => a - b);
+    
+    weeksWithForms.forEach(w => {
+      try {
+        evalSurvElimStatus(w);
+      } catch (err) {
+        Logger.log(`Could not evaluate week ${w} during rebuild: ${err.message}`);
+      }
+    });
+
+    // 5. Update the visual formatting, dots, and elimination markers
+    const updatedMemberData = JSON.parse(docProps.getProperty('members') || '{}');
+    updateSurvElimSheet(ss, config, updatedMemberData, contestType);
+
+    SpreadsheetApp.flush();
+    sheet.activate();
+
+    ss.toast(`${contestTitle} sheet successfully rebuilt and synced!`, `✅ ${contestTitle.toUpperCase()} READY`, 6);
+    Logger.log(`✅ ${icon} ${contestTitle} sheet successfully rebuilt.`);
+
+  } catch (err) {
+    Logger.log(`❌ Error rebuilding ${contestTitle} sheet: ${err.stack}`);
+    ui.alert(`❌ Rebuild Failed`, `An error occurred while rebuilding the ${contestTitle} sheet:\n\n${err.message}`, ui.ButtonSet.OK);
+  }
+}
+
+// SURVIVOR Sheet Rebuild Call
+function rebuildSurvivorSheet() {
+  rebuildContestSheet('survivor');
+}
+
+// ELIMINATOR Sheet Rebuild Call
+function rebuildEliminatorSheet() {
+  rebuildContestSheet('eliminator');
 }
 
 // WINNERS Sheet Creation / Adjustment
@@ -8869,7 +8971,6 @@ function contrarianSheet(ss, memberData) {
 }
 
 // COUNTS Sheet Creation
-// COUNTS Sheet Creation
 function countsSheet(ss, memberData) {
   ss = fetchSpreadsheet(ss);
   
@@ -9053,6 +9154,387 @@ function countsSheet(ss, memberData) {
   sheet.setConditionalFormatRules(formatRules);
 
   Logger.log('🔢 COUNTS sheet successfully created.');
+  return sheet;
+}
+
+// SEASON Sheet Creation
+function seasonSheet(ss, config, memberData) {
+  ss = ss || fetchSpreadsheet(ss);
+  
+  let docProps = (!config || !memberData) ? PropertiesService.getDocumentProperties() : null;
+  config = config || JSON.parse(docProps.getProperty('configuration') || '{}');
+  memberData = memberData || JSON.parse(docProps.getProperty('members') || '{}');
+
+  const validMemberIds = (memberData.memberOrder || []).filter(
+    id => memberData.members && memberData.members[id] && memberData.members[id].name
+  );
+  const totalMembers = validMemberIds.length;
+
+  if (totalMembers === 0) {
+    SpreadsheetApp.getUi().alert('⚠️ MEMBER ISSUE', 'Please configure members before building the Season sheet.', SpreadsheetApp.getUi().ButtonSet.OK);
+    return null;
+  }
+
+  const memberNames = validMemberIds.map(id => memberData.members[id].name);
+  const sheetName = 'SEASON';
+  let sheet = ss.getSheetByName(sheetName);
+  if (!sheet) {
+    sheet = ss.insertSheet(sheetName, 2);
+  }
+
+  // --- 1. Clean Sheet & Setup Dimensions ---
+  sheet.clear();
+  sheet.clearNotes();
+  sheet.clearConditionalFormatRules();
+  sheet.getRange(1, 1, sheet.getMaxRows(), sheet.getMaxColumns()).clearDataValidations();
+  sheet.setTabColor('#00E676');
+
+  // Cols: 1:Members, 2:Total, 3:True %, 4:Rank, 5:Ticker, 6-16: Keyed Sparkline Area (11 cols = 700px)
+  const baseCols = 5;
+  const sparkCols = 11; // 6 color boxes (100px) + 5 spacers (20px) = 700px
+  const totalCols = baseCols + sparkCols; // 16 columns total
+
+  const dataStartRow = 3;
+  const dataEndRow = dataStartRow + totalMembers - 1;
+  const avgRow = dataEndRow + 1;
+  const totalRows = avgRow;
+
+  adjustRows(sheet, totalRows);
+  adjustColumns(sheet, totalCols);
+
+  // Set Widths
+  sheet.setColumnWidth(1, 140); // Members
+  sheet.setColumnWidth(2, 105); // Total Correct
+  sheet.setColumnWidth(3, 100); // True Season %
+  sheet.setColumnWidth(4, 95);  // Overall Rank
+  sheet.setColumnWidth(5, 115); // Rank Ticker
+
+  // 11 Sub-Columns for Sparkline / Legend Key (Cols 6 through 16)
+  const keyWidths = [100, 20, 100, 20, 100, 20, 100, 20, 100, 20, 100];
+  for (let k = 0; k < keyWidths.length; k++) {
+    sheet.setColumnWidth(baseCols + 1 + k, keyWidths[k]);
+  }
+
+  sheet.setRowHeight(1, 26);
+  sheet.setRowHeight(2, 28);
+  sheet.setRowHeight(avgRow, 28);
+  for (let r = dataStartRow; r <= dataEndRow; r++) {
+    sheet.setRowHeight(r, 26);
+  }
+
+  // --- 2. Top Control Bar & Unmerged Keyed Legend (Row 1) ---
+  // Cell A1: Sort Selector Dropdown
+  const sortCell = sheet.getRange(1, 1);
+  const sortOptions = ['Display Order', 'Sorted by Name', 'Sorted by Rank'];
+  sortCell.setValue(sortOptions[2]) // Default: Sorted by Rank
+          .setFontFamily('Montserrat')
+          .setFontWeight('bold')
+          .setFontSize(9)
+          .setBackground('#2E7D32')
+          .setFontColor('#FFFFFF')
+          .setHorizontalAlignment('center')
+          .setVerticalAlignment('middle');
+
+  const sortRule = SpreadsheetApp.newDataValidation()
+    .requireValueInList(sortOptions, true)
+    .build();
+  sortCell.setDataValidation(sortRule);
+
+  // B1:D1: Overview Header
+  const groupTitle = config.groupName ? `${config.groupName} - Season Stats` : `${config.year || ''} ${LEAGUE} Overview`;
+  sheet.getRange(1, 2, 1, 3).merge()
+       .setValue(groupTitle)
+       .setFontFamily('Montserrat')
+       .setFontWeight('bold')
+       .setFontSize(10)
+       .setBackground('#1B5E20')
+       .setFontColor('#E8F5E9')
+       .setHorizontalAlignment('center')
+       .setVerticalAlignment('middle');
+
+  // E1: Ticker Header
+  sheet.getRange(1, 5)
+       .setValue('TREND')
+       .setFontFamily('Montserrat')
+       .setFontWeight('bold')
+       .setFontSize(9)
+       .setBackground('#1B5E20')
+       .setFontColor('#E8F5E9')
+       .setHorizontalAlignment('center')
+       .setVerticalAlignment('middle');
+
+  // F1:P1 (Cols 6 to 16): 6 Keyed Color Badges with Black Spacers
+  const keyLabels = ['1st / Win', '', '2nd Place', '', '3rd Place', '', 'Top Half', '', 'Low Half', '', 'Bottom 25%'];
+  const keyColors = ['#FFD600', '#000000', '#D4E157', '#000000', '#9CCC65', '#000000', '#66BB6A', '#000000', '#FF8A65', '#000000', '#EF5350'];
+
+  for (let k = 0; k < keyLabels.length; k++) {
+    const colIdx = baseCols + 1 + k;
+    const cell = sheet.getRange(1, colIdx);
+    cell.setValue(keyLabels[k])
+        .setBackground(keyColors[k])
+        .setFontColor('#000000')
+        .setFontFamily('Montserrat')
+        .setFontWeight('bold')
+        .setFontSize(8)
+        .setHorizontalAlignment('center')
+        .setVerticalAlignment('middle');
+  }
+
+  // --- 3. Row 2 Column Headers ---
+  const headers = ['MEMBERS', 'TOTAL', 'CORRECT %', 'TOTAL RANK', 'RANK TICKER'];
+  sheet.getRange(2, 1, 1, 5)
+       .setValues([headers])
+       .setBackground('#000000')
+       .setFontColor('#FFFFFF')
+       .setFontWeight('bold')
+       .setFontFamily('Montserrat')
+       .setFontSize(9)
+       .setHorizontalAlignment('center')
+       .setVerticalAlignment('middle');
+  sheet.getRange(2, 1).setHorizontalAlignment('left');
+
+  // F2:P2 Merged: Timeline Header (W1 -> W18 or W23)
+  const weeks = Array.from({ length: WEEKS }, (_, index) => index + 1).filter(week => !WEEKS_TO_EXCLUDE.includes(week));
+  const weeksArrayLiteral = `{${weeks.join(',')}}`;
+
+  const headerF2Formula = `=IFERROR(LET(
+    playoffWeeks, {19, 20, 21, 23},
+    hasPlayoffs, SUM(MAP(playoffWeeks, LAMBDA(w, IFERROR(COUNTIF(INDIRECT("${LEAGUE}_HOME_" & w), "<>"), 0)))) > 0,
+    endW, IF(hasPlayoffs, 23, 18),
+    "SEASON ACCUMULATION & WEEKLY BREAKDOWN (W1 ————————————————————————→ W" & endW & ")"
+  ), "SEASON ACCUMULATION & WEEKLY BREAKDOWN (W1 ————————————————————————→ W18)")`;
+
+  sheet.getRange(2, baseCols + 1, 1, sparkCols).merge()
+       .setFormula(headerF2Formula)
+       .setBackground('#000000')
+       .setFontColor('#FFFFFF')
+       .setFontWeight('bold')
+       .setFontFamily('Montserrat')
+       .setFontSize(9)
+       .setHorizontalAlignment('center')
+       .setVerticalAlignment('middle');
+
+  // --- 4. Dynamic Sorting Formula in Cell A3 ---
+  const colAFormula = `=IFERROR(LET(
+    rawNames, INDIRECT("NAMES_1"),
+    wks, ${weeksArrayLiteral},
+    scores, MAP(rawNames, LAMBDA(name,
+      SUM(MAP(wks, LAMBDA(w,
+        IF(COUNTA(IFERROR(FILTER(INDIRECT("NAMES_" & w), INDIRECT("NAMES_" & w)=name), ""))=0, 0,
+          IFERROR(SUMPRODUCT(--(FILTER(INDIRECT("${LEAGUE}_PICKS_" & w), INDIRECT("NAMES_" & w)=name) = INDIRECT("${LEAGUE}_PICKEM_OUTCOMES_" & w)), IFERROR(INDIRECT("${LEAGUE}_BONUS_" & w), 1)), 0)
+        )
+      )))
+    )),
+    ranks, ARRAYFORMULA(IFERROR(RANK(scores, scores, 0), 999)),
+    data, {rawNames, scores, ranks, SEQUENCE(ROWS(rawNames), 1, 1, 1)},
+    INDEX(
+      IF($A$1="Sorted by Name",
+        SORT(data, 1, TRUE),
+        IF($A$1="Sorted by Rank",
+          SORT(data, 3, TRUE, 1, TRUE),
+          SORT(data, 4, TRUE)
+        )
+      ),
+      , 1
+    )
+  ), "NO DATA")`;
+  sheet.getRange(dataStartRow, 1).setFormula(colAFormula);
+
+  // --- 5. Data Row Formulas (B3:F) ---
+  const halfRank = Math.ceil(totalMembers / 2);
+  const q3Rank = Math.ceil(totalMembers * 0.75);
+
+  for (let r = dataStartRow; r <= dataEndRow; r++) {
+    // Total Correct
+    sheet.getRange(r, 2).setFormula(
+      `=IFERROR(IF($A${r}="","", LET(
+        wks, ${weeksArrayLiteral},
+        SUM(MAP(wks, LAMBDA(w,
+          IF(COUNTA(IFERROR(FILTER(INDIRECT("NAMES_" & w), INDIRECT("NAMES_" & w)=$A${r}), ""))=0, 0,
+            IFERROR(SUMPRODUCT(--(FILTER(INDIRECT("${LEAGUE}_PICKS_" & w), INDIRECT("NAMES_" & w)=$A${r}) = INDIRECT("${LEAGUE}_PICKEM_OUTCOMES_" & w)), IFERROR(INDIRECT("${LEAGUE}_BONUS_" & w), 1)), 0)
+          )
+        )))
+      )), "")`
+    );
+
+    // True Season % (Resilient)
+    sheet.getRange(r, 3).setFormula(
+      `=IFERROR(IF(OR($A${r}="", $B${r}=""), "", LET(
+        wks, ${weeksArrayLiteral},
+        totalGamesPicked, SUM(MAP(wks, LAMBDA(w,
+          IF(COUNTA(IFERROR(FILTER(INDIRECT("${LEAGUE}_PICKS_" & w), INDIRECT("NAMES_" & w)=$A${r}), ""))=0, 0,
+            IFERROR(COLUMNS(INDIRECT("${LEAGUE}_PICKS_" & w)), 0)
+          )
+        ))),
+        IF(totalGamesPicked > 0, $B${r} / totalGamesPicked, "")
+      )), "")`
+    );
+
+    // Overall Rank
+    sheet.getRange(r, 4).setFormula(
+      `=IFERROR(IF($B${r}="","", RANK($B${r}, $B$${dataStartRow}:$B$${dataEndRow}, 0)), "")`
+    );
+
+    // Column E: Rank Movement Ticker
+    sheet.getRange(r, 5).setFormula(
+      `=IFERROR(IF($A${r}="","", LET(
+        wks, ${weeksArrayLiteral},
+        activeWks, FILTER(wks, MAP(wks, LAMBDA(w, IFERROR(COUNTA(INDIRECT("NAMES_" & w)) > 0, FALSE)))),
+        numActive, COUNTA(activeWks),
+        IF(numActive < 2, "—",
+          LET(
+            currW, INDEX(activeWks, numActive),
+            prevW, INDEX(activeWks, numActive - 1),
+            currRnk, IFERROR(VLOOKUP($A${r}, {INDIRECT("NAMES_" & currW), INDIRECT("RNK_" & currW)}, 2, FALSE), ""),
+            prevRnk, IFERROR(VLOOKUP($A${r}, {INDIRECT("NAMES_" & prevW), INDIRECT("RNK_" & prevW)}, 2, FALSE), ""),
+            IF(OR(currRnk="", prevRnk=""), "—",
+              LET(
+                diff, prevRnk - currRnk,
+                IF(diff > 0, "▲ +" & diff & " (W" & currW & ")",
+                  IF(diff < 0, "▼ " & diff & " (W" & currW & ")",
+                    "▬ 0 (W" & currW & ")"
+                  )
+                )
+              )
+            )
+          )
+        )
+      )), "—")`
+    );
+
+    // Column F:P Merged: 700px Multi-Tiered Performance Sparkline with Odd/Even Alternating Tone Shifts
+    let tierColorOptions = '';
+    for (let i = 1; i <= weeks.length; i++) {
+      const w = weeks[i - 1];
+      const isOdd = (w % 2 === 1);
+
+      // 6-Tier Finish Color Mapping with subtle Odd/Even variations:
+      const c1 = isOdd ? '#FFD600' : '#FFC107'; // 1st Place / Gold
+      const c2 = isOdd ? '#EEFF41' : '#C6FF00'; // 2nd Place / Yellow-Green
+      const c3 = isOdd ? '#AEEA00' : '#76FF03'; // 3rd Place / Greenish-Yellow
+      const c4 = isOdd ? '#00E676' : '#00C853'; // Top Half / Standard Green
+      const c5 = isOdd ? '#FF8A65' : '#FF7043'; // Low Half / Coral-Orange
+      const c6 = isOdd ? '#FF5252' : '#D50000'; // Bottom 25% / Red
+
+      const rnkExp = `IFERROR(VLOOKUP($A${r}, {INDIRECT("NAMES_${w}"), INDIRECT("RNK_${w}")}, 2, FALSE), 99)`;
+      const colorExp = `IF(${rnkExp}=1, "${c1}", IF(${rnkExp}=2, "${c2}", IF(${rnkExp}=3, "${c3}", IF(${rnkExp}<=${halfRank}, "${c4}", IF(${rnkExp}<=${q3Rank}, "${c5}", "${c6}")))))`;
+      tierColorOptions += `"color${i}", ${colorExp}; `;
+    }
+
+    sheet.getRange(r, baseCols + 1, 1, sparkCols).merge().setFormula(
+      `=IFERROR(IF($A${r}="","", LET(
+        wks, ${weeksArrayLiteral},
+        weeklyScores, MAP(wks, LAMBDA(w,
+          IF(COUNTA(IFERROR(FILTER(INDIRECT("NAMES_" & w), INDIRECT("NAMES_" & w)=$A${r}), ""))=0, 0,
+            IFERROR(SUMPRODUCT(--(FILTER(INDIRECT("${LEAGUE}_PICKS_" & w), INDIRECT("NAMES_" & w)=$A${r}) = INDIRECT("${LEAGUE}_PICKEM_OUTCOMES_" & w)), IFERROR(INDIRECT("${LEAGUE}_BONUS_" & w), 1)), 0)
+          )
+        )),
+        maxSeasonPossible, SUM(MAP(wks, LAMBDA(w, IFERROR(COLUMNS(INDIRECT("${LEAGUE}_PICKS_" & w)), 0)))),
+        SPARKLINE(weeklyScores, {"charttype","bar"; ${tierColorOptions} "max", IF(maxSeasonPossible > 0, maxSeasonPossible, 272)})
+      )), "")`
+    );
+  }
+
+  // --- 6. Summary Row (Averages) ---
+  sheet.getRange(avgRow, 1).setValue('AVERAGE');
+  sheet.getRange(avgRow, 2).setFormula(`=IFERROR(AVERAGE($B$${dataStartRow}:$B$${dataEndRow}), "")`);
+  sheet.getRange(avgRow, 3).setFormula(`=IFERROR(AVERAGE($C$${dataStartRow}:$C$${dataEndRow}), "")`);
+  sheet.getRange(avgRow, 4).setValue('-');
+  sheet.getRange(avgRow, 5).setValue('-');
+
+  // Group Average Stacked Bar (Parentheses syntax fixed & scaled to maxSeasonPossible)
+  let avgTierColors = '';
+  for (let i = 1; i <= weeks.length; i++) {
+    const defaultHex = (i % 2 === 1) ? '#00B0FF' : '#00E676';
+    avgTierColors += `"color${i}", "${defaultHex}"; `;
+  }
+
+  sheet.getRange(avgRow, baseCols + 1, 1, sparkCols).merge().setFormula(
+    `=IFERROR(LET(
+      wks, ${weeksArrayLiteral},
+      names, INDIRECT("NAMES_1"),
+      avgScores, MAP(wks, LAMBDA(w,
+        IF(COUNTA(IFERROR(FILTER(INDIRECT("NAMES_" & w), INDIRECT("NAMES_" & w)<>""), ""))=0, 0,
+          IFERROR(AVERAGE(
+            MAP(names, LAMBDA(n,
+              IF(COUNTA(IFERROR(FILTER(INDIRECT("NAMES_" & w), INDIRECT("NAMES_" & w)=n), ""))=0, 0,
+                IFERROR(SUMPRODUCT(--(FILTER(INDIRECT("${LEAGUE}_PICKS_" & w), INDIRECT("NAMES_" & w)=n) = INDIRECT("${LEAGUE}_PICKEM_OUTCOMES_" & w)), IFERROR(INDIRECT("${LEAGUE}_BONUS_" & w), 1)), 0)
+              )
+            ))
+          ), 0)
+        )
+      )),
+      maxPossible, SUM(MAP(wks, LAMBDA(w, IFERROR(COLUMNS(INDIRECT("${LEAGUE}_PICKS_" & w)), 0)))),
+      SPARKLINE(avgScores, {"charttype","bar"; ${avgTierColors} "max", IF(maxPossible > 0, maxPossible, 272)})
+    ), "")`
+  );
+
+  // --- 7. Formatting & Alignment ---
+  sheet.getRange(dataStartRow, 1, totalMembers, totalCols)
+       .setFontFamily('Montserrat')
+       .setFontSize(9)
+       .setVerticalAlignment('middle');
+
+  sheet.getRange(dataStartRow, 1, totalMembers, 1).setHorizontalAlignment('left');
+  sheet.getRange(dataStartRow, 2, totalMembers, 4).setHorizontalAlignment('center');
+
+  sheet.getRange(dataStartRow, 2, totalMembers, 1).setNumberFormat('0');
+  sheet.getRange(dataStartRow, 3, totalMembers, 1).setNumberFormat('0.0%');
+  sheet.getRange(dataStartRow, 4, totalMembers, 1).setNumberFormat('0');
+
+  // Summary Row Styling
+  const avgRange = sheet.getRange(avgRow, 1, 1, totalCols);
+  avgRange.setBackground('#E6E6E6').setFontWeight('bold').setFontFamily('Montserrat').setFontSize(9).setVerticalAlignment('middle');
+  sheet.getRange(avgRow, 1).setHorizontalAlignment('left');
+  sheet.getRange(avgRow, 2, 1, 4).setHorizontalAlignment('center');
+  sheet.getRange(avgRow, 2).setNumberFormat('0.0');
+  sheet.getRange(avgRow, 3).setNumberFormat('0.0%');
+
+  sheet.setFrozenColumns(1);
+  sheet.setFrozenRows(2);
+
+  // --- 8. Conditional Formatting ---
+  const formatRules = [];
+
+  // Total Correct Gradient: Green (#75F0A1) -> White
+  const ptsRange = sheet.getRange(dataStartRow, 2, totalMembers, 1);
+  formatRules.push(SpreadsheetApp.newConditionalFormatRule().setGradientMaxpoint('#75F0A1').setGradientMinpoint('#FFFFFF').setRanges([ptsRange]).build());
+
+  // Dynamic True Win % Scale: Min (Orange) -> Avg (White) -> Max (Green)
+  const pctRange = sheet.getRange(dataStartRow, 3, totalMembers, 1);
+  formatRules.push(
+    SpreadsheetApp.newConditionalFormatRule()
+      .setGradientMaxpointWithValue('#75F0A1', SpreadsheetApp.InterpolationType.NUMBER, '=MAX($C$3:$C$' + dataEndRow + ')')
+      .setGradientMidpointWithValue('#FFFFFF', SpreadsheetApp.InterpolationType.NUMBER, '=AVERAGE($C$3:$C$' + dataEndRow + ')')
+      .setGradientMinpointWithValue('#FF9B69', SpreadsheetApp.InterpolationType.NUMBER, '=MIN($C$3:$C$' + dataEndRow + ')')
+      .setRanges([pctRange])
+      .build()
+  );
+
+  // Rank Scale: Cyan (#5EDCFF, Rank 1) -> White -> Orange (#FF9B69, Last Place)
+  const rnkRange = sheet.getRange(dataStartRow, 4, totalMembers, 1);
+  formatRules.push(
+    SpreadsheetApp.newConditionalFormatRule()
+      .setGradientMinpointWithValue('#5EDCFF', SpreadsheetApp.InterpolationType.NUMBER, '1')
+      .setGradientMidpointWithValue('#FFFFFF', SpreadsheetApp.InterpolationType.NUMBER, `${totalMembers / 2}`)
+      .setGradientMaxpointWithValue('#FF9B69', SpreadsheetApp.InterpolationType.NUMBER, `${totalMembers}`)
+      .setRanges([rnkRange])
+      .build()
+  );
+
+  // Ticker Highlights: Green for Gains (▲), Red for Drops (▼), Gray for Unchanged (▬)
+  const tickerRange = sheet.getRange(dataStartRow, 5, totalMembers, 1);
+  formatRules.push(SpreadsheetApp.newConditionalFormatRule().whenTextContains('▲').setBackground('#C9FFDF').setFontColor('#00701A').setBold(true).setRanges([tickerRange]).build());
+  formatRules.push(SpreadsheetApp.newConditionalFormatRule().whenTextContains('▼').setBackground('#FFCCD6').setFontColor('#D50000').setBold(true).setRanges([tickerRange]).build());
+  formatRules.push(SpreadsheetApp.newConditionalFormatRule().whenTextContains('▬').setBackground('#F5F5F5').setFontColor('#757575').setRanges([tickerRange]).build());
+
+  sheet.setConditionalFormatRules(formatRules);
+
+  adjustRows(sheet, totalRows);
+  adjustColumns(sheet, totalCols);
+  SpreadsheetApp.flush();
+
+  Logger.log('🗓️ SEASON sheet successfully created with alternating-shade tiered sparklines.');
   return sheet;
 }
 
@@ -9525,9 +10007,20 @@ function weeklySheet(ss,week,config,forms,memberData,displayEmpty,rebuild) {
   // Points Formula (using efficient SUMPRODUCT)
   const pointsFormula = `=IFERROR(IF(COUNTA(${outcomesRange}) > 0, SUMPRODUCT(--(${picksRange}=${outcomesRange}), ${allBonusRange}),))`;
 
-  // Rank Formula
-  const rankFormula = `=IFERROR(IF(NOT(ISBLANK(${pointsCell})), RANK(${pointsCell}, ${allPointsRange}, 0),""))`;
+  // Rank Formula - new modification to implement force-ranking when tiebreaker finalized
+  let rankFormula = '';
+  if (config.tiebreakerInclude) {
+    const tbDiffCell = `R[0]C${tiebreakerCol + 1}`;
+    const allTbDiffRange = `R${entryRowStart}C${tiebreakerCol + 1}:R${entryRowEnd}C${tiebreakerCol + 1}`;
+    const tbOutcomeCell = `R${outcomeRow}C${tiebreakerCol}`;
+    
+    // Composite Rank: Points * 1000 - Difference (Tiebreaker winner gets #1, runner-up gets #2)
+    rankFormula = `=IFERROR(IF(ISBLANK(${pointsCell}), "", IF(AND(NOT(ISBLANK(${tbOutcomeCell})), ISNUMBER(${tbOutcomeCell})), RANK(${pointsCell} * 1000 - IFERROR(${tbDiffCell}, 999), ARRAYFORMULA(${allPointsRange} * 1000 - IFERROR(${allTbDiffRange}, 999)), 0), RANK(${pointsCell}, ${allPointsRange}, 0))), "")`;
+  } else {
+    rankFormula = `=IFERROR(IF(NOT(ISBLANK(${pointsCell})), RANK(${pointsCell}, ${allPointsRange}, 0), ""), "")`;
+  }
 
+  sheet.getRange(entryRowStart, rankCol, numPlayers).setFormulaR1C1(rankFormula);
   // Percent Correct Formula (using efficient SUMPRODUCT)
   const percentFormula = `=IFERROR(IF(COUNTA(${outcomesRange}) > 0, SUMPRODUCT(--(${picksRange}=${outcomesRange}), --(${outcomesRange}<>"")) / COUNTA(${outcomesRange}),""))`;
 
