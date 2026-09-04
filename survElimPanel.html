@@ -214,7 +214,7 @@
       const lives = member[prefix + 'L'] || [];
       const revives = member[prefix + 'R'] || [];
       
-      let tableHtml = `<table><thead><tr><th>Wk</th><th>St</th><th>Pick</th><th>Result</th><th>Lives</th><th>Action</th></tr></thead><tbody>`;
+      let tableHtml = `<table><thead><tr><th>Wk</th><th>Revived</th><th>Pick</th><th>Result</th><th>Lives</th><th>Action</th></tr></thead><tbody>`;
       const allTeams = Object.keys(leagueData).sort();
 
       for (let i = 0; i < 18; i++) {
