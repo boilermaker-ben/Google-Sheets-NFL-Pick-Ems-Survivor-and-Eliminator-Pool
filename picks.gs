@@ -1,7 +1,7 @@
 const VERSION = '1.2.3';
 /** GOOGLE SHEETS FOOTBALL PICK 'EMS, SURVIVOR, & ELIMINATOR TOOL | 2025 Edition
  * Script Library for League Creator & Management Platform
- * 09/03/2026
+ * 09/05/2026
  * 
  * Created by Ben Powers
  * ben.powers.creative@gmail.com
@@ -8701,8 +8701,37 @@ function leaderboardSheet(ss, config, memberData) {
       .setRanges([weeklyChancesRange])
       .build()
   );
+  
+  // 10. Conditional Formatting for Day Names
+  const matchupDaysRange = sheet.getRange(matchupRow - 1, firstMatchupCol, 1, maxWeeklyGames)
+  Object.keys(dayColorsFilledObj).forEach( day => {    
+    const color = dayColorsFilledObj[day];
+    formatRules.push(
+      SpreadsheetApp.newConditionalFormatRule()
+        .whenFormulaSatisfied(`=indirect("R[0]C[0]",false)="${day}"`)
+        .setBackground(color || '#b0b0b0')
+        .setFontColor('#000000')
+        .setRanges([matchupDaysRange])
+        .build())
+  });
 
-  // 10. Weekly Wildcard (Contrarianism): Orange (#FCA503, 50%) -> Yellow (25%) -> Cyan (#7DFFFB, 0%)
+  // 11. Conditional Formatting for Team Colors
+  const matchupOutcomeRange = sheet.getRange(matchupRow + 1, firstMatchupCol, 1, maxWeeklyGames)
+  Object.keys(LEAGUE_DATA).forEach( team => {    
+    const teamData = LEAGUE_DATA[team];
+    Logger.log(teamData);
+    const color_bg = teamData.colors[0];
+    const color_txt = teamData.colors[1];
+    formatRules.push(
+      SpreadsheetApp.newConditionalFormatRule()
+        .whenFormulaSatisfied(`=indirect("R[0]C[0]",false)="${team}"`)
+        .setBackground(color_bg || '#b0b0b0')
+        .setFontColor(color_txt)
+        .setRanges([matchupOutcomeRange])
+        .build())
+  });
+
+  // 12. Weekly Wildcard (Contrarianism): Orange (#FCA503, 50%) -> Yellow (25%) -> Cyan (#7DFFFB, 0%)
   const weeklyWildRange = sheet.getRange(dataStartRow, wildColIdx, totalMembers, 1);
   formatRules.push(
     SpreadsheetApp.newConditionalFormatRule()
@@ -8713,7 +8742,7 @@ function leaderboardSheet(ss, config, memberData) {
       .build()
   );
 
-  // 11. Tiebreaker Difference Exact Match (0 = Green #75F0A1)
+  // 13. Tiebreaker Difference Exact Match (0 = Green #75F0A1)
   if (config.tiebreakerInclude) {
     const diffColRange = sheet.getRange(dataStartRow, tiebreakerCol + 1, totalMembers, 1);
     formatRules.push(
@@ -8729,7 +8758,7 @@ function leaderboardSheet(ss, config, memberData) {
 
   // --- C. MATCHUP GRID & OUTCOME RULES ---
 
-  // 12. Home / Away Split Bias Colors (Row 6)
+  // 14. Home / Away Split Bias Colors (Row 6)
   const effectiveOutcomeRow = isAts ? spreadOutcomeRow : outcomeRow;
   const biasRange = sheet.getRange(summaryRow, firstMatchupCol, 1, maxWeeklyGames);
   let awayFormula = `=AND(REGEXEXTRACT(INDIRECT("R[0]C[0]",FALSE),"[A-Z]{2,3}")=REGEXEXTRACT(INDIRECT("R${matchupRow}C[0]",FALSE),"[A-Z]{2,3}"), VALUE(REGEXEXTRACT(INDIRECT("R[0]C[0]",FALSE),"[0-9\.]+"))>=%%)`;
@@ -8740,7 +8769,7 @@ function leaderboardSheet(ss, config, memberData) {
     formatRules.push(SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied(homeFormula.replace('%%', rule.percent)).setBackground(rule.home).setRanges([biasRange]).build());
   });
 
-  // 13. Completed Matchup Headers Dimming
+  // 15. Completed Matchup Headers Dimming
   const matchupHeadersRange = sheet.getRange(matchupRow, firstMatchupCol, 1, maxWeeklyGames);
   formatRules.push(
     SpreadsheetApp.newConditionalFormatRule()
@@ -8751,7 +8780,7 @@ function leaderboardSheet(ss, config, memberData) {
       .build()
   );
 
-  // 14. Matchup Grid Picks (Zebra Parity + Bonus Multipliers + Correct/Incorrect)
+  // 16. Matchup Grid Picks (Zebra Parity + Bonus Multipliers + Correct/Incorrect)
   const bonusCount = 3;
   const parities = { even: { fn: 'iseven' }, odd: { fn: 'isodd' } };
   const picksGridRange = sheet.getRange(dataStartRow, firstMatchupCol, totalMembers, maxWeeklyGames);
@@ -10476,6 +10505,22 @@ function weeklySheet(ss,week,config,forms,memberData,displayEmpty,rebuild) {
       .build();
     formatRules.push(rule);
   }
+
+  // TEAM COLORATION FOR OUTCOME ROW
+  const matchupOutcomeRange = sheet.getRange(outcomeRow, firstMatchupCol, 1, matchups)
+  Object.keys(LEAGUE_DATA).forEach( team => {    
+    const teamData = LEAGUE_DATA[team];
+    Logger.log(teamData);
+    const color_bg = teamData.colors[0];
+    const color_txt = teamData.colors[1];
+    formatRules.push(
+      SpreadsheetApp.newConditionalFormatRule()
+        .whenFormulaSatisfied(`=indirect("R[0]C[0]",false)="${team}"`)
+        .setBackground(color_bg || '#b0b0b0')
+        .setFontColor(color_txt)
+        .setRanges([matchupOutcomeRange])
+        .build())
+  });
   
   // Add conditional formatting rules to indicate paid status (added last to take lowest priority)
   if (paidCheckboxes) {
