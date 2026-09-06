@@ -1,7 +1,7 @@
-const VERSION = '1.2.3';
+const VERSION = '1.2.4';
 /** GOOGLE SHEETS FOOTBALL PICK 'EMS, SURVIVOR, & ELIMINATOR TOOL | 2025 Edition
  * Script Library for League Creator & Management Platform
- * 09/05/2026
+ * 09/06/2026
  * 
  * Created by Ben Powers
  * ben.powers.creative@gmail.com
@@ -1245,6 +1245,73 @@ function setupSheets() {
   } catch (err) {
     Logger.log(`❌ Error in setupSheets: ${err.stack}`);
     ss.toast(`Error deploying sheets: ${err.message}`, '❌ SETUP ERROR', 15);
+  }
+}
+
+/**
+ * Checks if season tracking sheets have been deployed yet and prompts the commissioner.
+ * Supports "Deploy Now", "Snooze / Remind Later", and "Don't Show Again".
+ *
+ * @param {number} week - Current week being processed.
+ * @param {Spreadsheet} [ss] - Active spreadsheet instance.
+ */
+function checkAndPromptTrackingSheetsDeployment(week, ss) {
+  ss = ss || fetchSpreadsheet();
+  const docProps = PropertiesService.getDocumentProperties();
+  const config = JSON.parse(docProps.getProperty('configuration') || '{}');
+
+  // 1. Guard: Check if the commissioner permanently dismissed the prompt
+  if (docProps.getProperty('trackingSheetsDismissed') === 'true') {
+    return;
+  }
+
+  // 2. Guard: Check if the prompt was snoozed for a future week
+  const snoozedUntilWeek = parseInt(docProps.getProperty('trackingSheetsSnoozedWeek') || '0', 10);
+  if (week <= snoozedUntilWeek) {
+    return;
+  }
+
+  // 3. Guard: Check if the primary tracking sheets already exist
+  const hasLeaderboard = !!ss.getSheetByName('LEADERBOARD');
+  const hasSummary = !!ss.getSheetByName('SUMMARY');
+  const hasSeason = !!ss.getSheetByName('SEASON');
+
+  if (hasLeaderboard && hasSummary && hasSeason) {
+    // All core sheets exist; no need to prompt
+    docProps.setProperty('trackingSheetsDismissed', 'true');
+    return;
+  }
+
+  // 4. Present the 3-Option Prompt
+  const ui = SpreadsheetApp.getUi();
+  const response = ui.alert(
+    '📊 Deploy Season Tracking Sheets?',
+    `Week ${week} picks are imported!\n\n` +
+    `Would you like to auto-deploy the full suite of season tracking sheets?\n` +
+    `• 📈 Dynamic Leaderboard\n` +
+    `• 🗓️ Season Progress Bar & Win %\n` +
+    `• 📑 Standings & Historical Summary\n` +
+    `• 🃏 Contrarian Analytics & 🔢 Pick Counts\n\n` +
+    `Select:\n` +
+    `• [YES]  - Deploy All Tracking Sheets Now\n` +
+    `• [NO]   - Remind Me Next Week (Snooze)\n` +
+    `• [CANCEL] - Don't Ask Again (Ignore or Manually Later)`,
+    ui.ButtonSet.YES_NO_CANCEL
+  );
+
+  if (response === ui.Button.YES) {
+    docProps.setProperty('trackingSheetsDismissed', 'true');
+    setupSheets();
+  } else if (response === ui.Button.NO) {
+    // Snooze until next week
+    docProps.setProperty('trackingSheetsSnoozedWeek', (parseInt(week, 10) + 1).toString());
+    ss.toast(`Reminder snoozed until Week ${parseInt(week, 10) + 1}.`, '⏰ SNOOZED', 4);
+    Logger.log(`⏰ Tracking sheets prompt snoozed until Week ${parseInt(week, 10) + 1}.`);
+  } else if (response === ui.Button.CANCEL) {
+    // Dismiss permanently
+    docProps.setProperty('trackingSheetsDismissed', 'true');
+    ss.toast('You can deploy any sheet anytime from the "📊 Tracking Sheets" menu.', 'ℹ️ DISMISSED', 5);
+    Logger.log('🚫 Tracking sheets prompt permanently dismissed by commissioner.');
   }
 }
 
@@ -5489,7 +5556,17 @@ function executePickImport(week, importOnlyStartedGames) {
     Logger.log(`Failed to update OUTCOMES sheet: ${err.stack}`);
   }
 
-  // --- 6. Finalize and Save ---
+  // --- 6. AUTO-SWITCH LEADERBOARD TO THE IMPORTED WEEK ---
+  if (config.pickemsInclude) {
+    selectLeaderboardWeek(week, ss);
+  }
+
+  // --- 7. CHECK & PROMPT COMMISSIONER TO DEPLOY TRACKING SHEETS (IF NOT ALREADY BUILT) ---
+  if (config.pickemsInclude) {
+    checkAndPromptTrackingSheetsDeployment(week, ss);
+  }
+
+  // --- 8. Finalize and Save ---
   formsData[week].imported = true;
   saveProperties('forms', formsData);
   SpreadsheetApp.flush();
@@ -8287,10 +8364,14 @@ function leaderboardSheet(ss, config, memberData) {
   const maxWeeklyGames = 16;
   for (let g = 1; g <= maxWeeklyGames; g++) {
     colHeaders.push(`G${g}`);
-    colSubHeaders.push(`N${g}`);
+    colSubHeaders.push(`N${g}`);  
     colWidths.push(52);
   }
   const finalMatchupCol = colHeaders.length + 1;
+
+  // Ensure sheet is big enough
+  adjustRows(sheet, dataEndRow);
+  adjustColumns(sheet, finalMatchupCol);
 
   for (let c = 0; c < colWidths.length; c++) {
     sheet.setColumnWidth(c + 1, colWidths[c]);
@@ -8829,6 +8910,28 @@ function leaderboardSheet(ss, config, memberData) {
   SpreadsheetApp.flush();
   Logger.log('✅ LEADERBOARD sheet successfully built with complete conditional formatting.');
   return sheet;
+}
+
+// LEADERBOARD Week Selector Tool
+function selectLeaderboardWeek(week, ss) {
+  if (!week) return false;
+  ss = ss || fetchSpreadsheet();
+  const leadSheet = ss.getSheetByName('LEADERBOARD');
+  
+  if (!leadSheet) {
+    Logger.log('⭕ LEADERBOARD sheet not found. Skipping week switch.');
+    return false;
+  }
+  
+  try {
+    // Cell A2 (Row 2, Column 1) holds the Week Selector dropdown
+    leadSheet.getRange(2, 1).setValue(parseInt(week, 10));
+    Logger.log(`🎯 Switched LEADERBOARD view to Week ${week}.`);
+    return true;
+  } catch (err) {
+    Logger.log(`⚠️ Failed to update LEADERBOARD week: ${err.message}`);
+    return false;
+  }
 }
 
 // CONTRARIAN Sheet Creation
