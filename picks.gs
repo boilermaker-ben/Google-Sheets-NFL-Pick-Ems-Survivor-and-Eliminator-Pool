@@ -8800,7 +8800,6 @@ function leaderboardSheet(ss, config, memberData) {
   const matchupOutcomeRange = sheet.getRange(matchupRow + 1, firstMatchupCol, 1, maxWeeklyGames)
   Object.keys(LEAGUE_DATA).forEach( team => {    
     const teamData = LEAGUE_DATA[team];
-    Logger.log(teamData);
     const color_bg = teamData.colors[0];
     const color_txt = teamData.colors[1];
     formatRules.push(
