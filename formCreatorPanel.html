@@ -5,7 +5,6 @@
   <!-- Include the SortableJS library for drag-and-drop functionality -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
   <style>
-    /* Using styles consistent with your other panels */
     body { font-family: 'Montserrat', Arial, sans-serif; padding: 20px; }
     h2 { color: #013369; margin-top: 0; }
     p { font-size: 14px; color: #333; line-height: 1.6; }
@@ -16,7 +15,7 @@
     .warning { background-color: #fff0f0; border: 1px solid #ffdddd; padding: 15px; border-radius: 8px; margin-top: 20px; }
     .warning strong { color: #D50A0A; }
     .button-row { display: flex; gap: 8px; padding: 12px 8px; }
-    .btn { flex: 1; padding: 8px 14px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; font-weight: 600; }
+    .btn { flex: 0.6; padding: 8px 14px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; font-weight: 600; }
     .btn-primary { background-color: #013369; color: white; }
     .btn-primary:hover { background-color: #2067b3; }
     .btn-secondary { background-color: #D50A0A; color: white; }
@@ -74,8 +73,13 @@
     .bonus-button:hover { border-color: #999; }
     .deselected-row .bonus-button { background-color: #f0f0f0; color: #bbb; border-color: #ddd; cursor: not-allowed; }
     .deselected-row .bonus-button:hover { border-color: #ddd; }    
-    tr.bonus-2x { background-color: #fcefc7 !important; }
-    tr.bonus-3x { background-color: #fce392 !important; }
+    tr.bonus-2x { background-color: #fcefc7 !important; transition: background-color 0.3s ease; }
+    tr.bonus-3x { background-color: #fce392 !important; transition: background-color 0.3s ease; }
+    .bg-bonus-1 { background-color: #ffffff !important; transition: background-color 0.3s ease; }
+    .bg-bonus-2 { background-color: #fcefc7 !important; transition: background-color 0.3s ease; }
+    .bg-bonus-3 { background-color: #fce392 !important; transition: background-color 0.3s ease; }
+    .bg-bonus-4 { background-color: #fcd863 !important; transition: background-color 0.3s ease; }
+    .bg-bonus-5 { background-color: #fccc34 !important; transition: background-color 0.3s ease; }
     .draggable-row { cursor: move; }
     .sortable-ghost { background-color: #cde4ff; }
     .spread-input-container { display: flex; align-items: center; gap: 5px; }
@@ -129,6 +133,9 @@
     .segmented-control label:last-of-type { border-right: none; }
     .segmented-control label:hover { background-color: #bfdeff; }
     .segmented-control input[type="radio"]:checked + label { background-color: #013369; color: #ffffff; border: 2px solid #013369;}
+    input[type=number]::-webkit-inner-spin-button, 
+    input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+    #random-count { -moz-appearance: textfield; }
   </style>
 </head>
 <body>
@@ -189,6 +196,14 @@
   <div id="tiebreaker-container" class="hidden"></div>
 
   <div class="button-row">
+    <div id="randomizer-section" class="hidden" style="display: flex; align-items: center; border-radius: 5px; border: 3px solid #d39e00; height: 40px; overflow: hidden; background: #dbd6c5;">
+      <button type="button" id="num-minus" style="color: #878373; font-size: 28px; font-weight: 800; border:none; background: #dbd6c5; padding: 0px 10px 45px 10px; height: 100%; cursor: pointer;">-</button>
+      <input type="number" id="random-count" value="1" class="bg-bonus-1" style="font-size: 20px; font-weight: 600; width: 36px; border:none; text-align:center; font-family: 'Montserrat', Arial, sans-serif; height: 100%">
+      <button type="button" id="num-plus" style="color: #878373; font-size: 22px; font-weight: 800; border:none; background: #dbd6c5; padding: 0px 10px 0px 10px; height: 100%; cursor: pointer;">+</button>
+    </div>
+    <button type="button" id="randomize-btn" class="btn btn-primary hidden" text="Randomly select games for 2X Bonus" style="flex: 1.2; background-color: #d39e00">
+      Randomize Bonus Games
+    </button>
     <button type="button" class="btn btn-secondary" onclick="google.script.host.close()">Cancel</button>
     <button type="button" class="btn btn-primary" onclick="handleSubmit()">Create Form</button>
   </div>
@@ -204,6 +219,8 @@
     let existingForms = {};
     let editedData = false;
     let falseAlarm = false;
+    let hasRandomized = false;
+    let manualBonusOverrides = new Set();
     let selectionState = {
       // Stores the checked state for each weekday, e.g., { "Thursday": true, "Friday": false }
       weekdays: {},
@@ -227,7 +244,7 @@
       }
       
     }
-    
+
     document.addEventListener('DOMContentLoaded', function() {
       showLoader();
       const container = document.getElementById('matchup-table-container');
@@ -235,6 +252,9 @@
       container.addEventListener('blur', handleInputChange, true);
       container.addEventListener('input', handleInputChange);
       container.addEventListener('click', handleBonusClick);
+      document.getElementById('randomize-btn').addEventListener('click', randomizeBonusGames);
+      document.getElementById('num-plus').onclick = () => updateCount(1);
+      document.getElementById('num-minus').onclick = () => updateCount(-1);
       google.script.run
         .withSuccessHandler(applyInitialData)
         .withFailureHandler(onDataFetchFailure)
@@ -255,6 +275,18 @@
       selectionState.weekdays = {};
       selectionState.matchups = {};
       bonusMultiplierState = {};
+
+      const randomSection = document.getElementById('randomizer-section');
+      const randomizeBtn = document.getElementById('randomize-btn');
+      
+      if (config.bonusInclude) {
+        randomSection.classList.remove('hidden');
+        randomizeBtn.classList.remove('hidden');
+      } else {
+        randomSection.classList.add('hidden');
+        randomizeBtn.classList.add('hidden');
+      }
+
       const allDays = ["Wednesday", "Thursday", "Friday", "Saturday", "Sunday", "Monday"];
       allDays.forEach(day => selectionState.weekdays[day] = true);
       allMatchups.forEach(game => {
@@ -627,6 +659,12 @@
       document.querySelectorAll('input[name="matchupToggle"]').forEach(toggle => {
         toggle.addEventListener('change', (e) => {
           selectionState.matchups[e.target.value] = e.target.checked;
+          
+          // IF DESELECTED: Clean up the bonus state
+          if (!e.target.checked) {
+            cleanupBonusState(e.target.value);
+          }
+          
           const row = document.getElementById(`match-row-${e.target.value}`);
           if (row) updateRowVisuals(row, e.target.checked);
           refreshTiebreakerState();
@@ -944,22 +982,25 @@
     function handleBonusClick(e) {
       const button = e.target.closest('.bonus-button');
       if (!button) return;
+      
+      // Use a unique name here
+      const targetGameId = button.dataset.gameId;
+      
+      // Track this as a manual override
+      manualBonusOverrides.add(targetGameId); 
+
       const row = e.target.closest('tr');
       if (row.matches('.deselected-row')) {
         row.classList.remove('bonus-2x', 'bonus-3x');
         return;
       }
       
-      const gameId = button.dataset.gameId;
-      
-      // Cycle through the values: 1 -> 2 -> 3 -> 1
-      let currentMultiplier = bonusMultiplierState[gameId] || 1;
+      // Cycle through the values
+      let currentMultiplier = bonusMultiplierState[targetGameId] || 1;
       let nextMultiplier = currentMultiplier >= 3 ? 1 : currentMultiplier + 1;
       
-      // Update the state
-      bonusMultiplierState[gameId] = nextMultiplier;
+      bonusMultiplierState[targetGameId] = nextMultiplier;
       
-      // Update the UI
       button.textContent = `${nextMultiplier}x`;
       
       row.classList.remove('bonus-2x', 'bonus-3x');
@@ -969,7 +1010,59 @@
         row.classList.add('bonus-3x');
       }
     }
+
+    function randomizeBonusGames() {
+      const countInput = document.getElementById('random-count');
+      const X = parseInt(countInput.value);
+      const includedGames = getIncludedGames();
+      
+      // Exclude games that were manually modified
+      const candidates = includedGames.filter(g => !manualBonusOverrides.has(`${g.awayTeam}@${g.homeTeam}`));
+      
+      if (candidates.length < X) {
+        alert(`Not enough games. Available for randomization: ${candidates.length}`);
+        return;
+      }
+
+      // Reset ONLY non-manual games to 1x
+      includedGames.forEach(game => {
+        // Use a completely different variable name here
+        const loopGameId = `${game.awayTeam}@${game.homeTeam}`;
+        if (!manualBonusOverrides.has(loopGameId)) {
+          bonusMultiplierState[loopGameId] = 1;
+        }
+      });
+
+      // Pick random games
+      const shuffled = [...candidates].sort(() => 0.5 - Math.random());
+      shuffled.slice(0, X).forEach(game => {
+        const randomGameId = `${game.awayTeam}@${game.homeTeam}`;
+        bonusMultiplierState[randomGameId] = 2;
+      });
+
+      this.textContent = "Re-randomize Bonus";
+      renderTable();
+    }
+
+    function updateCount(delta) {
+      const input = document.getElementById('random-count');
+      const includedGames = getIncludedGames();
+      const max = Math.max(1, includedGames.length - 1);
+      let val = parseInt(input.value) + delta;
+      input.value = Math.min(Math.max(val, 1), max);
+
+      // Update background based on count (capped at 5)
+      const level = Math.min(parseInt(input.value), 5);
+      input.className = `bg-bonus-${level}`;
+    }
     
+    function cleanupBonusState(gameId) {
+      // Reset multiplier to 1
+      bonusMultiplierState[gameId] = 1;
+      // Remove from manual overrides
+      manualBonusOverrides.delete(gameId);
+    }
+
     /**
      * Handles the click on the "Fetch Latest Spreads" button.
      */
@@ -1127,6 +1220,15 @@
 
       if (!isEnabled) {
         row.classList.remove('bonus-2x', 'bonus-3x');
+        
+        // --- ADDED: Reset the data state ---
+        const button = row.querySelector('.bonus-button');
+        if (button) {
+          const gameId = button.dataset.gameId;
+          bonusMultiplierState[gameId] = 1;     // Reset data to 1x
+          button.textContent = "1x";             // Reset button text
+          manualBonusOverrides.delete(gameId);   // Remove manual override tracking
+        }
       } else {
         const button = row.querySelector('.bonus-button');
         if (button) {
@@ -1135,7 +1237,7 @@
           row.classList.toggle('bonus-2x', currentMultiplier === 2);
           row.classList.toggle('bonus-3x', currentMultiplier === 3);
         }
-        }
+      }
       
       const inputs = row.querySelectorAll('.spread-value-input');
       const teamBtns = row.querySelectorAll('.spread-team-btn');
