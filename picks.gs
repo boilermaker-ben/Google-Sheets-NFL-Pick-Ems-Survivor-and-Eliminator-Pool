@@ -8002,7 +8002,7 @@ function summarySheet(ss,memberData,config) {
   let mnfCol;
   if (config.pickemsInclude) {
     headers = headers.concat(['TOTAL CORRECT','TOTAL RANK','AVG % CORRECT','AVG % CORRECT RANK','WEEKLY WINS']);
-    namedRanges = namedRanges.concat(['PICKS','RANK','TOT_AVG_PCT','AVG_PCT_RANK','WINS']);
+    namedRanges = namedRanges.concat(['PICKS','RANK','AVG_PCT','AVG_PCT_RANK','WINS']);
     headersWidth = headersWidth.concat([90,90,90,90,90]);
     if (!config.mnfExclude) {
       headers = headers.concat(['MNF CORRECT','MNF RANK']);
