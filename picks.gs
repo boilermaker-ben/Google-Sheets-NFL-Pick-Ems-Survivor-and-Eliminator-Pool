@@ -9749,7 +9749,7 @@ function overallMainFormulas(weeks,sheet,totalMembers,str,avgRow) {
       for (let a = 0; a < weeks.length; a++){
         let rows = sheet.getMaxRows();
         sheet.getRange(rows,a+3).setFormulaR1C1('=iferror(if(counta(R2C[0]:R'+(totalMembers+1)+'C[0])>=3,average(R2C[0]:R'+(totalMembers+1)+'C[0]),))')
-          .setNumberFormat("##%");
+          .setNumberFormat(sheet.getSheetName() === 'PCT' ? "##%" : "#0.0");
       }
     }
   }
