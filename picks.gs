@@ -11012,7 +11012,9 @@ function remapAndRepopulateData(ss, week, existingData, newMatchupMap, newMember
   const unplacedMembers = [];
   
   // --- Part 1: Remap and Repopulate Player Data (Picks, Comments, etc.) ---
-  const newPicks = new Array(newMemberList.length).fill(null).map(() => []);
+  // Start every row at full width, so new members don't leave a short one
+  const matchupCount = Math.max(...Object.values(newMatchupMap));
+  const newPicks = new Array(newMemberList.length).fill(null).map(() => new Array(matchupCount).fill(''));
   const newTiebreakers = new Array(newMemberList.length).fill(null).map(() => ['']);
   const newComments = new Array(newMemberList.length).fill(null).map(() => ['']);
 
