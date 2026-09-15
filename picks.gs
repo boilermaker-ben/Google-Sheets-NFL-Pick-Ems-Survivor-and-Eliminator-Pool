@@ -10273,7 +10273,7 @@ function weeklySheet(ss,week,config,forms,memberData,displayEmpty,rebuild) {
   }
   
   // MNF Summary Logic
-  if (mnfCols && mnfCols.length > 0) {
+  if (!config.mnfExclude && mnfCols.length > 0) {
     // Dynamically create a SUM of SUMPRODUCTs for each MNF column
     const correctPicksSumString = mnfCols.map(col => 
       `SUMPRODUCT(--(R${entryRowStart}C${col}:R${entryRowEnd}C${col}=R${effectiveOutcomeRow}C${col}))`
