@@ -4631,8 +4631,8 @@ function buildFormFromGamePlan(gamePlan) {
               ss.toast(contestText,`${contestIcon} CREATING CONTEST QUESTION`);
               Logger.log(`${contestIcon} Creating Customized Page: ${contestText}`);
               
-              if (survivor) survivorHelp = sLS == 1 ? `One Survivor Life: ${createLivesString(member.sL[sLivesIndex],sLS)}` : `Survivor Lives: ${createLivesString(member.sL[sLivesIndex],sLS)} (${member.sL[sLivesIndex] < sLS ? member.sL[sLivesIndex] + ' remaining' : 'all remaining'})`;
-              if (eliminator) eliminatorHelp = eLS == 1 ? `One Eliminator Life: ${createLivesString(member.eL[eLivesIndex],eLS)}` : `Eliminator Lives: ${createLivesString(member.eL[eLivesIndex],eLS)} (${member.eL[eLivesIndex] < eLS ? member.eL[eLivesIndex] + ' remaining' : 'all remaining'})`;
+              if (survivor) survivorHelp = member.sL[sLivesIndex] == 0 ? `Eliminated from Survivor: ${createLivesString(member.sL[sLivesIndex],sLS)}` : sLS == 1 ? `One Survivor Life: ${createLivesString(member.sL[sLivesIndex],sLS)}` : `Survivor Lives: ${createLivesString(member.sL[sLivesIndex],sLS)} (${member.sL[sLivesIndex] < sLS ? member.sL[sLivesIndex] + ' remaining' : 'all remaining'})`;
+              if (eliminator) eliminatorHelp = member.eL[eLivesIndex] == 0 ? `Eliminated from Eliminator: ${createLivesString(member.eL[eLivesIndex],eLS)}` : eLS == 1 ? `One Eliminator Life: ${createLivesString(member.eL[eLivesIndex],eLS)}` : `Eliminator Lives: ${createLivesString(member.eL[eLivesIndex],eLS)} (${member.eL[eLivesIndex] < eLS ? member.eL[eLivesIndex] + ' remaining' : 'all remaining'})`;
               helpText = contests > 1 ? `${survivorHelp}  |  ${eliminatorHelp}` : (survivor ? survivorHelp : eliminatorHelp);
               
               const title = `${member.name}'s ${both ? 'Survivor & Eliminator' : (survivorStatus ? 'Survivor' : 'Eliminator')} Pick${both ? 's' : ''}`;
@@ -5093,7 +5093,7 @@ function buildTeamList(gamePlan, config, isAts) {
  * @returns {string} character string representing lives left and those have been lost (red dot or empty square)
  */
 function createLivesString(remaining, total) {
-  return '🟢'.repeat(remaining)+'⚫'.repeat(total - remaining);
+  return '🟢'.repeat(remaining)+'❌'.repeat(total - remaining);
 }
 
 /**
