@@ -6974,8 +6974,13 @@ function outcomesSheetUpdate(ss,week,config,gamePlan) {
   
   matchups.clearDataValidations().clearNote();
   margins.clearDataValidations().clearNote();
-  
-  let existingRules = sheet.getConditionalFormatRules();
+
+  let existingRules = [];
+  try { 
+    existingRules = sheet.getConditionalFormatRules();
+  } catch (err) {
+    Logger.log(`⭕ No existing conditional format rules, providing empty array.`);
+  }
   let rulesToKeep = [];
   let newRules = [];
   for (let a = 0; a < existingRules.length; a++) {
