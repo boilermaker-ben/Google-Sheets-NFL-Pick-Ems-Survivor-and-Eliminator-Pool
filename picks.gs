@@ -1,7 +1,7 @@
-const VERSION = '1.2.4';
+const VERSION = '1.2.5';
 /** GOOGLE SHEETS FOOTBALL PICK 'EMS, SURVIVOR, & ELIMINATOR TOOL | 2025 Edition
  * Script Library for League Creator & Management Platform
- * 09/06/2026
+ * 09/16/2026
  * 
  * Created by Ben Powers
  * ben.powers.creative@gmail.com
