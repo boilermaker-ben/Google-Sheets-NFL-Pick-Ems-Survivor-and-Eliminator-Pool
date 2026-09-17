@@ -1,7 +1,7 @@
 const VERSION = '1.2.5';
 /** GOOGLE SHEETS FOOTBALL PICK 'EMS, SURVIVOR, & ELIMINATOR TOOL | 2025 Edition
  * Script Library for League Creator & Management Platform
- * 09/16/2026
+ * 09/17/2026
  * 
  * Created by Ben Powers
  * ben.powers.creative@gmail.com
@@ -122,7 +122,10 @@ function onOpen() {
           .addItem('💯 Percentages (PCT)', 'deployPctSheet');
 
         if (!config.mnfExclude) {
-          sheetsMenu.addItem('🌙 MNF Sheet', 'deployMnfSheet');
+          sheetsMenu.addItem('🌙 MNF Sheet', 'deployMnfSheet')
+                    .addItem('📊 Matrix (TOT/RNK/PCT/MNF)', 'deployMatrixSheet');
+        } else {
+          sheetsMenu.addItem('📊 Matrix (TOT/RNK/PCT)', 'deployMatrixSheet');
         }
         if (config.survivorInclude) {
           sheetsMenu.addItem('👑 Survivor Sheet', 'deploySurvivorSheet');
@@ -5521,7 +5524,7 @@ function executePickImport(week, importOnlyStartedGames) {
       ss.toast(`Imported picks for Week ${week}.`, `✅ PICKS IMPORTED`, 3);
 
     } catch (err) {
-      Logger.log(`Failed to import Pick 'Em data into week '${week}' sheet: ${err.stack}`);
+      Logger.log(`⚠️ Failed to import Pick 'Em data into week '${week}' sheet: ${err.stack}`);
       ss.toast(`Failed to import picks: ${err.message}`, `❗ PICK 'EMS FAILED`, 5);
     }
   }
@@ -7163,6 +7166,13 @@ function deployMnfSheet() {
   ctx.ss.toast('Monday Night Football (MNF) sheet successfully deployed/updated.', '🌙 MNF READY');
 }
 
+function deployMatrixSheet() {
+  const ctx = validatePrerequisitesForSheets();
+  if (!ctx) return;
+  matrixSheet(ctx.ss, ctx.config, ctx.memberData);
+  ctx.ss.toast('Metrics Matrix sheet deployed successfully!', '📊 MATRIX READY');
+}
+
 function deployWinnersSheet() {
   const ctx = validatePrerequisitesForSheets();
   if (!ctx) return;
@@ -7670,6 +7680,316 @@ function mnfSheet(ss,memberData) {
   overallMainFormulas(weeks,sheet,totalMembers,'MNF',true);
 
   return sheet;  
+}
+
+// MATRIX Sheet Creation
+function matrixSheet(ss, config, memberData) {
+  ss = ss || fetchSpreadsheet(ss);
+  
+  let docProps = (!config || !memberData) ? PropertiesService.getDocumentProperties() : null;
+  config = config || JSON.parse(docProps.getProperty('configuration') || '{}');
+  memberData = memberData || JSON.parse(docProps.getProperty('members') || '{}');
+
+  const validMemberIds = (memberData.memberOrder || []).filter(
+    id => memberData.members && memberData.members[id] && memberData.members[id].name
+  );
+  const totalMembers = validMemberIds.length;
+  if (totalMembers === 0) return null;
+
+  const memberNames = validMemberIds.map(id => [memberData.members[id]?.name]);
+  const sheetName = 'MATRIX';
+  let sheet = ss.getSheetByName(sheetName) || ss.insertSheet(sheetName);
+
+  sheet.clear();
+  sheet.clearNotes();
+  sheet.clearConditionalFormatRules();
+  sheet.setTabColor('#00BCD4'); // Cyan Tab
+
+  const weeks = Array.from({ length: WEEKS }, (_, i) => i + 1).filter(w => !WEEKS_TO_EXCLUDE.includes(w));
+  const totalCols = weeks.length + 2; // Col A (Member), Col B (Avg/Total), Cols C.. (Weeks)
+
+  // Precalculate Monday Night Football Game Counts per Week from Schedule
+  let mondayNightGames = Array(weeks.length).fill(1);
+  try {
+    const schedData = ss.getRangeByName(LEAGUE)?.getValues() || [];
+    const counts = Array(WEEKS + 1).fill(0);
+    for (let i = 0; i < schedData.length; i++) {
+      if (schedData[i][2] == 1 && schedData[i][3] >= 17) {
+        counts[schedData[i][0]]++;
+      }
+    }
+    mondayNightGames = weeks.map(w => Math.max(1, counts[w] || 1));
+  } catch (e) {
+    Logger.log(`⚠️ Could not scrape MNF schedule counts: ${e.message}`);
+  }
+
+  // Dynamic Title for Totals/Points Section
+  const totSectionTitle = config.bonusInclude ? '⭐ TOTAL POINTS' : '⭐ TOTAL CORRECT PICKS';
+
+  // --- REORDERED TO MATCH WEEKLY SHEET FLOW ---
+  // 1. Points/Totals -> 2. Win % -> 3. Rank -> 4. MNF (Spliced) -> 5. Wildcard
+  const sections = [    
+    { title: totSectionTitle, code: 'TOT', rangeCode: 'TOT', isAvg: false, fmt: '0', isPct: false },
+    { title: '💯 CORRECT PERCENT', code: 'PCT', rangeCode: 'PCT', isAvg: true, fmt: '0.0%', isPct: true },
+    { title: '🥇 WEEKLY RANKS', code: 'RNK', rangeCode: 'RNK', isAvg: true, fmt: '0.0', isPct: false }
+  ];
+
+  if (!config.mnfExclude) {
+    sections.push({ title: '🌙 MNF CORRECT', code: 'MNF', rangeCode: 'MNF', isAvg: false, fmt: '0', isPct: false });
+  }
+
+  sections.push({ title: '🃏 WILDCARD', code: 'WILDCARD', rangeCode: 'WILDCARD', isAvg: true, fmt: '0.0%', isPct: true });
+
+  // Exact row height calculation without empty spacer rows
+  const rowsPerBlock = totalMembers + 3; // 1 Super-header + 1 Column Header + totalMembers + 1 Summary
+  const totalRows = sections.length * rowsPerBlock;
+
+  adjustRows(sheet, totalRows);
+  adjustColumns(sheet, totalCols);
+
+  sheet.setColumnWidth(1, 140); // Members
+  sheet.setColumnWidth(2, 75);  // Average / Total
+  for (let c = 3; c <= totalCols; c++) sheet.setColumnWidth(c, 36);
+
+  const startColLetter = sheet.getRange(1, 3).getA1Notation().replace(/[0-9]/g, '');
+  const endColLetter = sheet.getRange(1, totalCols).getA1Notation().replace(/[0-9]/g, '');
+
+  const formatRules = [];
+  let currentRow = 1;
+
+  // --- BUILD EACH STACKED BLOCK (IN BATCH) ---
+  sections.forEach(sec => {
+    // 1. Block Title Super-Header (Height: 40px)
+    sheet.getRange(currentRow, 1, 1, totalCols)
+         .setBackground('#263238')
+         .setFontColor('#FFFFFF')
+         .setFontWeight('bold')
+         .setFontFamily('Montserrat')
+         .setFontSize(11)
+         .setHorizontalAlignment('left')
+         .setVerticalAlignment('middle');
+    sheet.setRowHeight(currentRow, 40);
+    sheet.getRange(currentRow, 1, 1, 2).merge().setValue(sec.title);
+    currentRow++;
+
+    // 2. Column Headers (Height: 26px, Plain Text Formatting)
+    const colHeaders = ['MEMBERS', sec.isAvg ? 'AVERAGE' : 'TOTAL', ...weeks];
+    sheet.getRange(currentRow, 1, 1, totalCols)
+         .setNumberFormat('@')
+         .setValues([colHeaders])
+         .setBackground('#000000')
+         .setFontColor('#FFFFFF')
+         .setFontWeight('bold')
+         .setFontFamily('Montserrat')
+         .setFontSize(9)
+         .setHorizontalAlignment('center')
+         .setVerticalAlignment('middle');
+    sheet.getRange(currentRow, 1).setHorizontalAlignment('left');
+    sheet.setRowHeight(currentRow, 26);
+    currentRow++;
+
+    const blockStartRow = currentRow;
+    const blockEndRow = blockStartRow + totalMembers - 1;
+    const summaryRow = blockEndRow + 1;
+
+    // 3. Member Names
+    sheet.getRange(blockStartRow, 1, totalMembers, 1)
+         .setValues(memberNames)
+         .setFontFamily('Montserrat')
+         .setFontSize(9)
+         .setHorizontalAlignment('left')
+         .setVerticalAlignment('middle');
+
+    // 4. Batch Build Player Formulas
+    const blockFormulas = [];
+    for (let r = blockStartRow; r <= blockEndRow; r++) {
+      const rowFormulas = [];
+
+      // Col B: Summary Formula (Average or Sum)
+      const aggFormula = sec.isAvg 
+        ? `=IFERROR(IF(COUNTA(${startColLetter}${r}:${endColLetter}${r})=0, "", AVERAGE(${startColLetter}${r}:${endColLetter}${r})), "")`
+        : `=IFERROR(IF(COUNTA(${startColLetter}${r}:${endColLetter}${r})=0, "", SUM(${startColLetter}${r}:${endColLetter}${r})), "")`;
+      rowFormulas.push(aggFormula);
+
+      // Cols C..TotalCols: Direct Named Range Lookups
+      for (let wIdx = 0; wIdx < weeks.length; wIdx++) {
+        const w = weeks[wIdx];
+        const cellFormula = `=IFERROR(XLOOKUP($A${r}, INDIRECT("NAMES_${w}"), INDIRECT("${sec.rangeCode}_${w}"), ""), "")`;
+        rowFormulas.push(cellFormula);
+      }
+      blockFormulas.push(rowFormulas);
+    }
+
+    sheet.getRange(blockStartRow, 2, totalMembers, totalCols - 1).setFormulas(blockFormulas);
+
+    // 5. Batch Build Summary Row Formulas
+    const summaryRowFormulas = [];
+    summaryRowFormulas.push(sec.isAvg 
+      ? `=IFERROR(AVERAGE(B${blockStartRow}:B${blockEndRow}), "")` 
+      : `=IFERROR(SUM(B${blockStartRow}:B${blockEndRow}), "")`
+    );
+
+    for (let c = 3; c <= totalCols; c++) {
+      const wIdx = c - 3;
+      const colLetter = sheet.getRange(1, c).getA1Notation().replace(/[0-9]/g, '');
+      
+      if (sec.code === 'MNF') {
+        const gamesInWeek = mondayNightGames[wIdx] || 1;
+        summaryRowFormulas.push(
+          `=IFERROR(IF(COUNTA(${colLetter}${blockStartRow}:${colLetter}${blockEndRow})=0, "", SUM(${colLetter}${blockStartRow}:${colLetter}${blockEndRow}) / (${totalMembers} * ${gamesInWeek})), "")`
+        );
+      } else {
+        summaryRowFormulas.push(`=IFERROR(AVERAGE(${colLetter}${blockStartRow}:${colLetter}${blockEndRow}), "")`);
+      }
+    }
+
+    sheet.getRange(summaryRow, 1).setValue('AVERAGES').setFontWeight('bold').setFontSize(9);
+    sheet.getRange(summaryRow, 2, 1, totalCols - 1).setFormulas([summaryRowFormulas]);
+    sheet.getRange(summaryRow, 1, 1, totalCols).setBackground('#E6E6E6').setFontWeight('bold');
+    sheet.setRowHeight(summaryRow, 24);
+
+    // 6. Formatting & Number Formats (Preserves 0.0% for Wildcard & Percentages)
+    sheet.getRange(blockStartRow, 2, totalMembers + 1, totalCols - 1)
+         .setFontFamily('Montserrat')
+         .setFontSize(9)
+         .setVerticalAlignment('middle')
+         .setHorizontalAlignment('center')
+         .setNumberFormat(sec.fmt);
+
+    if (sec.code === 'MNF') {
+      sheet.getRange(summaryRow, 2, 1, totalCols - 1).setNumberFormat('0.0%');
+    }
+
+    // 7. Section-Specific Conditional Formatting
+    const blockGridRange = sheet.getRange(blockStartRow, 3, totalMembers, weeks.length);
+    const blockSummaryColRange = sheet.getRange(blockStartRow, 2, totalMembers, 1);
+    const blockSummaryRowRange = sheet.getRange(summaryRow, 3, 1, weeks.length);
+
+    if (sec.code === 'TOT') {
+      formatRules.push(
+        SpreadsheetApp.newConditionalFormatRule()
+          .setGradientMaxpointWithValue('#75F0A1', SpreadsheetApp.InterpolationType.NUMBER, `=MAX($${startColLetter}$${blockStartRow}:$${endColLetter}$${blockEndRow})`)
+          .setGradientMidpointWithValue('#FFFFFF', SpreadsheetApp.InterpolationType.NUMBER, `=AVERAGE($${startColLetter}$${blockStartRow}:$${endColLetter}$${blockEndRow})`)
+          .setGradientMinpointWithValue('#FF9B69', SpreadsheetApp.InterpolationType.NUMBER, `=MIN($${startColLetter}$${blockStartRow}:$${endColLetter}$${blockEndRow})`)
+          .setRanges([blockGridRange])
+          .build()
+      );
+      formatRules.push(
+        SpreadsheetApp.newConditionalFormatRule()
+          .setGradientMaxpointWithValue('#75F0A1', SpreadsheetApp.InterpolationType.NUMBER, `=MAX($B$${blockStartRow}:$B$${blockEndRow})`)
+          .setGradientMinpointWithValue('#FFFFFF', SpreadsheetApp.InterpolationType.NUMBER, `=MIN($B$${blockStartRow}:$B$${blockEndRow})`)
+          .setRanges([blockSummaryColRange])
+          .build()
+      );
+    } else if (sec.code === 'PCT') {
+      formatRules.push(
+        SpreadsheetApp.newConditionalFormatRule()
+          .setGradientMaxpointWithValue('#75F0A1', SpreadsheetApp.InterpolationType.NUMBER, '0.70')
+          .setGradientMidpointWithValue('#FFFFFF', SpreadsheetApp.InterpolationType.NUMBER, '0.60')
+          .setGradientMinpointWithValue('#FF9B69', SpreadsheetApp.InterpolationType.NUMBER, '0.50')
+          .setRanges([blockGridRange, blockSummaryColRange])
+          .build()
+      );
+    } else if (sec.code === 'RNK') {
+      formatRules.push(SpreadsheetApp.newConditionalFormatRule().whenNumberEqualTo(1).setBackground('#00E1FF').setFontColor('#000000').setBold(true).setRanges([blockGridRange]).build());
+      formatRules.push(
+        SpreadsheetApp.newConditionalFormatRule()
+          .setGradientMinpointWithValue('#5EDCFF', SpreadsheetApp.InterpolationType.NUMBER, '1')
+          .setGradientMidpointWithValue('#FFFFFF', SpreadsheetApp.InterpolationType.NUMBER, `${totalMembers / 2}`)
+          .setGradientMaxpointWithValue('#FF9B69', SpreadsheetApp.InterpolationType.NUMBER, `${totalMembers}`)
+          .setRanges([blockGridRange, blockSummaryColRange])
+          .build()
+      );
+    } else if (sec.code === 'MNF') {
+      formatRules.push(SpreadsheetApp.newConditionalFormatRule().whenNumberEqualTo(2).setBackground('#9CFFC4').setFontColor('#5CD48E').setBold(true).setRanges([blockGridRange]).build());
+      formatRules.push(SpreadsheetApp.newConditionalFormatRule().whenNumberEqualTo(1).setBackground('#C9FFDF').setFontColor('#8FE4AF').setBold(true).setRanges([blockGridRange]).build());
+      formatRules.push(SpreadsheetApp.newConditionalFormatRule().whenNumberEqualTo(0).setBackground('#FFCCD6').setFontColor('#E693A3').setBold(true).setRanges([blockGridRange]).build());
+
+      formatRules.push(
+        SpreadsheetApp.newConditionalFormatRule()
+          .setGradientMaxpointWithValue('#9CFFC4', SpreadsheetApp.InterpolationType.NUMBER, `=MAX($B$${blockStartRow}:$B$${blockEndRow})`)
+          .setGradientMidpointWithValue('#FFFFFF', SpreadsheetApp.InterpolationType.NUMBER, `=AVERAGE($B$${blockStartRow}:$B$${blockEndRow})`)
+          .setGradientMinpointWithValue('#FFCCD6', SpreadsheetApp.InterpolationType.NUMBER, `=MIN($B$${blockStartRow}:$B$${blockEndRow})`)
+          .setRanges([blockSummaryColRange])
+          .build()
+      );
+
+      formatRules.push(
+        SpreadsheetApp.newConditionalFormatRule()
+          .setGradientMaxpointWithValue('#75F0A1', SpreadsheetApp.InterpolationType.NUMBER, '1.00')
+          .setGradientMidpointWithValue('#FFFFFF', SpreadsheetApp.InterpolationType.NUMBER, '0.50')
+          .setGradientMinpointWithValue('#FF9B69', SpreadsheetApp.InterpolationType.NUMBER, '0.00')
+          .setRanges([blockSummaryRowRange])
+          .build()
+      );
+    } else if (sec.code === 'WILDCARD') {
+      formatRules.push(
+        SpreadsheetApp.newConditionalFormatRule()
+          .setGradientMaxpointWithValue('#FCA503', SpreadsheetApp.InterpolationType.NUMBER, '0.50')
+          .setGradientMidpointWithValue('#FFE433', SpreadsheetApp.InterpolationType.NUMBER, '0.25')
+          .setGradientMinpointWithValue('#7DFFFB', SpreadsheetApp.InterpolationType.NUMBER, '0.00')
+          .setRanges([blockGridRange, blockSummaryColRange, blockSummaryRowRange])
+          .build()
+      );
+    }
+
+    currentRow = summaryRow + 1;
+  });
+
+  sheet.setFrozenColumns(2);
+  sheet.setConditionalFormatRules(formatRules);
+  SpreadsheetApp.flush();
+
+  // Prompt to hide redundant standalone sheets (TOTAL, PCT, RNK, MNF)
+  promptHideRedundantSheets(ss);
+
+  Logger.log('📊 MATRIX (All Metrics Heatmap) sheet successfully created in batch mode.');
+  return sheet;
+}
+
+// MATRIX Sheet Prompt to Hide Redundant Sheets
+function promptHideRedundantSheets(ss, ui) {
+  ss = ss || fetchSpreadsheet();
+  const docProps = PropertiesService.getDocumentProperties();
+
+  // Guard: User previously chose to keep them visible (Do not ask again)
+  if (docProps.getProperty('hideRedundantSheetsDismissed') === 'true') {
+    return;
+  }
+
+  const config = JSON.parse(docProps.getProperty('configuration') || '{}');
+
+  // Only target the redundant sheets
+  const redundantSheetNames = ['TOTAL', 'PCT', 'RNK'];
+  if (!config.mnfExclude) redundantSheetNames.push('MNF');
+  const visibleRedundantSheets = redundantSheetNames
+    .map(name => ss.getSheetByName(name))
+    .filter(sh => sh && !sh.isSheetHidden());
+
+  if (visibleRedundantSheets.length === 0) {
+    return; // All are already hidden or don't exist
+  }
+
+  const sheetNamesList = visibleRedundantSheets.map(sh => sh.getName()).join(', ');
+  ui = ui || SpreadsheetApp.getUi();
+
+  const response = ui.alert(
+    '🙈 Clean Up Tab Bar?',
+    `The MATRIX sheet displays totals (TOTAL), percentages (PCT), ${!config.mnfExclude ? "ranks (RNK), MNF, " : "ranks (RNK)"} as well as wildcard percent all in one scrolling view.\n\n` +
+    `Would you like to hide these standalone tab(s) (${sheetNamesList})?\n\n` +
+    `You can unhide them in the future. Selecting "NO" will prevent this from prompting again.`,
+    ui.ButtonSet.YES_NO
+  );
+
+  if (response === ui.Button.YES) {
+    visibleRedundantSheets.forEach(sh => sh.hideSheet());
+    ss.toast(`Hidden tabs: ${sheetNamesList}`, '🙈 TABS HIDDEN', 4);
+    Logger.log(`🙈 Hidden redundant standalone sheets: ${sheetNamesList}`);
+  } else {
+    docProps.setProperty('hideRedundantSheetsDismissed', 'true');
+    ss.toast('Standalone tabs will remain visible.', '👁️ PREFERENCE SAVED', 3);
+    Logger.log('👁️ User chose to keep redundant sheets visible. Future prompts dismissed.');
+  }
 }
 
 // SURVIVOR/ELIMINATOR Sheet Creation
