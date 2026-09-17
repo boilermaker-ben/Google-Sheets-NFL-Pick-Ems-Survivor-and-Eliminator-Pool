@@ -1,4 +1,4 @@
-# Google Sheets / Forms NFL Pick'Ems and Survivor Pool, v1.2.2
+# Google Sheets / Forms NFL Pick'Ems and Survivor Pool, v1.2.6
 ## Creation and Management Tool for Running your Own Group
 
 Google Sheet document with multiple script files to generate Google Forms for season-long NFL Pick'Ems or Survivor league management
@@ -24,7 +24,7 @@ Lastly, there are some safeguards Google has in place to avoid allowing users to
 -------------------------
 
 **Notable Changes**
-This newest update to version 1.2.2 includes the following new improved features/changes:
+Version 1.2.2 introduced the following features and changes. For what has changed since, see [CHANGELOG.md](CHANGELOG.md).
 - **More intuitive setup and initialization tool**
 - Use of **Document Properties** (formerly used _Script_ Properties)
   - Storing timezone, initialization, configuration, members, and form details
