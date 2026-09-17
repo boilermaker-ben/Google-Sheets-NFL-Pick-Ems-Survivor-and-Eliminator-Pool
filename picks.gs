@@ -5330,7 +5330,7 @@ function getFormImportData(week,auto) {
     week = week || 1;
     if (formsData) {
       week = week || Math.max(...Object.keys(formsData).map(key => parseInt(key)));
-      Logger.log(week);
+      Logger.log(`🔎 Found max week within formsData of ${week}`);
     }
     // Run sync first to get the latest respondent metadata.
     let syncResult;
@@ -7466,14 +7466,14 @@ function rnkSheet(ss, memberData) {
     // Avg Col
     SpreadsheetApp.newConditionalFormatRule()
       .setGradientMinpoint('#00B4E9')
-      .setGradientMidpointWithValue('#FFFFFF', SpreadsheetApp.InterpolationType.PERCENTILE, '50')
+      .setGradientMidpointWithValue('#FFFFFF', SpreadsheetApp.InterpolationType.PERCENT, '50')
       .setGradientMaxpoint('#FF9B69')
       .setRanges([avgCol])
       .build(),
     // Main Grid
     SpreadsheetApp.newConditionalFormatRule()
       .setGradientMinpoint('#5EDCFF')
-      .setGradientMidpointWithValue('#FFFFFF', SpreadsheetApp.InterpolationType.PERCENTILE, '50')
+      .setGradientMidpointWithValue('#FFFFFF', SpreadsheetApp.InterpolationType.PERCENT, '50')
       .setGradientMaxpoint('#FF9B69')
       .setRanges([weeklyGrid])
       .build()
@@ -7739,7 +7739,7 @@ function mnfSheet(ss, memberData) {
     // Total Column Gradient (Red Min -> White Mid -> Green Max)
     SpreadsheetApp.newConditionalFormatRule()
       .setGradientMaxpoint('#9CFFC4')
-      .setGradientMidpointWithValue('#FFFFFF', SpreadsheetApp.InterpolationType.PERCENTILE, '50')
+      .setGradientMidpointWithValue('#FFFFFF', SpreadsheetApp.InterpolationType.PERCENT, '50')
       .setGradientMinpoint('#FFCCD6')
       .setRanges([totalCol])
       .build(),
@@ -7748,7 +7748,7 @@ function mnfSheet(ss, memberData) {
     // Bottom Summary Row Gradient (Red Min -> White Mid -> Green Max across weekly pool win %)
     SpreadsheetApp.newConditionalFormatRule()
       .setGradientMaxpoint('#9CFFC4')
-      .setGradientMidpointWithValue('#FFFFFF', SpreadsheetApp.InterpolationType.PERCENTILE, '50')
+      .setGradientMidpointWithValue('#FFFFFF', SpreadsheetApp.InterpolationType.PERCENT, '50')
       .setGradientMinpoint('#FFCCD6')
       .setRanges([avgRowRange])
       .build()
@@ -7761,7 +7761,6 @@ function mnfSheet(ss, memberData) {
 // ============================================================================================================================================
 // HIGHER ORDER TRACKING SHEETS (MATRIX, SURVIVOR/ELIMINATOR, WINNERS, SUMMARY, LEADERBOARD, etc.)
 // ============================================================================================================================================
-
 // MATRIX Sheet Creation
 function matrixSheet(ss, config, memberData) {
   ss = ss || fetchSpreadsheet(ss);
@@ -7794,12 +7793,11 @@ function matrixSheet(ss, config, memberData) {
     const schedData = ss.getRangeByName(LEAGUE)?.getValues() || [];
     const counts = Array(WEEKS + 1).fill(0);
     for (let i = 0; i < schedData.length; i++) {
-      if (schedData[i][2] == 1 && schedData[i][3] >= 17) {
-        counts[schedData[i][0]]++;
-      }
+      if (schedData[i][2] == 1 && schedData[i][3] >= 17) counts[schedData[i][0]]++;
     }
-    Logger.log(`🌙 ${counts.flat().reduce((accumulator, current) => accumulator + current, 0)} MNF Games [array]: ${counts}`);
-    mondayNightGames = weeks.map(w => Math.max(1, counts[w] || 1));
+    const mondayNightGamesSum = counts.flat().reduce((acc, curr) => acc + curr, 0);
+    Logger.log(`🌙 ${mondayNightGamesSum} MNF Games [array]: ${counts}`);
+    mondayNightGames = weeks.map(w => counts[w] || 0);
   } catch (e) {
     Logger.log(`⚠️ Could not scrape MNF schedule counts: ${e.message}`);
   }
@@ -7807,8 +7805,7 @@ function matrixSheet(ss, config, memberData) {
   // Dynamic Title for Totals/Points Section
   const totSectionTitle = config.bonusInclude ? '⭐ TOTAL POINTS' : '⭐ TOTAL CORRECT PICKS';
 
-  // --- REORDERED TO MATCH WEEKLY SHEET FLOW ---
-  // 1. Points/Totals -> 2. Win % -> 3. Rank -> 4. MNF (Spliced) -> 5. Wildcard
+  // Define the metric blocks to build
   const sections = [    
     { title: totSectionTitle, code: 'TOT', rangeCode: 'TOT', isAvg: false, fmt: '0', isPct: false },
     { title: '💯 CORRECT PERCENT', code: 'PCT', rangeCode: 'PCT', isAvg: true, fmt: '0.0%', isPct: true },
@@ -7821,7 +7818,6 @@ function matrixSheet(ss, config, memberData) {
 
   sections.push({ title: '🃏 WILDCARD', code: 'WILDCARD', rangeCode: 'WILDCARD', isAvg: true, fmt: '0.0%', isPct: true });
 
-  // Exact row height calculation without empty spacer rows
   const rowsPerBlock = totalMembers + 3; // 1 Super-header + 1 Column Header + totalMembers + 1 Summary
   const totalRows = sections.length * rowsPerBlock;
 
@@ -7838,7 +7834,7 @@ function matrixSheet(ss, config, memberData) {
   const formatRules = [];
   let currentRow = 1;
 
-  // --- BUILD EACH STACKED BLOCK (IN BATCH) ---
+  // --- BUILD EACH STACKED BLOCK ---
   sections.forEach(sec => {
     // 1. Block Title Super-Header (Height: 40px)
     sheet.getRange(currentRow, 1, 1, totalCols)
@@ -7855,18 +7851,20 @@ function matrixSheet(ss, config, memberData) {
 
     // 2. Column Headers (Height: 26px, Plain Text Formatting)
     const colHeaders = ['MEMBERS', sec.isAvg ? 'AVERAGE' : 'TOTAL', ...weeks];
-    sheet.getRange(currentRow, 1, 1, totalCols)
-         .setNumberFormat('@')
-         .setValues([colHeaders])
-         .setBackground('#000000')
-         .setFontColor('#FFFFFF')
-         .setFontWeight('bold')
-         .setFontFamily('Montserrat')
-         .setFontSize(9)
-         .setHorizontalAlignment('center')
-         .setVerticalAlignment('middle');
+    const headerRange = sheet.getRange(currentRow, 1, 1, totalCols);
+    headerRange.setNumberFormat('@')
+               .setValues([colHeaders])
+               .setBackground('#000000')
+               .setFontColor('#FFFFFF')
+               .setFontWeight('bold')
+               .setFontFamily('Montserrat')
+               .setFontSize(9)
+               .setHorizontalAlignment('center')
+               .setVerticalAlignment('middle');
     sheet.getRange(currentRow, 1).setHorizontalAlignment('left');
     sheet.setRowHeight(currentRow, 26);
+    
+    const headerRowIdx = currentRow;
     currentRow++;
 
     const blockStartRow = currentRow;
@@ -7881,22 +7879,37 @@ function matrixSheet(ss, config, memberData) {
          .setHorizontalAlignment('left')
          .setVerticalAlignment('middle');
 
+    // Handle MNF 0-game graying and multi-game notes
+    if (sec.code === 'MNF') {
+      for (let a = 0; a < mondayNightGames.length; a++) {
+        const colIdx = a + 3;
+        const gCount = mondayNightGames[a];
+        if (gCount === 0) {
+          sheet.getRange(headerRowIdx, colIdx).setNote('No MNF Game').setFontColor('#999999');
+          sheet.getRange(blockStartRow, colIdx, totalMembers, 1).setBackground('#EFEFEF');
+        } else if (gCount > 1) {
+          sheet.getRange(headerRowIdx, colIdx).setNote(`${gCount} MNF Games this week`);
+        }
+      }
+    }
+
     // 4. Batch Build Player Formulas
     const blockFormulas = [];
     for (let r = blockStartRow; r <= blockEndRow; r++) {
       const rowFormulas = [];
 
-      // Col B: Summary Formula (Average or Sum)
       const aggFormula = sec.isAvg 
         ? `=IFERROR(IF(COUNTA(${startColLetter}${r}:${endColLetter}${r})=0, "", AVERAGE(${startColLetter}${r}:${endColLetter}${r})), "")`
         : `=IFERROR(IF(COUNTA(${startColLetter}${r}:${endColLetter}${r})=0, "", SUM(${startColLetter}${r}:${endColLetter}${r})), "")`;
       rowFormulas.push(aggFormula);
 
-      // Cols C..TotalCols: Direct Named Range Lookups
       for (let wIdx = 0; wIdx < weeks.length; wIdx++) {
         const w = weeks[wIdx];
-        const cellFormula = `=IFERROR(XLOOKUP($A${r}, INDIRECT("NAMES_${w}"), INDIRECT("${sec.rangeCode}_${w}"), ""), "")`;
-        rowFormulas.push(cellFormula);
+        if (sec.code !== 'MNF' || mondayNightGames[w-1] > 0) {
+          rowFormulas.push(`=IFERROR(XLOOKUP($A${r}, INDIRECT("NAMES_${w}"), INDIRECT("${sec.rangeCode}_${w}"), ""), "")`);
+        } else {
+          rowFormulas.push(null);
+        }
       }
       blockFormulas.push(rowFormulas);
     }
@@ -7905,31 +7918,30 @@ function matrixSheet(ss, config, memberData) {
 
     // 5. Batch Build Summary Row Formulas
     const summaryRowFormulas = [];
-    summaryRowFormulas.push(sec.isAvg 
-      ? `=IFERROR(AVERAGE(B${blockStartRow}:B${blockEndRow}), "")` 
-      : `=IFERROR(SUM(B${blockStartRow}:B${blockEndRow}), "")`
-    );
-
+    summaryRowFormulas.push(`=IFERROR(AVERAGE(B${blockStartRow}:B${blockEndRow}), "")`);
+    
     for (let c = 3; c <= totalCols; c++) {
-      const wIdx = c - 3;
       const colLetter = sheet.getRange(1, c).getA1Notation().replace(/[0-9]/g, '');
-      
-      if (sec.code === 'MNF') {
-        const gamesInWeek = mondayNightGames[wIdx] || 1;
-        summaryRowFormulas.push(
-          `=IFERROR(IF(COUNTA(${colLetter}${blockStartRow}:${colLetter}${blockEndRow})=0, "", SUM(${colLetter}${blockStartRow}:${colLetter}${blockEndRow}) / (${totalMembers} * ${gamesInWeek})), "")`
-        );
-      } else {
+      if (sec.code !== 'MNF' || mondayNightGames[c-3] > 0) {
         summaryRowFormulas.push(`=IFERROR(AVERAGE(${colLetter}${blockStartRow}:${colLetter}${blockEndRow}), "")`);
+      } else {
+        summaryRowFormulas.push(null);
       }
     }
 
     sheet.getRange(summaryRow, 1).setValue('AVERAGES').setFontWeight('bold').setFontSize(9);
     sheet.getRange(summaryRow, 2, 1, totalCols - 1).setFormulas([summaryRowFormulas]);
-    sheet.getRange(summaryRow, 1, 1, totalCols).setBackground('#E6E6E6').setFontWeight('bold');
+    sheet.getRange(summaryRow, 1, 1, totalCols)
+         .setBackground('#E6E6E6')
+         .setFontWeight('bold')
+         .setFontFamily('Montserrat')
+         .setFontSize(9)
+         .setVerticalAlignment('middle')
+         .setHorizontalAlignment('center');
+    sheet.getRange(summaryRow, 1).setHorizontalAlignment('left');
     sheet.setRowHeight(summaryRow, 24);
 
-    // 6. Formatting & Number Formats (Preserves 0.0% for Wildcard & Percentages)
+    // 6. Formatting & Number Formats
     sheet.getRange(blockStartRow, 2, totalMembers + 1, totalCols - 1)
          .setFontFamily('Montserrat')
          .setFontSize(9)
@@ -7937,37 +7949,37 @@ function matrixSheet(ss, config, memberData) {
          .setHorizontalAlignment('center')
          .setNumberFormat(sec.fmt);
 
-    if (sec.code === 'MNF') {
-      sheet.getRange(summaryRow, 2, 1, totalCols - 1).setNumberFormat('0.0%');
+    if (sec.code === 'MNF' || sec.code === 'TOT') {
+      sheet.getRange(summaryRow, 2, 1, totalCols - 1).setNumberFormat('0.0');
     }
 
-    // 7. Section-Specific Conditional Formatting
+    // 7. Conditional Formatting Rules
     const blockGridRange = sheet.getRange(blockStartRow, 3, totalMembers, weeks.length);
-    const blockSummaryColRange = sheet.getRange(blockStartRow, 2, totalMembers, 1);
+    const blockSummaryColRange = sheet.getRange(blockStartRow, 2, totalMembers + 1, 1);
     const blockSummaryRowRange = sheet.getRange(summaryRow, 3, 1, weeks.length);
 
     if (sec.code === 'TOT') {
       formatRules.push(
         SpreadsheetApp.newConditionalFormatRule()
-          .setGradientMaxpointWithValue('#75F0A1', SpreadsheetApp.InterpolationType.NUMBER, `=MAX($${startColLetter}$${blockStartRow}:$${endColLetter}$${blockEndRow})`)
-          .setGradientMidpointWithValue('#FFFFFF', SpreadsheetApp.InterpolationType.NUMBER, `=AVERAGE($${startColLetter}$${blockStartRow}:$${endColLetter}$${blockEndRow})`)
-          .setGradientMinpointWithValue('#FF9B69', SpreadsheetApp.InterpolationType.NUMBER, `=MIN($${startColLetter}$${blockStartRow}:$${endColLetter}$${blockEndRow})`)
+          .setGradientMaxpoint('#75F0A1')
+          .setGradientMidpointWithValue('#FFFFFF', SpreadsheetApp.InterpolationType.PERCENT, '50')
+          .setGradientMinpoint('#FF9B69')
           .setRanges([blockGridRange])
           .build()
       );
       formatRules.push(
         SpreadsheetApp.newConditionalFormatRule()
-          .setGradientMaxpointWithValue('#75F0A1', SpreadsheetApp.InterpolationType.NUMBER, `=MAX($B$${blockStartRow}:$B$${blockEndRow})`)
-          .setGradientMinpointWithValue('#FFFFFF', SpreadsheetApp.InterpolationType.NUMBER, `=MIN($B$${blockStartRow}:$B$${blockEndRow})`)
+          .setGradientMaxpoint('#75F0A1')
+          .setGradientMinpoint('#FFFFFF')
           .setRanges([blockSummaryColRange])
           .build()
       );
     } else if (sec.code === 'PCT') {
       formatRules.push(
         SpreadsheetApp.newConditionalFormatRule()
-          .setGradientMaxpointWithValue('#75F0A1', SpreadsheetApp.InterpolationType.NUMBER, '0.70')
-          .setGradientMidpointWithValue('#FFFFFF', SpreadsheetApp.InterpolationType.NUMBER, '0.60')
-          .setGradientMinpointWithValue('#FF9B69', SpreadsheetApp.InterpolationType.NUMBER, '0.50')
+          .setGradientMaxpoint('#75F0A1')
+          .setGradientMidpointWithValue('#FFFFFF', SpreadsheetApp.InterpolationType.PERCENT, '50')
+          .setGradientMinpoint('#FF9B69')
           .setRanges([blockGridRange, blockSummaryColRange])
           .build()
       );
@@ -7975,31 +7987,44 @@ function matrixSheet(ss, config, memberData) {
       formatRules.push(SpreadsheetApp.newConditionalFormatRule().whenNumberEqualTo(1).setBackground('#00E1FF').setFontColor('#000000').setBold(true).setRanges([blockGridRange]).build());
       formatRules.push(
         SpreadsheetApp.newConditionalFormatRule()
-          .setGradientMinpointWithValue('#5EDCFF', SpreadsheetApp.InterpolationType.NUMBER, '1')
-          .setGradientMidpointWithValue('#FFFFFF', SpreadsheetApp.InterpolationType.NUMBER, `${totalMembers / 2}`)
-          .setGradientMaxpointWithValue('#FF9B69', SpreadsheetApp.InterpolationType.NUMBER, `${totalMembers}`)
+          .setGradientMinpoint('#5EDCFF')
+          .setGradientMidpointWithValue('#FFFFFF', SpreadsheetApp.InterpolationType.PERCENT, '50')
+          .setGradientMaxpoint('#FF9B69')
           .setRanges([blockGridRange, blockSummaryColRange])
           .build()
       );
     } else if (sec.code === 'MNF') {
+      // Pick Cells
       formatRules.push(SpreadsheetApp.newConditionalFormatRule().whenNumberEqualTo(2).setBackground('#9CFFC4').setFontColor('#5CD48E').setBold(true).setRanges([blockGridRange]).build());
       formatRules.push(SpreadsheetApp.newConditionalFormatRule().whenNumberEqualTo(1).setBackground('#C9FFDF').setFontColor('#8FE4AF').setBold(true).setRanges([blockGridRange]).build());
       formatRules.push(SpreadsheetApp.newConditionalFormatRule().whenNumberEqualTo(0).setBackground('#FFCCD6').setFontColor('#E693A3').setBold(true).setRanges([blockGridRange]).build());
 
+      // Total Column Gradient (Native Red -> White -> Green Spectrum)
       formatRules.push(
         SpreadsheetApp.newConditionalFormatRule()
-          .setGradientMaxpointWithValue('#9CFFC4', SpreadsheetApp.InterpolationType.NUMBER, `=MAX($B$${blockStartRow}:$B$${blockEndRow})`)
-          .setGradientMidpointWithValue('#FFFFFF', SpreadsheetApp.InterpolationType.NUMBER, `=AVERAGE($B$${blockStartRow}:$B$${blockEndRow})`)
-          .setGradientMinpointWithValue('#FFCCD6', SpreadsheetApp.InterpolationType.NUMBER, `=MIN($B$${blockStartRow}:$B$${blockEndRow})`)
+          .setGradientMaxpoint('#9CFFC4')
+          .setGradientMidpointWithValue('#FFFFFF', SpreadsheetApp.InterpolationType.PERCENT, '50')
+          .setGradientMinpoint('#FFCCD6')
           .setRanges([blockSummaryColRange])
           .build()
       );
 
+      // Hide 0s in Summary Row
       formatRules.push(
         SpreadsheetApp.newConditionalFormatRule()
-          .setGradientMaxpointWithValue('#75F0A1', SpreadsheetApp.InterpolationType.NUMBER, '1.00')
-          .setGradientMidpointWithValue('#FFFFFF', SpreadsheetApp.InterpolationType.NUMBER, '0.50')
-          .setGradientMinpointWithValue('#FF9B69', SpreadsheetApp.InterpolationType.NUMBER, '0.00')
+          .whenNumberEqualTo(0)
+          .setBackground('#E6E6E6')
+          .setFontColor('#E6E6E6')
+          .setRanges([blockSummaryRowRange])
+          .build()
+      );
+
+      // Bottom Summary Row Gradient (Native Red -> White -> Green Spectrum)
+      formatRules.push(
+        SpreadsheetApp.newConditionalFormatRule()
+          .setGradientMaxpoint('#9CFFC4')
+          .setGradientMidpointWithValue('#FFFFFF', SpreadsheetApp.InterpolationType.PERCENT, '50')
+          .setGradientMinpoint('#FFCCD6')
           .setRanges([blockSummaryRowRange])
           .build()
       );
