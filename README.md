@@ -78,7 +78,7 @@ This newest update to version 1.2.2 includes the following new improved features
   
 ### **2. Example Form** - Screenshot of form from week 18 in 2021
 
-### **3. Setup Instructions** - create new document, create script, paste code, run initial setup
+### **3. Setup Instructions** - create new document, create script, paste code, run initial setup, and updating an existing pool to a newer version
 
 ### **4. Usage** - how to use the tool
 
@@ -202,6 +202,29 @@ Update your form to look like this, or whatever you prefer. The script will crea
 
 5. Most functions are self-explanatory, but please go to the **"Extensions" > "Apps Script" > "picks.gs"** where there are some other descriptions at the top
 
+
+-------------------------
+
+## **Updating an Existing Pool**
+
+Making a fresh copy of the template gives you the newest code but an empty pool, so existing leagues update in place instead. The script lives inside your own spreadsheet rather than in a shared library, so nothing updates on its own.
+
+**To check what you are running:** "Picks" > "Help & Support" shows the version in the corner of the dialog.
+
+**1. Save any code customizations first.** If you changed the color constants near the top of `picks.gs` (`COLOR_PRIMARY`, `COLOR_SECONDARY`, `COLOR_TERTIARY` or `pickColors`), copy them somewhere before you overwrite the file. Anything set through the "Configuration" panel is stored with the document and is not affected by an update.
+
+**2. Replace the script.** Go to **"Extensions" > "Apps Script"**, open `picks.gs`, select all, and paste in the current version from this repository. Save.
+
+**3. Add any panel files your version predates.** This is the easy step to miss: if a panel's file is missing, the menu item throws a "file not found" error the first time someone opens it. In the Apps Script editor use the **+** next to "Files" and choose "HTML", then name it exactly as listed. Apps Script adds the `.html` for you.
+
+- **1.0.5** added `scoreImport`
+- **1.2.2** added `memberDataPanel`, `survElimPanel`, and `triggerPanel`
+
+Add every file introduced *after* the version you were on. Coming from 1.1.2, for example, means adding the three files from 1.2.2.
+
+**4. Reload the spreadsheet** so the "Picks" menu rebuilds.
+
+Your members, picks, form links and configuration are stored with the document rather than in the script, so replacing the code leaves them untouched.
 
 -------------------------
 
