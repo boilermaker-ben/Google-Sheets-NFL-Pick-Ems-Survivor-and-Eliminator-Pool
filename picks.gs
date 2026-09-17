@@ -1,4 +1,4 @@
-const VERSION = '1.2.5';
+const VERSION = '1.2.6';
 /** GOOGLE SHEETS FOOTBALL PICK 'EMS, SURVIVOR, & ELIMINATOR TOOL | 2025 Edition
  * Script Library for League Creator & Management Platform
  * 09/17/2026
@@ -7253,434 +7253,514 @@ function deploySeasonSheet() {
   seasonSheet(ctx.ss, ctx.config, ctx.memberData);
   ctx.ss.toast('Season Performance sheet deployed successfully!', '🗓️ SEASON READY');
 }
+// ============================================================================================================================================
+// BASELINE TRACKING SHEETS (TOTAL, RNK, PCT, MNF)
+// ============================================================================================================================================
 
 // TOTAL Sheet Creation / Adjustment
-function totSheet(ss,memberData) {
+function totSheet(ss, memberData) {
   ss = fetchSpreadsheet(ss);
   
   let docProps;
   if (!memberData) docProps = PropertiesService.getDocumentProperties();
-  memberData = memberData || JSON.parse(docProps.getProperty('members')) || {};
-  const memberNames = memberData.memberOrder.map(id => [memberData.members[id]?.name]);
-  const totalMembers = memberNames.length;
-  
-  let sheetName = 'TOTAL';
-  let sheet = ss.getSheetByName(sheetName);
-  if (sheet == null) {
-    sheet = ss.insertSheet(sheetName);
-  }
+  memberData = memberData || JSON.parse(docProps.getProperty('members') || '{}');
+  const validMemberIds = (memberData.memberOrder || []).filter(id => memberData.members && memberData.members[id]?.name);
+  const totalMembers = validMemberIds.length;
+  if (totalMembers === 0) return null;
+
+  const memberNames = validMemberIds.map(id => [memberData.members[id].name]);
+  const sheetName = 'TOTAL';
+  let sheet = ss.getSheetByName(sheetName) || ss.insertSheet(sheetName);
 
   sheet.clear();
-  sheet.setTabColor(generalTabColor);
-  
-  let rows = totalMembers+2;
-  let maxRows = sheet.getMaxRows();
-  if (rows < maxRows) {
-    sheet.deleteRows(rows,maxRows-rows);
-  } else if (rows > maxRows){
-    sheet.insertRows(maxRows,rows-maxRows);
-  }
+  sheet.clearNotes();
+  sheet.clearConditionalFormatRules();
+  sheet.setTabColor(generalTabColor || '#AAAAAA');
 
-  maxRows = sheet.getMaxRows();
-  let maxCols = sheet.getMaxColumns();
-  const weeks = Array.from({ length: WEEKS }, (_, index) => index + 1).filter(week => !WEEKS_TO_EXCLUDE.includes(week));
-  if ( weeks.length + 2 < maxCols ) {
-    sheet.deleteColumns(weeks.length + 2,maxCols-(weeks.length + 2));
-  }
-  maxCols = sheet.getMaxColumns();
-  sheet.getRange(1,1).setValue('CORRECT');
-  sheet.getRange(1,2).setValue('TOTAL');
-  sheet.getRange(2,1).setValue('AVERAGES');
+  const weeks = Array.from({ length: WEEKS }, (_, i) => i + 1).filter(w => !WEEKS_TO_EXCLUDE.includes(w));
+  const totalCols = weeks.length + 2;
+  const totalRows = totalMembers + 2; // Header + Members + Average Row
+  const avgRow = totalRows;
 
-  for (let a = 0; a < weeks.length; a++) {
-    sheet.getRange(1, a + 3).setValue(weeks[a]);
-    sheet.setColumnWidth(a + 3, 30);
-    sheet.getRange(2, a + 3).setFormula(`=IFERROR(ARRAYFORMULA(COUNTIF(FILTER(INDIRECT("${LEAGUE}_PICKS_${weeks[a]}"), INDIRECT("NAMES_${weeks[a]}")=$A2)=INDIRECT("${LEAGUE}_PICKEM_OUTCOMES_${weeks[a]}"), TRUE)), "")`);
-  }
-  
-  let range = sheet.getRange(1,1,rows,maxCols);
-  range.setHorizontalAlignment('center').setVerticalAlignment('middle').setFontSize(10).setFontFamily("Montserrat");
-  sheet.getRange(2,1,totalMembers,1).setValues(memberNames); 
-  sheet.getRange(1,1,rows,1).setHorizontalAlignment('left');
-  sheet.setColumnWidth(1,120);
-  sheet.setColumnWidth(2,70);
-  
-  range = sheet.getRange(1,1,1,maxCols).setBackground('black').setFontColor('white');
-  
-  sheet.getRange(rows,1,1,weeks.length+2).setBackground('#e6e6e6');
-  
-  sheet.getRange(2,2,totalMembers+1,weeks.length+1).setNumberFormat('#.#');
+  adjustRows(sheet, totalRows);
+  adjustColumns(sheet, totalCols);
+
+  // Headers
+  sheet.getRange(1, 1, 1, totalCols)
+       .setValues([['CORRECT', 'TOTAL', ...weeks]])
+       .setBackground('#000000')
+       .setFontColor('#FFFFFF')
+       .setFontWeight('bold')
+       .setFontFamily('Montserrat')
+       .setFontSize(10)
+       .setHorizontalAlignment('center')
+       .setVerticalAlignment('middle');
+  sheet.getRange(1, 1).setHorizontalAlignment('left');
+
+  sheet.setRowHeight(1, 28);
+  sheet.setColumnWidth(1, 140);
+  sheet.setColumnWidth(2, 70);
+  for (let c = 3; c <= totalCols; c++) sheet.setColumnWidth(c, 36);
+
+  // Populate Members
+  sheet.getRange(2, 1, totalMembers, 1)
+       .setValues(memberNames)
+       .setFontFamily('Montserrat')
+       .setFontSize(10)
+       .setHorizontalAlignment('left')
+       .setVerticalAlignment('middle');
+
+  // Summary Row Base Setup (With Explicit Font & Alignment)
+  sheet.getRange(avgRow, 1).setValue('AVERAGES');
+  sheet.getRange(avgRow, 1, 1, totalCols)
+       .setBackground('#E6E6E6')
+       .setFontWeight('bold')
+       .setFontFamily('Montserrat')
+       .setFontSize(9)
+       .setVerticalAlignment('middle')
+       .setHorizontalAlignment('center');
+  sheet.getRange(avgRow, 1).setHorizontalAlignment('left');
+  sheet.setRowHeight(avgRow, 24);
 
   sheet.setFrozenColumns(2);
-  sheet.setFrozenRows(1); 
+  sheet.setFrozenRows(1);
 
-  // SET OVERALL NAMES Range
-  let rangeOverallTotNames = sheet.getRange(2, 1, totalMembers, 1);
-  ss.setNamedRange('TOT_OVERALL_NAMES', rangeOverallTotNames);   
-  
-  let rangeOverallTot = sheet.getRange(2, 2, totalMembers, 1);
-  ss.setNamedRange('TOT_OVERALL', rangeOverallTot);
+  // Named Ranges (Strictly totalMembers in height)
+  ss.setNamedRange('TOT_OVERALL_NAMES', sheet.getRange(2, 1, totalMembers, 1));
+  ss.setNamedRange('TOT_OVERALL', sheet.getRange(2, 2, totalMembers, 1));
+  ss.setNamedRange('TOT_WEEKLY', sheet.getRange(2, 3, totalMembers, weeks.length));
 
-  let rangeWeekly = sheet.getRange(2, 3, totalMembers, weeks.length);
-  ss.setNamedRange('TOT_WEEKLY', rangeWeekly);
-  
-  // CONDITIONAL FORMATTING
-  sheet.clearConditionalFormatRules(); 
+  // Populate Formulas
+  overallPrimaryFormulas(sheet, totalMembers, totalCols, 'sum', true);
+  overallMainFormulas(weeks, sheet, totalMembers, 'TOT', true);
+
+  // Number Formatting
+  sheet.getRange(2, 2, totalMembers, totalCols - 1)
+       .setFontFamily('Montserrat')
+       .setFontSize(9)
+       .setVerticalAlignment('middle')
+       .setHorizontalAlignment('center')
+       .setNumberFormat('0');
+  sheet.getRange(avgRow, 2, 1, totalCols - 1).setNumberFormat('0.0');
+
+  // Conditional Formatting
+  const weeklyGrid = sheet.getRange(2, 3, totalMembers, weeks.length);
+  const totalCol = sheet.getRange(2, 2, totalMembers + 1, 1);
+  const avgRowRange = sheet.getRange(avgRow, 3, 1, weeks.length);
+
   sheet.setConditionalFormatRules([
+    // Weekly Winner Highlight (Bold Green)
     SpreadsheetApp.newConditionalFormatRule()
-      .whenFormulaSatisfied('=and(indirect(\"R[0]C[0]\",false)>0,indirect(\"R[0]C[0]\",false)=max(indirect(\"R2C[0]:R'+maxRows+'C[0]\",false)))')
+      .whenFormulaSatisfied(`=AND(ISNUMBER(C2), C2>0, C2=MAX(C$2:C$${totalMembers + 1}))`)
       .setBackground('#75F0A1')
+      .setFontColor('#000000')
       .setBold(true)
-      .setRanges([rangeWeekly])
+      .setRanges([weeklyGrid])
       .build(),
+    // Season Total Column Gradient (Green -> White -> Orange)
     SpreadsheetApp.newConditionalFormatRule()
-      .setGradientMaxpointWithValue("#75F0A1", SpreadsheetApp.InterpolationType.NUMBER, '=max(indirect("TOT_OVERALL"))') // Max value of all correct picks
-      .setGradientMidpointWithValue("#FFFFFF", SpreadsheetApp.InterpolationType.NUMBER, '=average(indirect("TOT_OVERALL"))') // Generates Median Value
-      .setGradientMinpointWithValue("#FF9B69", SpreadsheetApp.InterpolationType.NUMBER, '=min(indirect("TOT_OVERALL"))') // Min value of all correct picks
-      .setRanges([rangeOverallTot])
+      .setGradientMaxpoint('#75F0A1')
+      .setGradientMidpointWithValue('#FFFFFF', SpreadsheetApp.InterpolationType.PERCENT, '50')
+      .setGradientMinpoint('#FF9B69')
+      .setRanges([totalCol])
       .build(),
+    // Weekly Score Heatmap (Green -> White -> Orange)
     SpreadsheetApp.newConditionalFormatRule()
-      .setGradientMaxpointWithValue("#75F0A1", SpreadsheetApp.InterpolationType.NUMBER, "15")
-      .setGradientMidpointWithValue("#FFFFFF", SpreadsheetApp.InterpolationType.NUMBER, "10")
-      .setGradientMinpointWithValue("#FF9B69", SpreadsheetApp.InterpolationType.NUMBER, "5")
-      .setRanges([rangeWeekly])
+      .setGradientMaxpoint('#75F0A1')
+      .setGradientMidpointWithValue('#FFFFFF', SpreadsheetApp.InterpolationType.PERCENT, '50')
+      .setGradientMinpoint('#FF9B69')
+      .setRanges([weeklyGrid])
+      .build(),
+    // Summary Row Gradient across weekly group averages
+    SpreadsheetApp.newConditionalFormatRule()
+      .setGradientMaxpoint('#75F0A1')
+      .setGradientMidpointWithValue('#FFFFFF', SpreadsheetApp.InterpolationType.PERCENT, '50')
+      .setGradientMinpoint('#FF9B69')
+      .setRanges([avgRowRange])
       .build()
   ]);
-  
-  overallPrimaryFormulas(sheet,totalMembers,maxCols,'sum',true);
-  overallMainFormulas(weeks,sheet,totalMembers,'TOT',true);
-  
-  return sheet;  
+
+  Logger.log('⭐ TOTAL sheet successfully created.');
+  return sheet;
 }
 
 // RNK Sheet Creation / Adjustment
-function rnkSheet(ss,memberData) {
+function rnkSheet(ss, memberData) {
   ss = fetchSpreadsheet(ss);
   
   let docProps;
   if (!memberData) docProps = PropertiesService.getDocumentProperties();
-  memberData = memberData || JSON.parse(docProps.getProperty('members')) || {};
-  const memberNames = memberData.memberOrder.map(id => [memberData.members[id]?.name]);
-  const totalMembers = memberNames.length;
+  memberData = memberData || JSON.parse(docProps.getProperty('members') || '{}');
+  const validMemberIds = (memberData.memberOrder || []).filter(id => memberData.members && memberData.members[id]?.name);
+  const totalMembers = validMemberIds.length;
+  if (totalMembers === 0) return null;
 
-  let sheetName = 'RNK';
-  let sheet = ss.getSheetByName(sheetName);
-  if (sheet == null) {
-    ss.insertSheet(sheetName);
-    sheet = ss.getSheetByName(sheetName);
-  }
+  const memberNames = validMemberIds.map(id => [memberData.members[id].name]);
+  const sheetName = 'RNK';
+  let sheet = ss.getSheetByName(sheetName) || ss.insertSheet(sheetName);
+
   sheet.clear();
-  sheet.setTabColor(generalTabColor);
+  sheet.clearNotes();
+  sheet.clearConditionalFormatRules();
+  sheet.setTabColor(generalTabColor || '#AAAAAA');
 
-  let rows = totalMembers + 1;
-  let maxRows = sheet.getMaxRows();
-  if (rows < maxRows) {
-    sheet.deleteRows(rows,maxRows-rows);
-  } else if (rows > maxRows){
-    sheet.insertRows(maxRows,rows-maxRows);
-  }
-  maxRows = sheet.getMaxRows();
-  let maxCols = sheet.getMaxColumns();
-  const weeks = Array.from({ length: WEEKS }, (_, index) => index + 1).filter(week => !WEEKS_TO_EXCLUDE.includes(week));
-  if ( weeks.length + 2 < maxCols ) {
-    sheet.deleteColumns(weeks.length + 2,maxCols-(weeks.length + 2));
-  }
-  maxCols = sheet.getMaxColumns();
-  sheet.getRange(1,1).setValue('RANKS');
-  sheet.getRange(1,2).setValue('AVERAGE');
+  const weeks = Array.from({ length: WEEKS }, (_, i) => i + 1).filter(w => !WEEKS_TO_EXCLUDE.includes(w));
+  const totalCols = weeks.length + 2;
+  const totalRows = totalMembers + 1;
 
-  for ( let a = 0; a < weeks.length; a++ ) {
-    sheet.getRange(1,a+3).setValue(weeks[a]);
-    sheet.setColumnWidth(a+3,48);
-  }
-    
-  let range = sheet.getRange(1,1,rows,maxCols);
-  range.setHorizontalAlignment('center');
-  range.setVerticalAlignment('middle');
-  range.setFontFamily("Montserrat");
-  range.setFontSize(10);
-  sheet.getRange(2,1,totalMembers,1).setValues(memberNames); 
-  sheet.getRange(1,1,totalMembers+1,1).setHorizontalAlignment('left');
-  sheet.setColumnWidth(1,120);
-  sheet.setColumnWidth(2,70);
-  
-  range = sheet.getRange(1,1,1,maxCols);
-  range.setBackground('black');
-  range.setFontColor('white');
-  
+  adjustRows(sheet, totalRows);
+  adjustColumns(sheet, totalCols);
+
+  // Headers
+  sheet.getRange(1, 1, 1, totalCols)
+       .setValues([['RANKS', 'AVERAGE', ...weeks]])
+       .setBackground('#000000')
+       .setFontColor('#FFFFFF')
+       .setFontWeight('bold')
+       .setFontFamily('Montserrat')
+       .setFontSize(10)
+       .setHorizontalAlignment('center')
+       .setVerticalAlignment('middle');
+  sheet.getRange(1, 1).setHorizontalAlignment('left');
+
+  sheet.setRowHeight(1, 28);
+  sheet.setColumnWidth(1, 140);
+  sheet.setColumnWidth(2, 70);
+  for (let c = 3; c <= totalCols; c++) sheet.setColumnWidth(c, 48);
+
+  // Populate Members
+  sheet.getRange(2, 1, totalMembers, 1)
+       .setValues(memberNames)
+       .setFontFamily('Montserrat')
+       .setFontSize(10)
+       .setHorizontalAlignment('left')
+       .setVerticalAlignment('middle');
+
   sheet.setFrozenColumns(2);
   sheet.setFrozenRows(1);
 
-  // SET OVERALL RANK NAMES Range
-  let rangeOverallTotRnkNames = sheet.getRange('R2C1:R'+rows+'C1');
-  ss.setNamedRange('TOT_OVERALL_RNK_NAMES',rangeOverallTotRnkNames);  
-  sheet.clearConditionalFormatRules(); 
-  // RANKS TOTAL GRADIENT RULE
-  let rangeOverallRankTot = sheet.getRange('R2C2:R'+rows+'C2');
-  ss.setNamedRange('TOT_OVERALL_RANK',rangeOverallRankTot);
-  let formatRuleOverallTot = SpreadsheetApp.newConditionalFormatRule()
-    .setGradientMaxpointWithValue("#FF9B69", SpreadsheetApp.InterpolationType.NUMBER, '=counta(indirect("MEMBERS"))')
-    .setGradientMidpointWithValue("#FFFFFF", SpreadsheetApp.InterpolationType.NUMBER, '=counta(indirect("MEMBERS"))/2')
-    .setGradientMinpointWithValue("#5EDCFF", SpreadsheetApp.InterpolationType.NUMBER, 1)
-    .setRanges([rangeOverallRankTot])
-    .build();
-  // RANKS SHEET GRADIENT RULE
-  range = sheet.getRange('R2C3:R'+rows+'C'+(weeks.length+2));
-  ss.setNamedRange('TOT_WEEKLY_RANK',range);
-  let formatRuleOverallWinner = SpreadsheetApp.newConditionalFormatRule()
-    .whenNumberEqualTo(1)
-    .setBackground('#00E1FF')
-    .setBold(true)
-    .setRanges([range])
-    .build();
-  let formatRuleOverall = SpreadsheetApp.newConditionalFormatRule()
-    .setGradientMaxpointWithValue("#FF9B69", SpreadsheetApp.InterpolationType.NUMBER, '=counta(indirect("MEMBERS"))')
-    .setGradientMidpointWithValue("#FFFFFF", SpreadsheetApp.InterpolationType.NUMBER, '=counta(indirect("MEMBERS"))/2')
-    .setGradientMinpointWithValue("#5EDCFF", SpreadsheetApp.InterpolationType.NUMBER, 1)
-    .setRanges([range])
-    .build();
-  let formatRules = sheet.getConditionalFormatRules();
-  formatRules.push(formatRuleOverallWinner);
-  formatRules.push(formatRuleOverall);
-  formatRules.push(formatRuleOverallTot);
-  sheet.setConditionalFormatRules(formatRules);
-  
-  overallPrimaryFormulas(sheet,totalMembers,maxCols,'average',false);
-  overallMainFormulas(weeks,sheet,totalMembers,'RNK',false);
-  
-  return sheet;  
+  // Named Ranges (Strictly totalMembers in height)
+  ss.setNamedRange('TOT_OVERALL_RNK_NAMES', sheet.getRange(2, 1, totalMembers, 1));
+  ss.setNamedRange('TOT_OVERALL_RANK', sheet.getRange(2, 2, totalMembers, 1));
+  ss.setNamedRange('TOT_WEEKLY_RANK', sheet.getRange(2, 3, totalMembers, weeks.length));
+
+  // Populate Formulas
+  overallPrimaryFormulas(sheet, totalMembers, totalCols, 'average', false);
+  overallMainFormulas(weeks, sheet, totalMembers, 'RNK', false);
+
+  // Formatting
+  sheet.getRange(2, 2, totalMembers, totalCols - 1)
+       .setFontFamily('Montserrat')
+       .setFontSize(9)
+       .setVerticalAlignment('middle')
+       .setHorizontalAlignment('center');
+  sheet.getRange(2, 2, totalMembers, 1).setNumberFormat('0.0');
+  sheet.getRange(2, 3, totalMembers, weeks.length).setNumberFormat('0');
+
+  // Conditional Formatting
+  const weeklyGrid = sheet.getRange(2, 3, totalMembers, weeks.length);
+  const avgCol = sheet.getRange(2, 2, totalMembers, 1);
+
+  sheet.setConditionalFormatRules([
+    SpreadsheetApp.newConditionalFormatRule().whenNumberEqualTo(1).setBackground('#00B4E9').setFontColor('#000000').setBold(true).setUnderline(true).setRanges([weeklyGrid]).build(),
+    // Avg Col
+    SpreadsheetApp.newConditionalFormatRule()
+      .setGradientMinpoint('#00B4E9')
+      .setGradientMidpointWithValue('#FFFFFF', SpreadsheetApp.InterpolationType.PERCENTILE, '50')
+      .setGradientMaxpoint('#FF9B69')
+      .setRanges([avgCol])
+      .build(),
+    // Main Grid
+    SpreadsheetApp.newConditionalFormatRule()
+      .setGradientMinpoint('#5EDCFF')
+      .setGradientMidpointWithValue('#FFFFFF', SpreadsheetApp.InterpolationType.PERCENTILE, '50')
+      .setGradientMaxpoint('#FF9B69')
+      .setRanges([weeklyGrid])
+      .build()
+  ]);
+
+  Logger.log('🥇 RNK sheet successfully created.');
+  return sheet;
 }
 
 // PCT Sheet Creation / Adjustment
-function pctSheet(ss,memberData) {
+function pctSheet(ss, memberData) {
   ss = fetchSpreadsheet(ss);
 
   let docProps;
   if (!memberData) docProps = PropertiesService.getDocumentProperties();
-  memberData = memberData || JSON.parse(docProps.getProperty('members')) || {};
-  const memberNames = memberData.memberOrder.map(id => [memberData.members[id]?.name]);
-  const totalMembers = memberNames.length;
+  memberData = memberData || JSON.parse(docProps.getProperty('members') || '{}');
+  const validMemberIds = (memberData.memberOrder || []).filter(id => memberData.members && memberData.members[id]?.name);
+  const totalMembers = validMemberIds.length;
+  if (totalMembers === 0) return null;
 
+  const memberNames = validMemberIds.map(id => [memberData.members[id].name]);
   const sheetName = 'PCT';
-  const sheet = ss.getSheetByName(sheetName) || ss.insertSheet(sheetName);
+  let sheet = ss.getSheetByName(sheetName) || ss.insertSheet(sheetName);
 
   sheet.clear();
-  sheet.setTabColor(generalTabColor);
-  
-  let rows = totalMembers+2; // 2 additional rows
-  let maxRows = sheet.getMaxRows();
-  if (rows < maxRows) {
-    sheet.deleteRows(rows,maxRows-rows);
-  } else if (rows > maxRows){
-    sheet.insertRows(maxRows,rows-maxRows);
-  }
-  maxRows = sheet.getMaxRows();
-  let maxCols = sheet.getMaxColumns();
-  const weeks = Array.from({ length: WEEKS }, (_, index) => index + 1).filter(week => !WEEKS_TO_EXCLUDE.includes(week));
-  if ( weeks.length + 2 < maxCols ) {
-    sheet.deleteColumns(weeks.length + 2,maxCols-(weeks.length + 2));
-  }
-  maxCols = sheet.getMaxColumns();
-  sheet.getRange(1,1,1,2).setValues([['PERCENTAGES','AVERAGE']]);
-  sheet.getRange(rows,1).setValue('AVERAGES');
-  
-  for ( let a = 0; a < weeks.length; a++ ) {
-    sheet.getRange(1,a+3).setValue(weeks[a]);
-    sheet.setColumnWidth(a+3,48);
-  }
-  
-  let range = sheet.getRange(1,1,rows,maxCols);
-  range.setHorizontalAlignment('center').setVerticalAlignment('middle').setFontFamily("Montserrat").setFontSize(10);
-  sheet.getRange(2,1,totalMembers,1).setValues(memberNames); 
-  sheet.getRange(1,1,rows,1).setHorizontalAlignment('left');
-  sheet.setColumnWidth(1,120);
-  sheet.setColumnWidth(2,70);
-  
-  range = sheet.getRange(1,1,1,maxCols).setBackground('black').setFontColor('white');
-  sheet.getRange(rows,1,1,weeks.length+2).setBackground('#e6e6e6'); 
+  sheet.clearNotes();
+  sheet.clearConditionalFormatRules();
+  sheet.setTabColor(generalTabColor || '#AAAAAA');
 
-  sheet.getRange(2,2,totalMembers+1,1).setNumberFormat("##.#%");  
+  const weeks = Array.from({ length: WEEKS }, (_, i) => i + 1).filter(w => !WEEKS_TO_EXCLUDE.includes(w));
+  const totalCols = weeks.length + 2;
+  const totalRows = totalMembers + 2;
+  const avgRow = totalRows;
+
+  adjustRows(sheet, totalRows);
+  adjustColumns(sheet, totalCols);
+
+  // Headers
+  sheet.getRange(1, 1, 1, totalCols)
+       .setValues([['PERCENTAGES', 'AVERAGE', ...weeks]])
+       .setBackground('#000000')
+       .setFontColor('#FFFFFF')
+       .setFontWeight('bold')
+       .setFontFamily('Montserrat')
+       .setFontSize(10)
+       .setHorizontalAlignment('center')
+       .setVerticalAlignment('middle');
+  sheet.getRange(1, 1).setHorizontalAlignment('left');
+
+  sheet.setRowHeight(1, 28);
+  sheet.setColumnWidth(1, 140);
+  sheet.setColumnWidth(2, 75);
+  for (let c = 3; c <= totalCols; c++) sheet.setColumnWidth(c, 48);
+
+  // Populate Members
+  sheet.getRange(2, 1, totalMembers, 1)
+       .setValues(memberNames)
+       .setFontFamily('Montserrat')
+       .setFontSize(10)
+       .setHorizontalAlignment('left')
+       .setVerticalAlignment('middle');
+
+  // Summary Row Base Setup (Explicit Font & Alignment)
+  sheet.getRange(avgRow, 1).setValue('AVERAGES');
+  sheet.getRange(avgRow, 1, 1, totalCols)
+       .setBackground('#E6E6E6')
+       .setFontWeight('bold')
+       .setFontFamily('Montserrat')
+       .setFontSize(9)
+       .setVerticalAlignment('middle')
+       .setHorizontalAlignment('center');
+  sheet.getRange(avgRow, 1).setHorizontalAlignment('left');
+  sheet.setRowHeight(avgRow, 24);
+
   sheet.setFrozenColumns(2);
   sheet.setFrozenRows(1);
 
-  // SET OVERALL PCT NAMES Range
-  ss.setNamedRange('TOT_OVERALL_PCT_NAMES',sheet.getRange(`R2C1:R${rows-1}C1`));
-  ss.setNamedRange('TOT_OVERALL_PCT',sheet.getRange(`R2C2:R${rows-1}C2`));
-  ss.setNamedRange('TOT_WEEKLY_PCT',sheet.getRange(`R2C3:R${rows-1}C${weeks.length+2}`));
-  
-  // PCT SHEET GRADIENT RULE
-  sheet.clearConditionalFormatRules();
+  // Named Ranges (Strictly totalMembers in height)
+  ss.setNamedRange('TOT_OVERALL_PCT_NAMES', sheet.getRange(2, 1, totalMembers, 1));
+  ss.setNamedRange('TOT_OVERALL_PCT', sheet.getRange(2, 2, totalMembers, 1));
+  ss.setNamedRange('TOT_WEEKLY_PCT', sheet.getRange(2, 3, totalMembers, weeks.length));
+
+  // Populate Formulas
+  overallPrimaryFormulas(sheet, totalMembers, totalCols, 'average', true);
+  overallMainFormulas(weeks, sheet, totalMembers, 'PCT', true);
+
+  // Formatting & Number Formats
+  sheet.getRange(2, 2, totalMembers + 1, totalCols - 1)
+       .setFontFamily('Montserrat')
+       .setFontSize(9)
+       .setVerticalAlignment('middle')
+       .setHorizontalAlignment('center')
+       .setNumberFormat('0.0%');
+
+  // Conditional Formatting
+  const weeklyGrid = sheet.getRange(2, 3, totalMembers, weeks.length);
+  const avgCol = sheet.getRange(2, 2, totalMembers+1, 1);
+  const avgRowRange = sheet.getRange(avgRow, 3, 1, weeks.length);
+
   sheet.setConditionalFormatRules([
-    // Highlight column leader
     SpreadsheetApp.newConditionalFormatRule()
-      .whenFormulaSatisfied(`=and(indirect("R[0]C[0]",false)>0,indirect("R[0]C[0]",false)=max(indirect("R2C[0]:R${maxRows}C[0]",false)))`)
+      .whenFormulaSatisfied(`=AND(ISNUMBER(C2), C2>0, C2=MAX(C$2:C$${totalMembers + 1}))`)
       .setBackground('#75F0A1')
+      .setFontColor('#000000')
       .setBold(true)
-      .setRanges([sheet.getRange(`R2C3:R${rows}C${weeks.length+2}`)])
+      .setRanges([weeklyGrid])
       .build(),
-    // Weekly Averages Rule
+    // Player Grid Gradient
     SpreadsheetApp.newConditionalFormatRule()
-      .setGradientMaxpointWithValue("#75F0A1", SpreadsheetApp.InterpolationType.NUMBER, "1")
-      .setGradientMidpointWithValue("#FFFFFF", SpreadsheetApp.InterpolationType.NUMBER, "0.5")
-      .setGradientMinpointWithValue("#FF9B69", SpreadsheetApp.InterpolationType.NUMBER, "0")
-      .setRanges([sheet.getRange(`R2C3:R${rows}C${weeks.length+2}`)])
+      .setGradientMaxpoint('#75F0A1')
+      .setGradientMidpointWithValue('#FFFFFF', SpreadsheetApp.InterpolationType.PERCENT, '50')
+      .setGradientMinpoint('#FF9B69')
+      .setRanges([weeklyGrid])
       .build(),
-    // Averages Rule
+    // Average Column Gradient
     SpreadsheetApp.newConditionalFormatRule()
-      .setGradientMaxpointWithValue("#75F0A1", SpreadsheetApp.InterpolationType.NUMBER, '=max(indirect("TOT_OVERALL_PCT"))') // Max value of all correct picks
-      .setGradientMidpointWithValue("#FFFFFF", SpreadsheetApp.InterpolationType.NUMBER, '=average(indirect("TOT_OVERALL_PCT"))') // Generates Median Value
-      .setGradientMinpointWithValue("#FF9B69", SpreadsheetApp.InterpolationType.NUMBER, '=min(indirect("TOT_OVERALL_PCT"))') // Min value of all correct picks  
-      .setRanges([sheet.getRange('R2C2:R'+rows+'C2')])
+      .setGradientMaxpoint('#75F0A1')
+      .setGradientMidpointWithValue('#FFFFFF', SpreadsheetApp.InterpolationType.PERCENT, '50')
+      .setGradientMinpoint('#FF9B69')
+      .setRanges([avgCol])
+      .build(),
+    // Summary Row Gradient
+    SpreadsheetApp.newConditionalFormatRule()
+      .setGradientMaxpoint('#75F0A1')
+      .setGradientMidpointWithValue('#FFFFFF', SpreadsheetApp.InterpolationType.PERCENT, '50')
+      .setGradientMinpoint('#FF9B69')
+      .setRanges([avgRowRange])
       .build()
   ]);
 
-  overallPrimaryFormulas(sheet,totalMembers,maxCols,'average',true);
-  overallMainFormulas(weeks,sheet,totalMembers,'PCT',true);
-
-  return sheet;  
+  Logger.log('💯 PCT sheet successfully created.');
+  return sheet;
 }
 
 // MNF Sheet Creation / Adjustment
-function mnfSheet(ss,memberData) {
+function mnfSheet(ss, memberData) {
   ss = fetchSpreadsheet(ss);
 
   let docProps;
   if (!memberData) docProps = PropertiesService.getDocumentProperties();
-  memberData = memberData || JSON.parse(docProps.getProperty('members')) || {};
-  const memberNames = memberData.memberOrder.map(id => [memberData.members[id]?.name]);
-  const totalMembers = memberNames.length;
+  memberData = memberData || JSON.parse(docProps.getProperty('members') || '{}');
+  const validMemberIds = (memberData.memberOrder || []).filter(id => memberData.members && memberData.members[id]?.name);
+  const totalMembers = validMemberIds.length;
+  if (totalMembers === 0) return null;
 
+  const memberNames = validMemberIds.map(id => [memberData.members[id].name]);
   const sheetName = 'MNF';
   const sheet = ss.getSheetByName(sheetName) || ss.insertSheet(sheetName);
+
   sheet.clear();
-  sheet.setTabColor(generalTabColor);
-  const weeks = Array.from({ length: WEEKS }, (_, index) => index + 1).filter(week => !WEEKS_TO_EXCLUDE.includes(week));
+  sheet.clearNotes();
+  sheet.clearConditionalFormatRules();
+  sheet.setTabColor(generalTabColor || '#AAAAAA');
 
-  Logger.log(`📡 Checking for Monday games, if any`);
-  let data = ss.getRangeByName(LEAGUE).getValues();
-  let text = '0';
-  let result = text.repeat(weeks.length);
-  let mondayNightGames = Array.from(result);
-  for (let a = 0; a < data.length; a++) {
-    if ( data[a][2] == 1 && data[a][3] >= 17) {
-      mondayNightGames[(data[a][0]-1)]++;
+  const weeks = Array.from({ length: WEEKS }, (_, i) => i + 1).filter(w => !WEEKS_TO_EXCLUDE.includes(w));
+  const totalCols = weeks.length + 2;
+  const totalRows = totalMembers + 2;
+  const avgRow = totalRows;
+
+  adjustRows(sheet, totalRows);
+  adjustColumns(sheet, totalCols);
+
+  // Precalculate MNF game counts for header notes
+  let mondayNightGamesSum = 0;
+  let mondayNightGames = Array(weeks.length).fill(1);
+  try {
+    const schedData = ss.getRangeByName(LEAGUE)?.getValues() || [];
+    const counts = Array(WEEKS + 1).fill(0);
+    for (let i = 0; i < schedData.length; i++) {
+      if (schedData[i][2] == 1 && schedData[i][3] >= 17) counts[schedData[i][0]]++;
     }
+    mondayNightGamesSum = counts.flat().reduce((accumulator, current) => accumulator + current, 0);
+    Logger.log(`🌙 ${mondayNightGamesSum} MNF Games [array]: ${counts}`);
+    mondayNightGames = weeks.map(w => counts[w] || 0);
+  } catch (e) {
+    Logger.log(`⚠️ Issue collecting MNF game counts`)
   }
-  let rows = totalMembers + 2; // AustinOrphan's suggestion!
-  let maxRows = sheet.getMaxRows();
-  if (rows < maxRows) {
-    sheet.deleteRows(rows,maxRows-rows);
-  } else if (rows > maxRows){
-    sheet.insertRows(maxRows,rows-maxRows);
-  }
-  maxRows = sheet.getMaxRows();
-  let maxCols = sheet.getMaxColumns();
-  if ( weeks.length + 2 < maxCols ) {
-    sheet.deleteColumns(weeks.length + 2,maxCols-(weeks.length + 2));
-  }
-  maxCols = sheet.getMaxColumns();
-  sheet.getRange(1,1,1,2).setValues([['CORRECT','TOTAL']]);
-  sheet.getRange(rows,1).setValue('AVERAGES');
 
-  let range = sheet.getRange(1,1,rows,maxCols).setHorizontalAlignment('center').setVerticalAlignment('middle').setFontFamily("Montserrat").setFontSize(10);
-  sheet.getRange(2,1,totalMembers,1).setValues(memberNames); 
-  sheet.getRange(1,1,rows,1).setHorizontalAlignment('left');
-  sheet.setColumnWidth(1,120);
-  sheet.setColumnWidth(2,70);
+  // Headers
+  sheet.getRange(1, 1, 1, totalCols)
+       .setValues([['MNF RECORD', 'TOTAL', ...weeks]])
+       .setBackground('#000000')
+       .setFontColor('#FFFFFF')
+       .setFontWeight('bold')
+       .setFontFamily('Montserrat')
+       .setFontSize(10)
+       .setHorizontalAlignment('center')
+       .setVerticalAlignment('middle');
+  sheet.getRange(1, 1).setHorizontalAlignment('left');
 
-  sheet.getRange(1,1,1,maxCols).setBackground('black').setFontColor('white');
-  sheet.getRange(rows,1,1,weeks.length+2).setBackground('#e6e6e6'); 
   
-  let headers = [];
-  for ( let a = 0; a < weeks.length; a++ ) {
-    if (mondayNightGames[a] == 2) {
-      range = sheet.getRange(1,a+3);
-      range.setNote('Two MNF Games')
-        .setFontWeight('bold')
-        .setBackground('#555555');
-    } else if (mondayNightGames[a] == 3) {
-      range = sheet.getRange(1,a+3);
-      range.setNote('Three MNF Games')
-        .setFontWeight('bold')
-        .setBackground('#999999');
-    } else if (mondayNightGames[a] == 4) {
-      range = sheet.getRange(1,a+3);
-      range.setNote('Four MNF Games')
-        .setFontWeight('bold')
-        .setBackground('#CCCCCC');
-    } else if (mondayNightGames[a] >= 4) {
-      range = sheet.getRange(1,a+3);
-      range.setNote(mondayNightGames[a] + ' MNF Games')
-        .setFontWeight('bold')
-        .setFontColor('black')
-        .setBackground('#FFFFFF');
+  sheet.setRowHeight(1, 28);
+  sheet.setColumnWidth(1, 140);
+  sheet.setColumnWidth(2, 70);
+  for (let c = 3; c <= totalCols; c++) {
+    sheet.setColumnWidth(c, 36);
+    const gCount = mondayNightGames[c - 3];
+    if (gCount > 1) {
+      sheet.getRange(1, c).setNote(`${gCount} MNF Games this week`);
     }
-    sheet.setColumnWidth(a+3,30);
-    headers.push(weeks[a]);
   }
-  sheet.getRange(1,3,1,weeks.length).setValues([headers]);
+
+  // Add grayed background to week columns where no MNF games exist
+  if (mondayNightGames.indexOf(1) >= 0 || mondayNightGames.indexOf(2) >= 0) {
+    for (let a = 0; a < mondayNightGames.length; a++) {
+      if (mondayNightGames[a] == 0) {
+        sheet.getRange(1,a+3).setNote('No MNF Game').setFontColor('#999999');
+        sheet.getRange(2,a+3, totalMembers, 1).setBackground('#EFEFEF');
+      }
+    }
+  }
+
+  // Populate Members
+  sheet.getRange(2, 1, totalMembers, 1)
+       .setValues(memberNames)
+       .setFontFamily('Montserrat')
+       .setFontSize(10)
+       .setHorizontalAlignment('left')
+       .setVerticalAlignment('middle');
+
+  // Summary Row Base Setup (Explicit Font & Alignment)
+  sheet.getRange(avgRow, 1).setValue('AVERAGES');
+  sheet.getRange(avgRow, 1, 1, totalCols)
+       .setBackground('#E6E6E6')
+       .setFontWeight('bold')
+       .setFontFamily('Montserrat')
+       .setFontSize(9)
+       .setVerticalAlignment('middle')
+       .setHorizontalAlignment('center');
+  sheet.getRange(avgRow, 1).setHorizontalAlignment('left');
+  sheet.setRowHeight(avgRow, 24);
 
   sheet.setFrozenColumns(2);
-  sheet.setFrozenRows(1); 
+  sheet.setFrozenRows(1);
 
-  sheet.clearConditionalFormatRules(); 
+  // Named Ranges (Strictly totalMembers in height)
+  ss.setNamedRange('MNF_NAMES', sheet.getRange(2, 1, totalMembers, 1));
+  ss.setNamedRange('MNF', sheet.getRange(2, 2, totalMembers, 1));
+  ss.setNamedRange('MNF_WEEKLY', sheet.getRange(2, 3, totalMembers, weeks.length));
 
-  // SET MNF NAMES Range
-  const rangeWeekly = sheet.getRange(`R2C3:R${rows-1}C${weeks.length+2}`);
-  ss.setNamedRange('MNF_WEEKLY',rangeWeekly);
-  const rangeMnfTot = sheet.getRange(`R2C2:R${rows-1}C2`);
-  ss.setNamedRange('MNF',rangeMnfTot);
-  const rangeMnfNames = sheet.getRange(`R2C1:R${rows-1}C1`);
-  ss.setNamedRange('MNF_NAMES',rangeMnfNames); 
-  const rangeMnfAvg = sheet.getRange(`R${rows}C2:R${rows}C${weeks.length+2}`);
+  // Populate Formulas
+  overallPrimaryFormulas(sheet, totalMembers, totalCols, 'sum', true);
+  overallMainFormulas(weeks, sheet, totalMembers, 'MNF', true);
 
-  // MNF SHEET GRADIENT RULES
+  // Number Formatting
+  sheet.getRange(2, 2, totalMembers, totalCols - 1)
+       .setFontFamily('Montserrat')
+       .setFontSize(9)
+       .setVerticalAlignment('middle')
+       .setHorizontalAlignment('center')
+       .setNumberFormat('0');
+  sheet.getRange(avgRow, 2, 1, totalCols - 1).setNumberFormat('0.0');
+
+  // Conditional Formatting
+  const weeklyGrid = sheet.getRange(2, 3, totalMembers, weeks.length);
+  const totalCol = sheet.getRange(2, 2, totalMembers + 1, 1);
+  const avgRowRange = sheet.getRange(avgRow, 3, 1, weeks.length);
+
   sheet.setConditionalFormatRules([
-    // Two Correct Coloration
+    SpreadsheetApp.newConditionalFormatRule().whenNumberEqualTo(2).setBackground('#9CFFC4').setFontColor('#5CD48E').setBold(true).setRanges([weeklyGrid]).build(),
+    SpreadsheetApp.newConditionalFormatRule().whenNumberEqualTo(1).setBackground('#C9FFDF').setFontColor('#8FE4AF').setBold(true).setRanges([weeklyGrid]).build(),
+    SpreadsheetApp.newConditionalFormatRule().whenNumberEqualTo(0).setBackground('#FFCCD6').setFontColor('#E693A3').setBold(true).setRanges([weeklyGrid]).build(),
+    // Total Column Gradient (Red Min -> White Mid -> Green Max)
     SpreadsheetApp.newConditionalFormatRule()
-      .whenNumberEqualTo(2)
-      .setBackground('#9CFFC4')
-      .setFontColor('#9CFFC4')
-      .setBold(true)
-      .setRanges([rangeWeekly])
+      .setGradientMaxpoint('#9CFFC4')
+      .setGradientMidpointWithValue('#FFFFFF', SpreadsheetApp.InterpolationType.PERCENTILE, '50')
+      .setGradientMinpoint('#FFCCD6')
+      .setRanges([totalCol])
       .build(),
-    // One Correct Coloration
+    // Don't show 0s
+    SpreadsheetApp.newConditionalFormatRule().whenNumberEqualTo(0).setBackground('#e6e6e6').setFontColor('#e6e6e6').setRanges([avgRowRange]).build(),
+    // Bottom Summary Row Gradient (Red Min -> White Mid -> Green Max across weekly pool win %)
     SpreadsheetApp.newConditionalFormatRule()
-      .whenNumberEqualTo(1)
-      .setBackground('#C9FFDF')
-      .setFontColor('#C9FFDF')
-      .setBold(true)
-      .setRanges([rangeWeekly])
-      .build(),
-    // Incorrect Coloration
-    SpreadsheetApp.newConditionalFormatRule()
-      .whenNumberEqualTo(0)
-      .setBackground('#FFC4CA')
-      .setFontColor('#FFC4CA')
-      .setBold(true)
-      .setRanges([rangeWeekly])
-      .build(),
-    // MNF TOTAL GRADIENT RULE    
-    SpreadsheetApp.newConditionalFormatRule()
-      .setGradientMaxpointWithValue("#C9FFDF", SpreadsheetApp.InterpolationType.NUMBER, '=max(indirect("MNF"))') // Max value of all correct picks
-      .setGradientMidpointWithValue("#FFFFFF", SpreadsheetApp.InterpolationType.NUMBER, '=average(indirect("MNF"))') // Generates Median Value
-      .setGradientMinpointWithValue("#FF9B69", SpreadsheetApp.InterpolationType.NUMBER, '=min(indirect("MNF"))') // Min value of all correct picks
-      .setRanges([rangeMnfTot])
-      .build(),
-    // MNF AVERAGES GRADIENT RULE    
-    SpreadsheetApp.newConditionalFormatRule()
-      .setGradientMaxpointWithValue("#C9FFDF", SpreadsheetApp.InterpolationType.NUMBER, "1")
-      .setGradientMidpointWithValue("#FFFFFF", SpreadsheetApp.InterpolationType.NUMBER, "0.5")
-      .setGradientMinpointWithValue("#FF9B69", SpreadsheetApp.InterpolationType.NUMBER, "0")
-      .setRanges([rangeMnfAvg])
+      .setGradientMaxpoint('#9CFFC4')
+      .setGradientMidpointWithValue('#FFFFFF', SpreadsheetApp.InterpolationType.PERCENTILE, '50')
+      .setGradientMinpoint('#FFCCD6')
+      .setRanges([avgRowRange])
       .build()
   ]);
 
-  overallPrimaryFormulas(sheet,totalMembers,maxCols,'sum',false);
-  overallMainFormulas(weeks,sheet,totalMembers,'MNF',true);
-
-  return sheet;  
+  Logger.log('🌙 MNF sheet successfully created.');
+  return sheet;
 }
+
+// ============================================================================================================================================
+// HIGHER ORDER TRACKING SHEETS (MATRIX, SURVIVOR/ELIMINATOR, WINNERS, SUMMARY, LEADERBOARD, etc.)
+// ============================================================================================================================================
 
 // MATRIX Sheet Creation
 function matrixSheet(ss, config, memberData) {
@@ -7718,6 +7798,7 @@ function matrixSheet(ss, config, memberData) {
         counts[schedData[i][0]]++;
       }
     }
+    Logger.log(`🌙 ${counts.flat().reduce((accumulator, current) => accumulator + current, 0)} MNF Games [array]: ${counts}`);
     mondayNightGames = weeks.map(w => Math.max(1, counts[w] || 1));
   } catch (e) {
     Logger.log(`⚠️ Could not scrape MNF schedule counts: ${e.message}`);
@@ -9999,138 +10080,171 @@ function seasonSheet(ss, config, memberData) {
   return sheet;
 }
 
-// TOT / RANK / PCT / MNF Combination formula for sum/average per player row
-function overallPrimaryFormulas(sheet,totalMembers,maxCols,action,avgRow) {
-  if (action == 'average') {
-    sheet.getRange(2,2,totalMembers,1).setFormulaR1C1('=iferror(if(counta(R[0]C3:R[0]C'+maxCols+')=0,,average(R[0]C3:R[0]C'+maxCols+')))')
-      .setNumberFormat("#0.0");
-  } else if (action == 'sum') {
-    sheet.getRange(2,2,totalMembers,1).setFormulaR1C1('=iferror(if(counta(R[0]C3:R[0]C'+maxCols+')=0,,sum(R[0]C3:R[0]C'+maxCols+')))')
-      .setNumberFormat("##");
-  }
-  if (sheet.getSheetName() == 'PCT') {
-    sheet.getRange(2,2,totalMembers,1).setNumberFormat("##.#%");
-  }
-  if (avgRow) {
-    if (sheet.getSheetName() == 'PCT'){  
-      sheet.getRange(sheet.getMaxRows(),2).setFormulaR1C1('=iferror(if(counta(R2C[0]:R'+(totalMembers+1)+'C[0])>=3,average(R2C[0]:R'+(totalMembers+1)+'C[0]),))')
-        .setNumberFormat('##.#%');
+// ============================================================================================================================================
+// SUPPORTING CALCULATION ENGINES (IMPROVED SPEED/DYNAMIC NAMED RANGES)
+// ============================================================================================================================================
+
+// Column B & Bottom Row Formulas
+function overallPrimaryFormulas(sheet, totalMembers, totalCols, action, avgRow) {
+  const startCol = 'C';
+  const endCol = sheet.getRange(1, totalCols).getA1Notation().replace(/[0-9]/g, '');
+
+  // 1. Column B Batch Formulas for all players
+  const colBFormulas = [];
+  for (let r = 2; r <= totalMembers + 1; r++) {
+    if (action === 'average') {
+      colBFormulas.push([`=IFERROR(IF(COUNTA(${startCol}${r}:${endCol}${r})=0, "", AVERAGE(${startCol}${r}:${endCol}${r})), "")`]);
     } else {
-      sheet.getRange(sheet.getMaxRows(),2).setFormulaR1C1('=iferror(if(counta(R2C[0]:R'+(totalMembers+1)+'C[0])>=3,average(R2C[0]:R'+(totalMembers+1)+'C[0]),))')
-        .setNumberFormat("#0.0");
+      colBFormulas.push([`=IFERROR(IF(COUNTA(${startCol}${r}:${endCol}${r})=0, "", SUM(${startCol}${r}:${endCol}${r})), "")`]);
     }
+  }
+  sheet.getRange(2, 2, totalMembers, 1).setFormulas(colBFormulas);
+  
+  // 2. Bottom Row Average for Column B
+  if (avgRow) {
+    const bottomRow = totalMembers + 2;
+    sheet.getRange(bottomRow, 2).setFormula(`=IFERROR(AVERAGE(B2:B${totalMembers + 1}), "")`);
+    sheet.getRange(bottomRow, 1, 1, totalCols)
+         .setBackground('#E6E6E6')
+         .setFontWeight('bold')
+         .setFontFamily('Montserrat')
+         .setFontSize(9)
+         .setVerticalAlignment('middle')
+         .setHorizontalAlignment('center');
+    sheet.getRange(bottomRow, 1).setHorizontalAlignment('left');
   }
 }
 
-// TOT / RNK / PCT / MNF Combination formula for each column (week)
-function overallMainFormulas(weeks,sheet,totalMembers,str,avgRow) {
+// Main Weekly Grid Formulas (Dynamic Named Range Denominators)
+function overallMainFormulas(weeks, sheet, totalMembers, str, avgRow) {
   weeks = weeks || Array.from({ length: WEEKS }, (_, index) => index + 1).filter(week => !WEEKS_TO_EXCLUDE.includes(week));
   
-  for (let a = 0; a < weeks.length; a++) {
-    const w = weeks[a];
-    for (let b = 1; b <= totalMembers; b++) {
-      const cell = sheet.getRange(b + 1, a + 3);
-      
-      if (str === 'TOT') {
-        cell.setFormula(
-          `=IFERROR(IF(OR(ISERROR(VLOOKUP($A${b + 1}, INDIRECT("NAMES_${w}"), 1, FALSE)), COUNTA(FILTER(INDIRECT("${LEAGUE}_PICKS_${w}"), INDIRECT("NAMES_${w}")=$A${b + 1}))=0),, ARRAYFORMULA(COUNTIFS(FILTER(INDIRECT("${LEAGUE}_PICKS_${w}"), INDIRECT("NAMES_${w}")=$A${b + 1})=INDIRECT("${LEAGUE}_PICKEM_OUTCOMES_${w}"), TRUE, FILTER(INDIRECT("${LEAGUE}_PICKS_${w}"), INDIRECT("NAMES_${w}")=$A${b + 1}), "<>"))), "")`
-        );
-      } else if (str === 'MNF') {
-        cell.setFormula(
-          `=IFERROR(ARRAYFORMULA(VLOOKUP(R[0]C1, {INDIRECT("NAMES_${w}"), INDIRECT("${str}_${w}")}, 2, FALSE)), "-")`
-        );
-      } else {
-        cell.setFormula(
-          `=IFERROR(ARRAYFORMULA(VLOOKUP(R[0]C1, {INDIRECT("NAMES_${w}"), INDIRECT("${str}_${w}")}, 2, FALSE)), "")`
-        );
+  let mondayNightGames = Array(weeks.length).fill(1);
+  if (str === 'MNF') {
+    try {
+      const ss = sheet.getParent();
+      const schedData = ss.getRangeByName(LEAGUE)?.getValues() || [];
+      const counts = Array(WEEKS + 1).fill(0);
+      for (let i = 0; i < schedData.length; i++) {
+        if (schedData[i][2] == 1 && schedData[i][3] >= 17) counts[schedData[i][0]]++;
       }
-
-      if (sheet.getSheetName() === 'PCT') {
-        cell.setNumberFormat("##.#%");
-      } else {
-        cell.setNumberFormat("#0");
-      }
+      Logger.log(`🌙 ${counts.flat().reduce((accumulator, current) => accumulator + current, 0)} MNF Games [array]: ${counts}`);
+      mondayNightGames = weeks.map(w => Math.max(counts[w] || 0));
+    } catch (e) {
+      Logger.log(`⚠️ Issue collecting MNF game counts`)
     }
   }
+
+  // 1. Batch Build Player Grid (XLOOKUP into weekly named ranges)
+  const gridFormulas = [];
+  for (let r = 2; r <= totalMembers + 1; r++) {
+    const rowFormulas = [];
+    for (let a = 0; a < weeks.length; a++) {
+      const w = weeks[a];
+      if (str !== 'MNF' || mondayNightGames[w-1] > 0) {
+        rowFormulas.push(`=IFERROR(XLOOKUP($A${r}, INDIRECT("NAMES_${w}"), INDIRECT("${str}_${w}"), ""), "")`);
+      } else {
+        rowFormulas.push(null);
+      }
+    }
+    gridFormulas.push(rowFormulas);
+  }
+  sheet.getRange(2, 3, totalMembers, weeks.length).setFormulas(gridFormulas);
+
+  // 2. Batch Build Summary Row using Dynamic Named Range Count
   if (avgRow) {
-    if (sheet.getSheetName() == 'MNF') {
-      // Instance of MNF sheet, where sheet needs to have data for quantity of MNF games
-      Logger.log(`📡 Checking for Monday games, if any`);
-      let data = SpreadsheetApp.getActiveSpreadsheet().getRangeByName(LEAGUE).getValues();
-      let text = '0';
-      let result = text.repeat(weeks.length);
-      let mondayNightGames = Array.from(result);
-      for (let a = 0; a < data.length; a++) {
-        if ( data[a][2] == 1 && data[a][3] >= 17) {
-          mondayNightGames[(data[a][0]-1)]++;
-        }
-      }
-      for (let a = 0; a < weeks.length; a++){
-        let rows = sheet.getMaxRows();
-        if (mondayNightGames[a] > 1) {
-          sheet.getRange(rows,a+3).setFormulaR1C1('=iferror(if(counta(R2C[0]:R'+(totalMembers+1)+'C[0])>=3,average(R2C[0]:R'+(totalMembers+1)+'C[0])/'+mondayNightGames[a]+',))')
-            .setNumberFormat("##%");
+    const bottomRow = totalMembers + 2;
+    const summaryFormulas = [];
+
+    for (let a = 0; a < weeks.length; a++) {
+      const colLetter = sheet.getRange(1, a + 3).getA1Notation().replace(/[0-9]/g, '');
+      if (str === 'MNF') {
+        const gCount = mondayNightGames[a] || 0;
+        if (gCount > 0) {
+          summaryFormulas.push(
+            `=IFERROR(IF(COUNTA(${colLetter}2:${colLetter}${totalMembers + 1})=0, "", SUM(${colLetter}2:${colLetter}${totalMembers + 1}) / (COUNTA(INDIRECT("MNF_NAMES")) * ${gCount})), "")`
+          );
         } else {
-          sheet.getRange(rows,a+3).setFormulaR1C1('=iferror(if(counta(R2C[0]:R'+(totalMembers+1)+'C[0])>=3,average(R2C[0]:R'+(totalMembers+1)+'C[0]),))')
-            .setNumberFormat("##%");
+          summaryFormulas.push(null);
         }
-      }
-    } else {
-      for (let a = 0; a < weeks.length; a++){
-        let rows = sheet.getMaxRows();
-        sheet.getRange(rows,a+3).setFormulaR1C1('=iferror(if(counta(R2C[0]:R'+(totalMembers+1)+'C[0])>=3,average(R2C[0]:R'+(totalMembers+1)+'C[0]),))')
-          .setNumberFormat("##%");
+      } else {
+        summaryFormulas.push(`=IFERROR(AVERAGE(${colLetter}2:${colLetter}${totalMembers + 1}), "")`);
       }
     }
+
+    sheet.getRange(bottomRow, 3, 1, weeks.length).setFormulas([summaryFormulas]);
+    sheet.getRange(bottomRow, 1, 1, weeks.length + 2)
+         .setBackground('#E6E6E6')
+         .setFontWeight('bold')
+         .setFontFamily('Montserrat')
+         .setFontSize(9)
+         .setVerticalAlignment('middle')
+         .setHorizontalAlignment('center');
+    sheet.getRange(bottomRow, 1).setHorizontalAlignment('left');
   }
 }
 
-// WEEKLY WINNERS Combination formula update
+// WINNERS Sheet Formula Update
 function winnersFormulas(weeks, sheet) {
+  const formulas = [];
   for (let a = 0; a < weeks.length; a++) {
     const w = weeks[a];
-    sheet.getRange(a + 2, 2).setFormula(`=IFERROR(JOIN(", ", SORT(FILTER(INDIRECT("NAMES_${w}"), INDIRECT("WIN_${w}")=1), 1, TRUE)), "")`);
+    formulas.push([`=IFERROR(JOIN(", ", SORT(FILTER(INDIRECT("NAMES_${w}"), INDIRECT("WIN_${w}")=1), 1, TRUE)), "")`]);
   }
+  sheet.getRange(2, 2, weeks.length, 1).setFormulas(formulas);
 }
 
-// REFRESH FORMULAS FOR TOT / RNK / PCT / MNF
-function allFormulasUpdate(ss){
+// REFRESH FORMULAS FOR ALL ACTIVE TRACKING SHEETS
+function allFormulasUpdate(ss) {
   ss = fetchSpreadsheet(ss);
   const docProps = PropertiesService.getDocumentProperties();
-  const config = JSON.parse(docProps.getProperty('configuration')) || {};
-  const memberData = JSON.parse(docProps.getProperty('members')) || {};
+  const config = JSON.parse(docProps.getProperty('configuration') || '{}');
+  const memberData = JSON.parse(docProps.getProperty('members') || '{}');
 
-  const totalMembers = memberData.memberOrder.length;
-  let sheet, maxCols;
+  const validMemberIds = (memberData.memberOrder || []).filter(id => memberData.members && memberData.members[id]?.name);
+  const totalMembers = validMemberIds.length;
+  if (totalMembers === 0) return;
 
   const weeks = Array.from({ length: WEEKS }, (_, index) => index + 1).filter(week => !WEEKS_TO_EXCLUDE.includes(week));
 
   if (config.pickemsInclude) {
-    sheet = ss.getSheetByName('TOTAL');
-    maxCols = sheet.getMaxColumns();
-    overallPrimaryFormulas(sheet,totalMembers,maxCols,'sum',true);
-    overallMainFormulas(weeks,sheet,totalMembers,'TOT',true);
-
-    sheet = ss.getSheetByName('RNK');
-    maxCols = sheet.getMaxColumns();
-    overallPrimaryFormulas(sheet,totalMembers,maxCols,'average',false);
-    overallMainFormulas(weeks,sheet,totalMembers,'RNK',false);
-  
-    sheet = ss.getSheetByName('PCT');
-    maxCols = sheet.getMaxColumns();
-    overallPrimaryFormulas(sheet,totalMembers,maxCols,'average',true);
-    overallMainFormulas(weeks,sheet,totalMembers,'PCT',true);
-    
-    if (!config.mnfExclude) {
-      sheet = ss.getSheetByName('MNF');
-      maxCols = sheet.getMaxColumns();
-      overallPrimaryFormulas(sheet,totalMembers,maxCols,'sum',true);
-      overallMainFormulas(weeks,sheet,totalMembers,'MNF',true);
+    if (ss.getSheetByName('TOTAL')) {
+      const sh = ss.getSheetByName('TOTAL');
+      overallPrimaryFormulas(sh, totalMembers, sh.getMaxColumns(), 'sum', true);
+      overallMainFormulas(weeks, sh, totalMembers, 'TOT', true);
     }
-
-    sheet = ss.getSheetByName('WINNERS');
-    winnersFormulas(weeks,sheet);
+    if (ss.getSheetByName('RNK')) {
+      const sh = ss.getSheetByName('RNK');
+      overallPrimaryFormulas(sh, totalMembers, sh.getMaxColumns(), 'average', false);
+      overallMainFormulas(weeks, sh, totalMembers, 'RNK', false);
+    }
+    if (ss.getSheetByName('PCT')) {
+      const sh = ss.getSheetByName('PCT');
+      overallPrimaryFormulas(sh, totalMembers, sh.getMaxColumns(), 'average', true);
+      overallMainFormulas(weeks, sh, totalMembers, 'PCT', true);
+    }
+    if (!config.mnfExclude && ss.getSheetByName('MNF')) {
+      const sh = ss.getSheetByName('MNF');
+      overallPrimaryFormulas(sh, totalMembers, sh.getMaxColumns(), 'sum', true);
+      overallMainFormulas(weeks, sh, totalMembers, 'MNF', true);
+    }
+    if (ss.getSheetByName('WINNERS')) {
+      winnersFormulas(weeks, ss.getSheetByName('WINNERS'));
+    }
+    if (ss.getSheetByName('SUMMARY')) {
+      summarySheet(ss, memberData, config);
+    }
+    if (ss.getSheetByName('MATRIX')) {
+      matrixSheet(ss, config, memberData);
+    }
+    if (ss.getSheetByName('SEASON')) {
+      seasonSheet(ss, config, memberData);
+    }
   }
+
+  SpreadsheetApp.flush();
+  ss.toast('All sheet formulas refreshed successfully.', '🧮 FORMULAS UPDATED', 3);
+  Logger.log('🧮 allFormulasUpdate completed.');
 }
 
 // ============================================================================================================================================
