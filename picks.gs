@@ -149,6 +149,7 @@ function onOpen() {
         .addItem('📊 Update Spread Data', 'fetchLatestSpreadsForWeek')
         .addItem('✏️ Rename a Member', 'showRenamePanel')
         .addItem('🧮 Update Formulas', 'allFormulasUpdate')
+        .addItem('🔁 Rebuild Weekly Sheet', 'rebuildWeeklySheet')
         .addItem('✅ Update Outcomes Sheet Validation', 'outcomesSheetUpdatePrompt')
         .addSeparator()
         .addItem('📝 Update Form Template ID', 'manualTemplateID')
@@ -8286,6 +8287,152 @@ function rebuildContestSheet(contestType) {
 }
 
 // SURVIVOR Sheet Rebuild Call
+/**
+ * Whether there is time to start rebuilding another week.
+ *
+ * Menu-invoked functions get the 6-minute script runtime, and a rebuild that is
+ * killed part way through leaves a half-rewritten sheet - materially worse than
+ * a sheet not yet rebuilt. So the check is made BEFORE starting a week, using
+ * the slowest one seen so far as the estimate for the next, which adapts to how
+ * big this pool actually is rather than guessing.
+ */
+function timeForAnotherWeek(elapsedMs, slowestMs, budgetMs) {
+  return elapsedMs + slowestMs <= budgetMs;
+}
+
+/** Four and a half minutes, leaving headroom under the 6-minute script limit. */
+const REBUILD_BUDGET_MS = 4.5 * 60 * 1000;
+
+/**
+ * Rebuild one weekly sheet's layout and formulas, keeping every pick.
+ *
+ * WHY this exists: the formulas on a weekly sheet are written by weeklySheet(),
+ * and executePickImport only calls that when the sheet is missing or a member is
+ * missing. So on an established week an import refreshes pick VALUES and leaves
+ * the formulas exactly as they were. A formula fix therefore reaches new weeks
+ * automatically and never reaches the week you are currently playing - which is
+ * the week you noticed the problem on.
+ *
+ * rebuild=true reads the existing picks back through getExistingWeeklySheetData
+ * before rewriting, so anything typed straight into the grid - an N/A marking a
+ * pick that will not be accepted, say - survives.
+ */
+function rebuildWeeklySheet() {
+  const ss = fetchSpreadsheet();
+  const ui = SpreadsheetApp.getUi();
+
+  const docProps = PropertiesService.getDocumentProperties();
+  const config = JSON.parse(docProps.getProperty('configuration') || '{}');
+  const memberData = JSON.parse(docProps.getProperty('members') || '{}');
+  const formsData = JSON.parse(docProps.getProperty('forms') || '{}');
+
+  if (!config.pickemsInclude) {
+    ui.alert('\u26a0\ufe0f Not Enabled', 'The pick\'ems pool is not enabled in your Configuration settings.', ui.ButtonSet.OK);
+    return;
+  }
+  if (!memberData.memberOrder || memberData.memberOrder.length === 0) {
+    ui.alert('\u26a0\ufe0f Missing Members', 'No member records found to rebuild a weekly sheet.', ui.ButtonSet.OK);
+    return;
+  }
+
+  const weeks = Object.keys(formsData)
+    .map(Number)
+    .filter(w => !isNaN(w) && ss.getSheetByName(`${weeklySheetPrefix}${w}`))
+    .sort((a, b) => a - b);
+
+  if (weeks.length === 0) {
+    ui.alert('\u26a0\ufe0f No Weekly Sheets', 'No weekly sheets were found to rebuild.', ui.ButtonSet.OK);
+    return;
+  }
+
+  const prompt = ui.prompt(
+    '\ud83d\udd01 REBUILD WEEKLY SHEET',
+    `Enter one week, or several separated by commas. Layout and formulas are rewritten; every pick already in the grid is preserved, including anything typed by hand.\n\nAvailable: ${weeks.join(', ')}`,
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (prompt.getSelectedButton() !== ui.Button.OK) {
+    ss.toast('Canceled weekly sheet rebuild.', '\ud83d\udeab CANCELED', 3);
+    return;
+  }
+
+  const raw = prompt.getResponseText().trim();
+  const asked = raw.split(',').map(part => part.trim()).filter(part => part !== '');
+  const chosen = [];
+  const unknown = [];
+  for (const part of asked) {
+    const week = Number(part);
+    if (weeks.includes(week)) {
+      if (!chosen.includes(week)) chosen.push(week);
+    } else {
+      unknown.push(part);
+    }
+  }
+
+  // Refuse the whole list rather than rebuilding half of it and reporting the
+  // rest afterwards - a partial rebuild is harder to reason about than none.
+  if (unknown.length > 0) {
+    ui.alert(
+      '\u26a0\ufe0f Unknown Week' + (unknown.length > 1 ? 's' : ''),
+      `No sheet for: ${unknown.join(', ')}.\n\nAvailable: ${weeks.join(', ')}\n\nNothing was rebuilt.`,
+      ui.ButtonSet.OK
+    );
+    return;
+  }
+  if (chosen.length === 0) {
+    ui.alert('\u26a0\ufe0f No Week Given', `Enter one week, or several separated by commas.\n\nAvailable: ${weeks.join(', ')}`, ui.ButtonSet.OK);
+    return;
+  }
+
+  chosen.sort((a, b) => a - b);
+  let displayEmpty = true;
+  if (config?.hideNonParticipants) displayEmpty = !config.hideNonParticipants;
+
+  const started = Date.now();
+  const rebuilt = [];
+  let slowest = 0;
+  let ranOutOfTime = false;
+
+  for (const week of chosen) {
+    // Always attempt at least one week, then stop before starting any we may not
+    // finish inside the runtime limit.
+    if (rebuilt.length > 0 && !timeForAnotherWeek(Date.now() - started, slowest, REBUILD_BUDGET_MS)) {
+      ranOutOfTime = true;
+      break;
+    }
+    try {
+      ss.toast(`Rebuilding week ${week} (${rebuilt.length + 1} of ${chosen.length})...`, '\ud83d\udd01 REBUILDING', 5);
+      const began = Date.now();
+      weeklySheet(ss, week, config, formsData, memberData, displayEmpty, true);
+      slowest = Math.max(slowest, Date.now() - began);
+      rebuilt.push(week);
+    } catch (err) {
+      // Stop at the first failure and say which weeks did make it, so a retry
+      // does not have to guess where it got to.
+      Logger.log(`\u26a0\ufe0f Failed to rebuild week ${week}: ${err.stack}`);
+      ui.alert(
+        '\u26a0\ufe0f Rebuild Failed',
+        `Week ${week} could not be rebuilt.\n\n${err.message}` +
+          (rebuilt.length > 0 ? `\n\nAlready rebuilt: ${rebuilt.join(', ')}` : '') +
+          `\n\nNot attempted: ${chosen.slice(chosen.indexOf(week) + 1).join(', ') || 'none'}`,
+        ui.ButtonSet.OK
+      );
+      return;
+    }
+  }
+
+  if (ranOutOfTime) {
+    const left = chosen.filter(week => !rebuilt.includes(week));
+    ui.alert(
+      '\u23f1\ufe0f Stopped Before The Time Limit',
+      `Rebuilt: ${rebuilt.join(', ')}.\n\nStopped before starting: ${left.join(', ')}, to avoid being cut off part way through a sheet.\n\nRun it again with those weeks to finish.`,
+      ui.ButtonSet.OK
+    );
+    return;
+  }
+
+  ss.toast(`Rebuilt week${rebuilt.length > 1 ? 's' : ''} ${rebuilt.join(', ')}. Picks preserved.`, '\u2705 DONE', 5);
+}
+
 function rebuildSurvivorSheet() {
   rebuildContestSheet('survivor');
 }
