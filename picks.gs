@@ -9465,8 +9465,13 @@ function contrarianSheet(ss, memberData) {
     const w = weeks[a];
     const colIdx = a + 3;
     
+    // Measured over the games the member actually picked. Dividing by every game in the
+    // week counted an unpicked game as a disagreement.
+    const memberPicksRow = `FILTER(INDIRECT("${LEAGUE}_PICKS_${w}"), INDIRECT("NAMES_${w}")=R[0]C1)`;
+    const memberRealPicks = realPickCount(memberPicksRow, `INDIRECT("${LEAGUE}_${w}")`);
+    const memberAgrees = `SUMPRODUCT(ARRAYFORMULA(--(${memberPicksRow}=REGEXEXTRACT(INDIRECT("${LEAGUE}_BIAS_${w}"), "^[A-Z]{2,3}"))))`;
     sheet.getRange(2, colIdx, totalMembers, 1).setFormulaR1C1(
-      `=IFERROR(IF(COUNTA(FILTER(INDIRECT("${LEAGUE}_PICKS_${w}"), INDIRECT("NAMES_${w}")=R[0]C1))=0,, COUNTIF(ARRAYFORMULA(FILTER(INDIRECT("${LEAGUE}_PICKS_${w}"), INDIRECT("NAMES_${w}")=R[0]C1)=REGEXEXTRACT(INDIRECT("${LEAGUE}_BIAS_${w}"), "^[A-Z]{2,3}")), FALSE) / COLUMNS(INDIRECT("${LEAGUE}_PICKS_${w}"))), "")`
+      `=IFERROR(IF(${memberRealPicks}=0,, (${memberRealPicks} - ${memberAgrees}) / ${memberRealPicks}), "")`
     );
   }
 
@@ -9925,11 +9930,14 @@ function seasonSheet(ss, config, memberData) {
     );
 
     // True Season % (Resilient)
+    // A week with no real pick stays out of the denominator, exactly as a blank week does.
+    const weekPicksRow = `IFERROR(FILTER(INDIRECT("${LEAGUE}_PICKS_" & w), INDIRECT("NAMES_" & w)=$A${r}), "")`;
+    const weekRealPicks = realPickCount(weekPicksRow, `INDIRECT("${LEAGUE}_" & w)`);
     sheet.getRange(r, 3).setFormula(
       `=IFERROR(IF(OR($A${r}="", $B${r}=""), "", LET(
         wks, ${weeksArrayLiteral},
         totalGamesPicked, SUM(MAP(wks, LAMBDA(w,
-          IF(COUNTA(IFERROR(FILTER(INDIRECT("${LEAGUE}_PICKS_" & w), INDIRECT("NAMES_" & w)=$A${r}), ""))=0, 0,
+          IF(${weekRealPicks}=0, 0,
             IFERROR(COLUMNS(INDIRECT("${LEAGUE}_PICKS_" & w)), 0)
           )
         ))),
@@ -10602,6 +10610,7 @@ function weeklySheet(ss,week,config,forms,memberData,displayEmpty,rebuild) {
   const allChancesRange = `R${entryRowStart}C${chancesCol}:R${entryRowEnd}C${chancesCol}`;
   const allPointsRange = `R${entryRowStart}C${pointsCol}:R${entryRowEnd}C${pointsCol}`;
   const allSpreadsRange = `R${spreadRow}C${firstMatchupCol}:R${spreadRow}C${finalMatchupCol}`;
+  const allMatchupsRange = `R${matchupRow}C${firstMatchupCol}:R${matchupRow}C${finalMatchupCol}`;
   const allBonusRange = `R${bonusRow}C${firstMatchupCol}:R${bonusRow}C${finalMatchupCol}`;
 
   // Points Formula (using efficient SUMPRODUCT)
@@ -10625,13 +10634,13 @@ function weeklySheet(ss,week,config,forms,memberData,displayEmpty,rebuild) {
   const percentFormula = `=IFERROR(IF(COUNTA(${outcomesRange}) > 0, SUMPRODUCT(--(${picksRange}=${outcomesRange}), --(${outcomesRange}<>"")) / COUNTA(${outcomesRange}),""))`;
 
   // Chances formula (uses external function) for all rows
-  const chancesFormula = `=calculateWinProbability(${allPicksRange},${outcomesRange},${allPointsRange},${allBonusRange},${allWinnersRange},${allSpreadsRange})`;
+  const chancesFormula = `=calculateWinProbability(${allPicksRange},${outcomesRange},${allPointsRange},${allBonusRange},${allWinnersRange},${allSpreadsRange},${allMatchupsRange})`;
 
   // Sparkline Formula (leverages chances column adjacent)
   const sparklineFormula = `=IFERROR(IF(NOT(ISBLANK(${pointsCell})), SPARKLINE(MAX(${chancesCell},0.05),{"charttype","bar";"max",1;"color1",IF(${chancesCell}=max(${allChancesRange}),"#33ff7a",IF(${chancesCell}<(max(${allChancesRange})/3),"#ffa579","#ffe433"))}),),)`
   
   // Wildcard Formula (uses external function) for all rows
-  const wildCardFormula = `=calculateWildcardScore(${allPicksRange})`;
+  const wildCardFormula = `=calculateWildcardScore(${allPicksRange},${allMatchupsRange})`;
 
   // Tiebreaker Difference Formula
   const tiebreakerDiffFormula = `=IFERROR(IF(OR(ISBLANK(R[0]C[-1]), ISBLANK(R${outcomeRow}C${tiebreakerCol})),, ABS(R[0]C[-1] - R${outcomeRow}C${tiebreakerCol})))`;
@@ -10684,7 +10693,9 @@ function weeklySheet(ss,week,config,forms,memberData,displayEmpty,rebuild) {
   }
 
   // Formula for the Home/Away split summary in the summary row
-  const homeAwaySplitFormula = `=IFERROR(IF(COUNTA(R${entryRowStart}C[0]:R${entryRowEnd}C[0])=0,, LET(total_picks, COUNTA(R${entryRowStart}C[0]:R${entryRowEnd}C[0]), home_team, REGEXEXTRACT(R${matchupRow}C[0], "[A-Z]{2,3}$"), home_picks, COUNTIF(R${entryRowStart}C[0]:R${entryRowEnd}C[0], home_team), away_team, REGEXEXTRACT(R${matchupRow}C[0], "^[A-Z]{2,3}"), IF(home_picks = total_picks/2, "SPLIT"&CHAR(10)&"50%", IF(home_picks > total_picks/2, home_team & CHAR(10) & ROUND(100*home_picks/total_picks,0)&"%", away_team & CHAR(10) & ROUND(100*(total_picks-home_picks)/total_picks,0)&"%")))))`;
+  // Counted by the two teams in the matchup, so a cell holding anything else is not a vote.
+  const splitPicks = `R${entryRowStart}C[0]:R${entryRowEnd}C[0]`;
+  const homeAwaySplitFormula = `=IFERROR(LET(home_team, REGEXEXTRACT(R${matchupRow}C[0], "[A-Z]{2,3}$"), away_team, REGEXEXTRACT(R${matchupRow}C[0], "^[A-Z]{2,3}"), home_picks, COUNTIF(${splitPicks}, home_team), away_picks, COUNTIF(${splitPicks}, away_team), total_picks, home_picks + away_picks, IF(total_picks=0,, IF(home_picks = away_picks, "SPLIT"&CHAR(10)&"50%", IF(home_picks > away_picks, home_team & CHAR(10) & ROUND(100*home_picks/total_picks,0)&"%", away_team & CHAR(10) & ROUND(100*away_picks/total_picks,0)&"%")))))`;
   sheet.getRange(summaryRow, firstMatchupCol, 1, matchups).setFormulaR1C1(homeAwaySplitFormula);
 
   // Formula to calculate the winner based on the spread
@@ -10727,8 +10738,11 @@ function weeklySheet(ss,week,config,forms,memberData,displayEmpty,rebuild) {
   sheet.getRange(summaryRow, wildcardCol).setFormulaR1C1(`=IFERROR(IF(SUM(R${entryRowStart}C[0]:R${entryRowEnd}C[0])>0, ROUND(AVERAGE(R${entryRowStart}C[0]:R${entryRowEnd}C[0]),1),),)`);
 
   // Home/Away Bias summary formulas
-  sheet.getRange(summaryRow, 5).setFormulaR1C1(`=IFERROR(IF(COUNTA(${allPicksRange})>10,"AWAY"&CHAR(10)&ROUND(100*(SUMPRODUCT(ARRAYFORMULA(--(REGEXEXTRACT(R${matchupRow}C${firstMatchupCol}:R${matchupRow}C${finalMatchupCol},"^[A-Z]{2,3}")=${allPicksRange}))))/COUNTA(${allPicksRange}),1)&"%","AWAY"),"AWAY")`);
-  sheet.getRange(summaryRow, 6).setFormulaR1C1(`=IFERROR(IF(COUNTA(${allPicksRange})>10,"HOME"&CHAR(10)&ROUND(100*(SUMPRODUCT(ARRAYFORMULA(--(REGEXEXTRACT(R${matchupRow}C${firstMatchupCol}:R${matchupRow}C${finalMatchupCol},"[A-Z]{2,3}$")=${allPicksRange}))))/COUNTA(${allPicksRange}),1)&"%","HOME"),"HOME")`);
+  // These span many games, so there is no single matchup to validate against; excluded by name instead.
+  const biasMatchups = `R${matchupRow}C${firstMatchupCol}:R${matchupRow}C${finalMatchupCol}`;
+  const biasPickCount = realPickCount(allPicksRange, biasMatchups);
+  sheet.getRange(summaryRow, 5).setFormulaR1C1(`=IFERROR(IF(${biasPickCount}>10,"AWAY"&CHAR(10)&ROUND(100*(SUMPRODUCT(ARRAYFORMULA(--(REGEXEXTRACT(R${matchupRow}C${firstMatchupCol}:R${matchupRow}C${finalMatchupCol},"^[A-Z]{2,3}")=${allPicksRange}))))/${biasPickCount},1)&"%","AWAY"),"AWAY")`);
+  sheet.getRange(summaryRow, 6).setFormulaR1C1(`=IFERROR(IF(${biasPickCount}>10,"HOME"&CHAR(10)&ROUND(100*(SUMPRODUCT(ARRAYFORMULA(--(REGEXEXTRACT(R${matchupRow}C${firstMatchupCol}:R${matchupRow}C${finalMatchupCol},"[A-Z]{2,3}$")=${allPicksRange}))))/${biasPickCount},1)&"%","HOME"),"HOME")`);
   
   // Tiebreaker and Winner columns
   if (config.tiebreakerInclude) {
@@ -11580,7 +11594,34 @@ function getRandomInt(min, max) {
  * @return {Array<Array<number | string>>} A column of true win probabilities.
  * @customfunction
  */
-function calculateWinProbability(playerPicksRange, resultsRange, currentScoresRange, bonusRange, winnersRange, spreadInfoRange) {
+// Counts cells naming one of the two teams in their own column's matchup. Works for a
+// single row or a whole grid, since the matchup row broadcasts across it.
+function realPickCount(picksRef, matchupsRef) {
+  const away = `REGEXEXTRACT(${matchupsRef},"^[A-Z]{2,3}")`;
+  const home = `REGEXEXTRACT(${matchupsRef},"[A-Z]{2,3}$")`;
+  return `(SUMPRODUCT(ARRAYFORMULA(--(${picksRef}=${away})))`
+       + ` + SUMPRODUCT(ARRAYFORMULA(--(${picksRef}=${home}))))`;
+}
+
+// Matchup cells are written as "AWAY\n@HOME" by weeklySheet.
+function matchupTeams(cell) {
+  if (!cell) return null;
+  const teams = String(cell).toUpperCase().match(/[A-Z]{2,4}/g);
+  return teams && teams.length >= 2 ? [teams[0], teams[1]] : null;
+}
+
+// `teams` is optional: a weekly sheet built before this change calls these
+// functions without it, and must keep working until it is rebuilt.
+function isRealPick(pick, teams) {
+  if (!pick) return false;
+  const text = String(pick).trim().toUpperCase();
+  if (text === '') return false;
+  if (teams) return teams.indexOf(text) !== -1;
+  return text !== 'N/A';
+}
+
+function calculateWinProbability(playerPicksRange, resultsRange, currentScoresRange, bonusRange, winnersRange, spreadInfoRange, matchupsRange) {
+  const gameTeams = (matchupsRange ? matchupsRange.flat() : []).map(matchupTeams);
   
   if (winnersRange && winnersRange.flat().some(cell => cell)) {
     // This logic remains the same, as it's a manual override.
@@ -11593,7 +11634,7 @@ function calculateWinProbability(playerPicksRange, resultsRange, currentScoresRa
   const activePlayers = [];
   
   for (let i = 0; i < originalNumPlayers; i++) {
-    if (playerPicksRange[i].some(pick => pick)) {
+    if (playerPicksRange[i].some((pick, j) => isRealPick(pick, gameTeams[j]))) {
       activePlayers.push({
         originalIndex: i,
         picks: playerPicksRange[i],
@@ -11640,7 +11681,8 @@ function calculateWinProbability(playerPicksRange, resultsRange, currentScoresRa
 
   for (let j = 0; j < numGames; j++) {
     if (gameResults[j] === "") {
-      const picksForGame = new Set(activePlayerPicks.map(row => row[j]).filter(pick => pick));
+      const picksForGame = new Set(
+        activePlayerPicks.map(row => row[j]).filter(pick => isRealPick(pick, gameTeams[j])));
       if (picksForGame.size === 2) {
         const outcomes = Array.from(picksForGame);
         const gameInfo = { columnIndex: j, outcomes: outcomes, bonus: bonuses[j] || 1 };
@@ -11739,7 +11781,8 @@ function calculateWinProbability(playerPicksRange, resultsRange, currentScoresRa
  * @return {Array<Array<number | string>>} A column of wildcard scores from 0.0 to 1.0 (format as % in Sheets).
  * @customfunction
  */
-function calculateWildcardScore(playerPicksRange) {
+function calculateWildcardScore(playerPicksRange, matchupsRange) {
+  const gameTeams = (matchupsRange ? matchupsRange.flat() : []).map(matchupTeams);
   if (!playerPicksRange || playerPicksRange.length === 0) {
     return [[""]];
   }
@@ -11755,7 +11798,7 @@ function calculateWildcardScore(playerPicksRange) {
 
     for (let i = 0; i < numPlayers; i++) {
       const pick = playerPicksRange[i][j];
-      if (pick) { // Only count non-empty picks
+      if (isRealPick(pick, gameTeams[j])) { // Only count actual team picks
         pickCounts[pick] = (pickCounts[pick] || 0) + 1;
         totalPicksInGame++;
       }
@@ -11802,7 +11845,7 @@ function calculateWildcardScore(playerPicksRange) {
     let minPossibleScore = 0; // The score for picking all favorites
     let maxPossibleScore = 0; // The score for picking all contrarians
 
-    if (playerRow.every(pick => !pick)) {
+    if (!playerRow.some((pick, j) => isRealPick(pick, gameTeams[j]))) {
       finalScores.push([""]); // Return empty for empty rows
       continue;
     }
@@ -11811,7 +11854,7 @@ function calculateWildcardScore(playerPicksRange) {
       const pick = playerRow[j];
       const gameConsensus = consensusData[j];
 
-      if (pick) { // Only score games where a pick was made
+      if (isRealPick(pick, gameTeams[j])) { // Only score games where a team was actually picked
         const popularityOfPick = gameConsensus.popularity[pick] || 0;
         rawWildcardScore += (1 - popularityOfPick);
         minPossibleScore += gameConsensus.minBoldness;
