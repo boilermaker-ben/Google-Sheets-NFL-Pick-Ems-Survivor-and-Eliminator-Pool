@@ -1,7 +1,7 @@
 const VERSION = '1.2.6';
 /** GOOGLE SHEETS FOOTBALL PICK 'EMS, SURVIVOR, & ELIMINATOR TOOL | 2025 Edition
  * Script Library for League Creator & Management Platform
- * 09/17/2026
+ * 10/09/2026
  * 
  * Created by Ben Powers
  * ben.powers.creative@gmail.com
@@ -5872,9 +5872,6 @@ function parseAllPicksFromSheet(sheet, memberData) {
       let answer = row[index];
       if (answer === '' || answer === null || answer === undefined) return;
       
-      // Convert to string for consistent processing
-      answer = answer.toString().replace(emojiAndSpecialCharsRegex, '').trim();
-
       const question = header;
       if (commentsRegex.test(question)) {
         userPicks.comments = answer;
