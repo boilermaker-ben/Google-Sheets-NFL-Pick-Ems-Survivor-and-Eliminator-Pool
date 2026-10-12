@@ -1,7 +1,7 @@
-const VERSION = '1.2.6';
+const VERSION = '1.2.7';
 /** GOOGLE SHEETS FOOTBALL PICK 'EMS, SURVIVOR, & ELIMINATOR TOOL | 2025 Edition
  * Script Library for League Creator & Management Platform
- * 10/09/2026
+ * 10/12/2026
  * 
  * Created by Ben Powers
  * ben.powers.creative@gmail.com
@@ -6286,6 +6286,111 @@ function onEditTrigger(e) {
   }
 }
 
+/**
+ * Applies static background, font colors, and font weights to outcome cells.
+ * Replaces heavy conditional formatting and applies Home/Away inversion styling.
+ *
+ * @param {Sheet} ss The active Spreadsheet object.
+ * @param {number} week The week number being processed.
+ * @param {Object} outcomeMap A Map of the final game outcomes for the week.
+ * @param {Object} gamePlan The game plan object for the week.
+ */
+function applyStaticOutcomeColors(ss, week, outcomeMap, gamePlan) {
+  if (!gamePlan || !gamePlan.games) return;
+
+  const weeklyBgColors = [[]];
+  const weeklyFontColors = [[]];
+  const weeklyFontWeights = [[]];
+  
+  const masterBgColors = [];
+  const masterFontColors = [];
+  const masterFontWeights = [];
+
+  gamePlan.games.forEach(game => {
+    // 1. Sanitize the reference names to guarantee a match
+    const awayTeam = String(game.awayTeam).trim().toUpperCase();
+    const homeTeam = String(game.homeTeam).trim().toUpperCase();
+    
+    // Use the exact original string to fetch from your outcomeMap
+    const matchupKey = `${game.awayTeam} @ ${game.homeTeam}`;
+    const outcome = outcomeMap.get(matchupKey);
+    
+    const winnerRaw = outcome ? outcome.winner : null;
+    const winner = winnerRaw ? String(winnerRaw).trim().toUpperCase() : null;
+
+    // --- EMPTY STATE DEFAULTS ---
+    let bg_outcomes = dayColorsObj[game.dayName] || "#e0e0e0"; 
+    let bg_weekly = "#000000"; 
+    let font_outcomes = "#000000";
+    let font_weekly = "#FFFFFF";
+    let weight_outcomes = "normal";
+    let weight_weekly = "bold"; // Weekly sheet headers are bold by default
+
+    if (winner && winner !== "") {
+      if (winner === "TIE") {
+        bg_outcomes = "#aaaaaa";
+        bg_weekly = "#aaaaaa";
+        font_outcomes = "#000000";
+        font_weekly = "#000000";
+        weight_outcomes = "normal";
+        weight_weekly = "normal";
+      } else {
+        // LEAGUE_DATA expects the exact normal casing, use winnerRaw
+        const teamData = LEAGUE_DATA[winnerRaw] || LEAGUE_DATA[winner]; 
+        
+        if (teamData && teamData.colors) {
+          // 2. Safe boolean check for home team
+          const isAway = (winner === awayTeam);
+          const colors = teamData.colors;
+          
+          if (isAway) {
+            // AWAY WIN: Lighter background, Dark Font, BOLD
+            bg_outcomes = (colors[1] && colors[1].toUpperCase() === '#FFFFFF') ? colors[2] : colors[1];
+            bg_weekly = bg_outcomes;
+            font_outcomes = colors[0];
+            font_weekly = colors[0];
+            weight_outcomes = "bold";
+            weight_weekly = "bold";
+          } else {
+            // HOME WIN: Darker background, Light Font, NORMAL
+            bg_outcomes = colors[0];
+            bg_weekly = colors[0];
+            font_outcomes = colors[1] || font_outcomes;
+            font_weekly = colors[1] || font_weekly;
+            weight_outcomes = "normal";
+            weight_weekly = "normal";
+          }
+        }
+      }
+    }
+
+    // Push Horizontal (Weekly Sheet)
+    weeklyBgColors[0].push(bg_weekly);
+    weeklyFontColors[0].push(font_weekly);
+    weeklyFontWeights[0].push(weight_weekly);
+
+    // Push Vertical (Master Outcomes Sheet)
+    masterBgColors.push([bg_outcomes]);
+    masterFontColors.push([font_outcomes]);
+    masterFontWeights.push([weight_outcomes]);
+  });
+
+  // Bulk apply to the Weekly Sheet
+  const weeklyRange = ss.getRangeByName(`${LEAGUE}_PICKEM_OUTCOMES_${week}`);
+  if (weeklyRange) {
+    weeklyRange.setBackgrounds(weeklyBgColors)
+               .setFontColors(weeklyFontColors)
+               .setFontWeights(weeklyFontWeights);
+  }
+
+  // Bulk apply to the Master NFL_OUTCOMES Sheet
+  const masterRange = ss.getRangeByName(`${LEAGUE}_OUTCOMES_${week}`);
+  if (masterRange) {
+    masterRange.setBackgrounds(masterBgColors)
+               .setFontColors(masterFontColors)
+               .setFontWeights(masterFontWeights);
+  }
+}
 
 /**
  * Evaluates and updates Survivor and Eliminator statuses for a given week.
@@ -6297,7 +6402,6 @@ function evalSurvElimStatus(week, sourceSheetName) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const docProps = PropertiesService.getDocumentProperties();
   
-  // FIX 1: Load 'configuration' into config, NOT 'members'
   const config = JSON.parse(docProps.getProperty('configuration')) || {};
   const memberData = JSON.parse(docProps.getProperty('members')) || {};
   const formsData = JSON.parse(docProps.getProperty('forms')) || {};
@@ -6340,8 +6444,10 @@ function evalSurvElimStatus(week, sourceSheetName) {
 
   Logger.log(`🏗 Map Built. Found ${Array.from(outcomeMap.values()).filter(o => o.winner).length} winners.`);
 
-  // --- Step 3 & 4: Process Contests ---
-  // FIX 2: Use Number() to ensure string "1" matches number 1
+  // --- Step 3: Update Winner Coloration ---
+  applyStaticOutcomeColors(ss, week, outcomeMap, gamePlan);
+
+  // --- Step 4 & 5: Process Contests ---
   if (config.survivorInclude && week >= Number(config.survivorStartWeek)) {
     Logger.log("🚀 Entering Survivor Processing...");
     processContest(ss, week, 'SURVIVOR', memberData, outcomeMap, config);
@@ -6352,11 +6458,11 @@ function evalSurvElimStatus(week, sourceSheetName) {
     processContest(ss, week, 'ELIMINATOR', memberData, outcomeMap, config);
   }
   
-  // Save ALL updates
+  // --- Step 6: Save ALL updates ---
   saveProperties('members', memberData);
   saveProperties('configuration', config);
 
-  // --- Step 6: Visual Refresh ---
+  // --- Step 7: Visual Refresh ---
   if (config.survivorInclude) updateSurvElimSheet(ss, config, memberData, 'survivor');
   if (config.eliminatorInclude) updateSurvElimSheet(ss, config, memberData, 'eliminator');
 
@@ -6802,13 +6908,28 @@ function outcomesSheet(ss) {
   let allConditionalFormatRules = [];
   const marginValidationRule = SpreadsheetApp.newDataValidation().requireNumberBetween(0, 50).build();
   let col = 1;
+  
+  // Add a single rule for TIEs for all columns
+  allConditionalFormatRules.push(SpreadsheetApp.newConditionalFormatRule()
+    .whenTextEqualTo('TIE')
+    .setBold(false)
+    .setBackground('#aaaaaa')
+    .setRanges([sheet.getRange(dataStartRow,1,sheet.getMaxRows()-dataStartRow,sheet.getLastColumn())])
+    .build());
+  // Add a single rule for TIE (margin) for all columns
+  allConditionalFormatRules.push(SpreadsheetApp.newConditionalFormatRule()
+    .whenNumberEqualTo(0)
+    .setBold(false)
+    .setBackground('#aaaaaa')
+    .setRanges([sheet.getRange(dataStartRow,1,sheet.getMaxRows()-dataStartRow,sheet.getLastColumn())])
+    .build());
+  
   for (const a in weeks) {
     const winnerCol = (col - 1) * 2 + 1;
     const marginCol = winnerCol + 1;
     sheet.setColumnWidth(winnerCol, 50);
     sheet.setColumnWidth(marginCol, 50);
 
-    // [THE FIX] Filter for the week's matchups, gracefully handling empty weeks.
     const weekMatchups = data.filter(row => row[0] == weeks[a]);
     
     // If no matchups for this week (e.g., future playoff week), skip to the next loop iteration.
@@ -6838,52 +6959,17 @@ function outcomesSheet(ss) {
       winnerCell.setBackground(dayColors[dayIndex]);
       marginCell.setBackground(dayColors[dayIndex]);
 
-      // Create a conditional format rule for the winning team's background color.
-      // This will override the base color only when a winner is selected.
-      const homeWinRule = SpreadsheetApp.newConditionalFormatRule()
-        .whenTextEqualTo(homeTeam)
-        .setBold(true)
-        .setBackground(dayColorsFilled[dayIndex] || null)
-        .setRanges([winnerCell])
-        .build();
-      allConditionalFormatRules.push(homeWinRule);
-      
-      const awayWinRule = SpreadsheetApp.newConditionalFormatRule()
-        .whenTextEqualTo(awayTeam)
-        .setBold(false) // Home team is bold, away is not
-        .setBackground(dayColorsFilled[dayIndex] || null)
-        .setRanges([winnerCell])
-        .build();
-      allConditionalFormatRules.push(awayWinRule);
-
       // [BONUS] Custom color scale for the margin, using the day's colors.
       // It will scale from the lighter day color to the darker filled day color.
-      const marginColorScaleRule = SpreadsheetApp.newConditionalFormatRule()
+      allConditionalFormatRules.push(SpreadsheetApp.newConditionalFormatRule()
         .setGradientMinpointWithValue(dayColors[dayIndex] || '#e0e0e0', SpreadsheetApp.InterpolationType.NUMBER, '1')
         .setGradientMaxpointWithValue(dayColorsFilled[dayIndex] || '#b0b0b0', SpreadsheetApp.InterpolationType.NUMBER, '10')
         .setRanges([marginCell])
-        .build();
-      allConditionalFormatRules.push(marginColorScaleRule);
+        .build());
     });
     col++;
   }
-  
-  // Add a single rule for TIEs for all columns
-  const tieRule = SpreadsheetApp.newConditionalFormatRule()
-    .whenTextEqualTo('TIE')
-    .setBold(false)
-    .setBackground('#aaaaaa')
-    .setRanges([sheet.getRange(dataStartRow,1,sheet.getMaxRows()-dataStartRow,sheet.getLastColumn())])
-    .build();
-  allConditionalFormatRules.unshift(tieRule);
-  // Add a single rule for TIEs for all columns
-  const zeroRule = SpreadsheetApp.newConditionalFormatRule()
-    .whenNumberEqualTo(0)
-    .setBold(false)
-    .setBackground('#aaaaaa')
-    .setRanges([sheet.getRange(dataStartRow,1,sheet.getMaxRows()-dataStartRow,sheet.getLastColumn())])
-    .build();
-  allConditionalFormatRules.unshift(zeroRule);
+
   sheet.setConditionalFormatRules(allConditionalFormatRules);
 
   Logger.log(`✅ Completed setting up ${LEAGUE} OUTCOMES sheet`);
@@ -6979,24 +7065,6 @@ function outcomesSheetUpdate(ss,week,config,gamePlan) {
   
   matchups.clearDataValidations().clearNote();
   margins.clearDataValidations().clearNote();
-
-  let existingRules = [];
-  try { 
-    existingRules = sheet.getConditionalFormatRules();
-  } catch (err) {
-    Logger.log(`⭕ No existing conditional format rules, providing empty array.`);
-  }
-  let rulesToKeep = [];
-  let newRules = [];
-  for (let a = 0; a < existingRules.length; a++) {
-    let ranges = existingRules[a].getRanges();
-    for (let b = 0; b < ranges.length; b++) {
-      if (ranges[b].getColumn() != matchups.getColumn() && ranges[b].getColumn() != margins.getColumn()) {
-        rulesToKeep.push(existingRules[a]);
-      }
-    }
-  }
-  sheet.clearConditionalFormatRules();
   
   sheet.getRange(startRow,matchups.getColumn(),sheet.getMaxRows()-startRow+1,1).setBackground('#dddddd');
   sheet.getRange(startRow,margins.getColumn(),sheet.getMaxRows()-startRow+1,1).setBackground('#dddddd');
@@ -7013,42 +7081,16 @@ function outcomesSheetUpdate(ss,week,config,gamePlan) {
       // Matchup column color (static) and conditional formatting
       matchupCell = sheet.getRange(start,matchups.getColumn(),end-start,1)
       matchupCell.setBackground(dayColorsObj[contests[a].dayName] || '#e0e0e0');
-      let homeWin = SpreadsheetApp.newConditionalFormatRule()
-        .whenFormulaSatisfied(`=iferror(match(indirect("R[0]C[0]",false),indirect("${LEAGUE}_HOME_${week}"),0)>=0,false)`)
-        .setBackground(dayColorsFilledObj[contests[a].dayName] || '#b0b0b0')
-        .setBold(true)
-        .setRanges([matchupCell])
-        .build();
-      newRules.push(homeWin);
-      let awayWin = SpreadsheetApp.newConditionalFormatRule()
-        .whenCellNotEmpty()
-        .setBackground(dayColorsFilledObj[contests[a].dayName] || '#b0b0b0')
-        .setRanges([matchupCell])
-        .build();
-      newRules.push(awayWin);
 
       // Margin column color (static) and conditional formatting
       marginCell = sheet.getRange(start,margins.getColumn(),end-start,1);
       marginCell.setBackground(dayColorsObj[contests[a].dayName] || '#e0e0e0');
-      const marginColorScaleRule = SpreadsheetApp.newConditionalFormatRule()
-        .setGradientMinpointWithValue(dayColorsObj[contests[a].dayName] || '#e0e0e0', SpreadsheetApp.InterpolationType.NUMBER, '1')
-        .setGradientMaxpointWithValue(dayColorsFilledObj[contests[a].dayName] || '#b0b0b0', SpreadsheetApp.InterpolationType.NUMBER, '10')
-        .setRanges([marginCell])
-        .build();
-      newRules.push(marginColorScaleRule);
-
       start = end;
-
     }
     end++;
   }
 
   sheet.getRange(startRow,margins.getColumn(),contests.length,1).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(Array.from({ length: 46 }, (_, index) => index), true).build());
-  
-  let allRules = rulesToKeep.concat(newRules);
-  //clear all rules first and then add again
-  
-  sheet.setConditionalFormatRules(allRules);
 
   if (config.pickemsInclude) {
     // This function subcomponent runs when there are pick 'ems present and ties the response cell in Outcomes sheet to the response within the weekly sheet in question. It also prevents overwriting the values that may exist in the outcomes sheet, if present.
@@ -11074,20 +11116,7 @@ function weeklySheet(ss,week,config,forms,memberData,displayEmpty,rebuild) {
     formatRules.push(rule);
   }
 
-  // TEAM COLORATION FOR OUTCOME ROW
-  const matchupOutcomeRange = sheet.getRange(outcomeRow, firstMatchupCol, 1, matchups)
-  Object.keys(LEAGUE_DATA).forEach( team => {    
-    const teamData = LEAGUE_DATA[team];
-    const color_bg = teamData.colors[0];
-    const color_txt = teamData.colors[1];
-    formatRules.push(
-      SpreadsheetApp.newConditionalFormatRule()
-        .whenFormulaSatisfied(`=indirect("R[0]C[0]",false)="${team}"`)
-        .setBackground(color_bg || '#b0b0b0')
-        .setFontColor(color_txt)
-        .setRanges([matchupOutcomeRange])
-        .build())
-  });
+  // NOTE: Removed conditional formatting for winning team due to overloaded mobile device rendering=
   
   // Add conditional formatting rules to indicate paid status (added last to take lowest priority)
   if (paidCheckboxes) {
