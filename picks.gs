@@ -1,7 +1,7 @@
-const VERSION = '1.2.7';
+const VERSION = '1.2.8';
 /** GOOGLE SHEETS FOOTBALL PICK 'EMS, SURVIVOR, & ELIMINATOR TOOL | 2025 Edition
  * Script Library for League Creator & Management Platform
- * 10/12/2026
+ * 10/19/2026
  * 
  * Created by Ben Powers
  * ben.powers.creative@gmail.com
@@ -8771,48 +8771,14 @@ function leaderboardSheet(ss, config, memberData) {
   // -------------------------------------------------------------
   let colHeaders = [];
   let colSubHeaders = [];
-  let colNamedRangeReference = [];
-  let colWidths  = [150];
-  let survLivesCol = -1, survStatusCol = -1;
-  let elimLivesCol = -1, elimStatusCol = -1;
+  let leaderboardSurvElimHeaders = [];
+  let leaderboardSurvElimHeadersIdx = [];
+  let colWidths  = [160];
+  let survLivesCol = -1, survPickCol = -1;
+  let elimLivesCol = -1, elimPickCol = -1;
   
-  // A. Season & Pool Totals (From SUMMARY Sheet)
-  const overallStartCol = 2;
-  colHeaders.push('⭐', '🥇', '💯');
-  colSubHeaders.push('Tot Pts', 'Rank', 'Percent');
-  colNamedRangeReference.push('PICKS', 'RANK', 'AVG_PCT');
-  colWidths.push(60, 60, 60);
-
-  let mnfOverallCol = -1;
-  if (!config.mnfExclude) {
-    mnfOverallCol = colHeaders.length + 2;
-    colWidths.push(60, 60);
-    colHeaders.push('🌙', '🌚');
-    colSubHeaders.push('MNF Tot', 'MNF Rank');
-    colNamedRangeReference.push('MNF', 'MNF_RANK');
-  }
-
-  if (config.survivorInclude) {
-    survLivesCol = colHeaders.length + 2;
-    survStatusCol = colHeaders.length + 3;
-    colWidths.push(65, 75);
-    colHeaders.push('👑', '💓');
-    colSubHeaders.push('Lives', 'Status');
-    colNamedRangeReference.push('SURVIVOR_LIVES', 'SURVIVOR_STATUS');
-  }
-
-  if (config.eliminatorInclude) {
-    elimLivesCol = colHeaders.length + 2;
-    elimStatusCol = colHeaders.length + 3;
-    colWidths.push(65, 75);
-    colHeaders.push('💀', '💓');
-    colSubHeaders.push('Lives', 'Status');
-    colNamedRangeReference.push('ELIMINATOR_LIVES', 'ELIMINATOR_STATUS');
-  }
-  const overallEndCol = colHeaders.length + 1;
-
-  // B. Active Weekly Performance
-  const weeklyStartCol = overallEndCol + 1;
+  // A. Active Weekly Performance
+  const weeklyStartCol = 2;
   colHeaders.push('⭐', '🥇', '💯', '🎲', '📊', '🃏');
   colSubHeaders.push('Picks', 'Rank', 'Percent', 'Chances', 'Chances', 'Wildcard');
   colWidths.push(50, 50, 50, 55, 60, 50);
@@ -8827,14 +8793,38 @@ function leaderboardSheet(ss, config, memberData) {
 
   let commentCol = -1;
   if (!config.commentsExclude) {
-    colWidths.push(150);
+    colWidths.push(220);
     colHeaders.push('💬');
     colSubHeaders.push('Comments');
     commentCol = colHeaders.length + 1;
   }
+
+  const weeklyEndFinalMergeCol = colHeaders.length + 1;
+
+  // After Weekly Metrics
+  if (config.survivorInclude) {
+    survLivesCol = colHeaders.length + 2;
+    survPickCol = colHeaders.length + 3;
+    colWidths.push(45, 45);
+    colHeaders.push('👑', '');
+    colSubHeaders.push('Lives', '');
+    leaderboardSurvElimHeaders.push('SURVIVOR_LIVES', 'SURVIVOR_PICK');
+    leaderboardSurvElimHeadersIdx.push(survLivesCol,survPickCol);
+  }
+
+  if (config.eliminatorInclude) {
+    elimLivesCol = colHeaders.length + 2;
+    elimPickCol = colHeaders.length + 3;
+    colWidths.push(45, 45);
+    colHeaders.push('💀', '');
+    colSubHeaders.push('Lives', '');
+    leaderboardSurvElimHeaders.push('ELIMINATOR_LIVES', 'ELIMINATOR_PICK');
+    leaderboardSurvElimHeadersIdx.push(elimLivesCol,elimPickCol);
+  }
+  
   const weeklyEndCol = colHeaders.length + 1;
 
-  // C. Matchup Columns (Max 16 games)
+  // B. Matchup Columns (Max 16 games)
   const firstMatchupCol = weeklyEndCol + 1;
   const maxWeeklyGames = 16;
   for (let g = 1; g <= maxWeeklyGames; g++) {
@@ -8866,6 +8856,7 @@ function leaderboardSheet(ss, config, memberData) {
   // Week Selector (Cell A2)
   const weekCell = sheet.getRange(2, 1);
   const weekCellString = weekCell.getA1Notation(); // "A2"
+  const weekCellStringR1C1 = `R${weekCell.getRow()}C${weekCell.getColumn()}`;
   weekCell.setValue(fetchWeek() || 1);
   const weekRule = SpreadsheetApp.newDataValidation()
     .requireValueInList(Array.from({ length: 23 }, (_, i) => `${i + 1}`), true)
@@ -8876,7 +8867,7 @@ function leaderboardSheet(ss, config, memberData) {
   const sortCell = sheet.getRange(3, 1);
   const sortCellString = sortCell.getA1Notation();
   const sortOptions = ['Display Order', 'Sorted by Name', 'Sorted by Rank', 'Sorted by Chances'];
-  sortCell.setValue(sortOptions[2]);
+  sortCell.setValue(sortOptions[3]); // Default index (chances)
   const sortRule = SpreadsheetApp.newDataValidation()
     .requireValueInList(sortOptions, true)
     .build();
@@ -8907,25 +8898,6 @@ function leaderboardSheet(ss, config, memberData) {
   const progressSparklineFormula = `=IFERROR(SPARKLINE(${completedGamesFormula}, {"charttype","bar";"max",${totalGamesFormula};"color1","#00E676";"color2","#424242"}),"")`;
   sheet.getRange(subHeaderRow, weeklyStartCol + 3, 1, weeklyEndCol - (weeklyStartCol + 3) + 1).merge()
        .setFormula(progressSparklineFormula).setBackground('#1B5E20');
-  
-  // Season Totals Header
-  const totalWeeks = `IF(${weekCellString}>${WEEKS},${WEEKS-WEEKS_TO_EXCLUDE.length},${REGULAR_SEASON})`;
-  const priorWeeksFormula = `IFERROR(IF(${weekCellString}>0, ${weekCellString}-1 + ${weekProgressFormula}, 1), ${weekCellString}-1)`;
-  
-  if (overallEndCol >= overallStartCol) {
-    sheet.getRange(firstRow, overallStartCol, 1, overallEndCol - overallStartCol + 1).merge()
-         .setValue('SEASON & POOL TOTALS').setBackground('#263238').setFontColor('#ECEFF1').setFontWeight('bold').setHorizontalAlignment('center').setFontSize(12);
-  }
-  
-  sheet.getRange(subHeaderRow, overallStartCol).setValue('WEEKS').setBackground('#263238').setFontColor('#FFFFFF').setFontWeight('bold').setHorizontalAlignment('right').setFontSize(9);
-  
-  const progressSeasonTextFormula = `=IFERROR(${priorWeeksFormula} & " / " & ${totalWeeks} & " (" & TEXT(${priorWeeksFormula}/${totalWeeks},"0.0%") & ")", ${priorWeeksFormula})`;
-  sheet.getRange(subHeaderRow, overallStartCol + 1, 1, 2).merge()
-       .setFormula(progressSeasonTextFormula).setBackground('#263238').setFontColor('#FFFFFF').setFontWeight('bold').setHorizontalAlignment('center').setFontSize(9);
-
-  const progressSeasonSparklineFormula = `=IFERROR(SPARKLINE(${priorWeeksFormula}, {"charttype","bar";"max",${totalWeeks};"color1","#00E676";"color2","#424242"}),"")`;
-  sheet.getRange(subHeaderRow, overallStartCol + 3, 1, overallEndCol - (overallStartCol + 3) + 1).merge()
-       .setFormula(progressSeasonSparklineFormula).setBackground('#263238');
 
   // Matchups Super-Header
   sheet.getRange(firstRow, firstMatchupCol, 1, maxWeeklyGames).merge()
@@ -8943,24 +8915,62 @@ function leaderboardSheet(ss, config, memberData) {
   sheet.getRange(outcomeRow, 2, 1, weeklyEndCol - 1).setValues([colSubHeaders.slice(0, weeklyEndCol - 1)])
        .setBackground('#000000').setFontColor('#FFFFFF').setFontWeight('bold').setFontSize(7).setHorizontalAlignment('center');
 
-  for (let c = 2; c <= weeklyEndCol; c++) {
+  for (let c = 2; c <= weeklyEndFinalMergeCol; c++) {
     sheet.getRange(outcomeRow, c, 2, 1).merge();
   }
+  
+  sheet.getRange(outcomeRow, 1).setValue('All Matchups').setFontWeight('bold').setFontSize(8).setBackground('#FFD100').setFontColor('#000000').setHorizontalAlignment('center');
+  // Data Validation for selecting to display all or only remaining matchups
+  const filterCell = sheet.getRange(4, 1);
+  const filterCellString = filterCell.getA1Notation();
+  const filterOptions = ['All Matchups', 'Incomplete Only'];
+  filterCell.setValue(filterOptions[0]); // Default index (show all)
+  const filterRule = SpreadsheetApp.newDataValidation()
+    .requireValueInList(filterOptions, true)
+    .build();
+  filterCell.setDataValidation(filterRule);
 
+  // Row 2: Weekday Names
+  sheet.getRange(weekDayRow, firstMatchupCol).setFormula(
+    `=IFERROR(
+        IF(${filterCellString}="All Matchups",
+          INDIRECT("${LEAGUE}_DAYS_" & ${weekCellString}),
+          FILTER(INDIRECT("${LEAGUE}_DAYS_" & ${weekCellString}), ISBLANK(INDIRECT("${LEAGUE}_PICKEM_OUTCOMES_" & ${weekCellString})))
+        ),    
+      "")`);
+  sheet.getRange(weekDayRow, firstMatchupCol, 1, maxWeeklyGames).setBackground('#000000').setFontColor('#FFFFFF').setHorizontalAlignment('center').setFontSize(7);
+  
   // Row 3: Matchups
-  sheet.getRange(matchupRow, firstMatchupCol).setFormula(`=IFERROR(INDIRECT("${LEAGUE}_" & ${weekCellString}),"")`);
+  sheet.getRange(matchupRow, firstMatchupCol).setFormula(
+    `=IFERROR(
+      IF(${filterCellString}="All Matchups",
+        INDIRECT("${LEAGUE}_" & ${weekCellString}),
+        FILTER(INDIRECT("${LEAGUE}_" & ${weekCellString}), ISBLANK(INDIRECT("${LEAGUE}_PICKEM_OUTCOMES_" & ${weekCellString})))
+        ),
+      "")`);
   sheet.getRange(matchupRow, firstMatchupCol, 1, maxWeeklyGames)
        .setBackground('#000000').setFontColor('#FFFFFF').setFontSize(8).setFontWeight('bold')
        .setHorizontalAlignment('center').setWrapStrategy(SpreadsheetApp.WrapStrategy.WRAP);
 
   // Row 4: Straight-Up Winner
-  sheet.getRange(outcomeRow, 1).setValue('WINNER').setFontWeight('bold').setFontSize(9).setBackground('#CFD8DC').setHorizontalAlignment('left');
-  sheet.getRange(outcomeRow, firstMatchupCol).setFormula(`=IFERROR(INDIRECT("${LEAGUE}_PICKEM_OUTCOMES_" & ${weekCellString}), "")`);
+  sheet.getRange(outcomeRow, firstMatchupCol).setFormula(
+    `=IFERROR(
+        IF(${filterCellString}="All Matchups",
+          INDIRECT("${LEAGUE}_PICKEM_OUTCOMES_" & ${weekCellString}),
+          FILTER(INDIRECT("${LEAGUE}_PICKEM_OUTCOMES_" & ${weekCellString}), ISBLANK(INDIRECT("${LEAGUE}_PICKEM_OUTCOMES_" & ${weekCellString})))
+        ),
+      "")`);
   sheet.getRange(outcomeRow, firstMatchupCol, 1, maxWeeklyGames).setBackground('#ECEFF1').setFontWeight('bold').setHorizontalAlignment('center');
 
   // Row 5: Winner ATS
   sheet.getRange(spreadOutcomeRow, 1).setValue('WINNER (ATS)').setFontWeight('bold').setFontSize(9).setBackground('#CFD8DC').setHorizontalAlignment('left');
-  sheet.getRange(spreadOutcomeRow, firstMatchupCol).setFormula(`=IFERROR(INDIRECT("${LEAGUE}_ATS_OUTCOMES_" & ${weekCellString}), "")`);
+  sheet.getRange(spreadOutcomeRow, firstMatchupCol).setFormula(
+    `=IFERROR(
+        IF(${filterCellString}="All Matchups",
+          INDIRECT("${LEAGUE}_ATS_OUTCOMES_" & ${weekCellString}),
+          FILTER(INDIRECT("${LEAGUE}_ATS_OUTCOMES_" & ${weekCellString}), ISBLANK(INDIRECT("${LEAGUE}_ATS_OUTCOMES_" & ${weekCellString})))
+        ),
+      "")`);
   sheet.getRange(spreadOutcomeRow, firstMatchupCol, 1, maxWeeklyGames).setBackground('#ECEFF1').setFontWeight('bold').setHorizontalAlignment('center');
 
   if (isAts) {
@@ -8969,13 +8979,16 @@ function leaderboardSheet(ss, config, memberData) {
     sheet.hideRows(spreadOutcomeRow);
   }
 
-  // Row 2: Weekday Names
-  sheet.getRange(weekDayRow, firstMatchupCol).setFormula(`=IFERROR(INDIRECT("${LEAGUE}_DAYS_" & ${weekCellString}), "")`);
-  sheet.getRange(weekDayRow, firstMatchupCol, 1, maxWeeklyGames).setBackground('#000000').setFontColor('#FFFFFF').setHorizontalAlignment('center').setFontSize(7);
-  
   // Row 6: Bias Row
-  sheet.getRange(summaryRow, firstMatchupCol).setFormula(`=IFERROR(INDIRECT("${LEAGUE}_BIAS_" & ${weekCellString}), "")`);
-  
+  sheet.getRange(summaryRow, firstMatchupCol).setFormula(
+    `=IFERROR(
+        IF(${filterCellString}="All Matchups",
+          INDIRECT("${LEAGUE}_BIAS_" & ${weekCellString}),
+          FILTER(INDIRECT("${LEAGUE}_BIAS_" & ${weekCellString}), ISBLANK(INDIRECT("${LEAGUE}_PICKEM_OUTCOMES_" & ${weekCellString})))
+        ),
+      "")`
+  );  
+
   // -------------------------------------------------------------
   // Summary Row Calculations
   // -------------------------------------------------------------
@@ -8983,47 +8996,6 @@ function leaderboardSheet(ss, config, memberData) {
   sheet.getRange(summaryRow, 1).setValue('Group Stats').setHorizontalAlignment('left').setFontSize(9);
 
   const currentColR1C1 = `R${dataStartRow}C[0]:R${dataEndRow}C[0]`;
-  const pointsOverallColIdx = overallStartCol;
-  const rankOverallColIdx   = overallStartCol + 1;
-  const pctOverallColIdx    = overallStartCol + 2;
-
-  sheet.getRange(summaryRow, pointsOverallColIdx).setFormulaR1C1(
-    `=IFERROR(IF(SUM(${currentColR1C1})>0, "AVG:"&CHAR(10)&TEXT(ROUND(AVERAGE(${currentColR1C1}),1),"#.0"), ""), "")`
-  );
-  sheet.getRange(summaryRow, rankOverallColIdx).setFormulaR1C1(
-    `=IFERROR(IF(COUNTIF(${currentColR1C1},1)>1, COUNTIF(${currentColR1C1},1)&"-Way"&CHAR(10)&"Tie", "Leader:"&CHAR(10)&INDEX(R${dataStartRow}C1:R${dataEndRow}C1, MATCH(1, ${currentColR1C1}, 0))), "")`
-  );
-  sheet.getRange(summaryRow, pctOverallColIdx).setFormulaR1C1(
-    `=IFERROR(IF(COUNTA(${currentColR1C1})>0, TEXT(AVERAGE(${currentColR1C1}), "0.0%"), ""), "")`
-  );
-
-  if (mnfOverallCol > -1) {
-    sheet.getRange(summaryRow, mnfOverallCol).setFormulaR1C1(
-      `=IFERROR(IF(SUM(${currentColR1C1})>0, "AVG:"&CHAR(10)&TEXT(ROUND(AVERAGE(${currentColR1C1}),1),"#.0"), ""), "")`
-    );
-    sheet.getRange(summaryRow, mnfOverallCol + 1).setFormulaR1C1(
-      `=IFERROR(IF(COUNTIF(${currentColR1C1},1)>1, COUNTIF(${currentColR1C1},1)&"-Way"&CHAR(10)&"Tie", "Leader:"&CHAR(10)&INDEX(R${dataStartRow}C1:R${dataEndRow}C1, MATCH(1, ${currentColR1C1}, 0))), "")`
-    );
-  }
-
-  // Restored: Survivor & Eliminator Summary Row Formulas
-  if (config.survivorInclude && survLivesCol > -1) {
-    sheet.getRange(summaryRow, survLivesCol).setFormulaR1C1(
-      `=IFERROR("Lives:"&CHAR(10)&LEN(REGEXREPLACE(JOIN("",${currentColR1C1}), "[^🟢]", ""))/2, "")`
-    );
-    sheet.getRange(summaryRow, survStatusCol).setFormulaR1C1(
-      `=IFERROR(IF(COUNTIF(${currentColR1C1},"IN")>1, "Active:"&CHAR(10)&COUNTIF(${currentColR1C1},"IN"), "Complete"), "")`
-    );
-  }
-
-  if (config.eliminatorInclude && elimLivesCol > -1) {
-    sheet.getRange(summaryRow, elimLivesCol).setFormulaR1C1(
-      `=IFERROR("Lives:"&CHAR(10)&LEN(REGEXREPLACE(JOIN("",${currentColR1C1}), "[^🟢]", ""))/2, "")`
-    );
-    sheet.getRange(summaryRow, elimStatusCol).setFormulaR1C1(
-      `=IFERROR(IF(COUNTIF(${currentColR1C1},"IN")>1, "Active:"&CHAR(10)&COUNTIF(${currentColR1C1},"IN"), "Complete"), "")`
-    );
-  }
 
   const pointsColIdx  = weeklyStartCol;
   const rankColIdx    = weeklyStartCol + 1;
@@ -9062,6 +9034,54 @@ function leaderboardSheet(ss, config, memberData) {
       `=IFERROR(IF(COUNTA(${currentColR1C1})>0, COUNTA(${currentColR1C1})&" COMMENT"&IF(COUNTA(${currentColR1C1})>1,"S",""), "NO COMMENTS"), "")`
     );
   }
+  
+  // Survivor & Eliminator Summary Row Formulas
+  if (config.survivorInclude && survLivesCol > -1) {
+    sheet.getRange(outcomeRow, survLivesCol).setFormulaR1C1(
+      `=IFERROR(LEN(REGEXREPLACE(JOIN("",${currentColR1C1}), "[^🟢]", ""))/2&" Lives", "")`
+    );
+    // sheet.getRange(summaryRow, survStatusCol).setFormulaR1C1(
+    //   `=IFERROR(IF(COUNTIF(${currentColR1C1},"IN")>1, "Active:"&CHAR(10)&COUNTIF(${currentColR1C1},"IN"), "Complete"), "")`
+    // );
+    sheet.getRange(summaryRow, survLivesCol).setFormulaR1C1(
+      `=IFERROR(LET(
+        data, FILTER(R${dataStartRow}C[1]:R${dataEndRow}C[1], R${dataStartRow}C[1]:R${dataEndRow}C[1] <> ""), 
+        uniques, UNIQUE(data), 
+        counts, MAP(uniques, LAMBDA(u, COUNTIF(data, u))), 
+        max_cnt, MAX(counts), 
+        top_teams, FILTER(uniques, counts = max_cnt), 
+        
+        IF(ROWS(top_teams) > 2,
+          max_cnt&"-Way Tie"&char(10)&max_cnt,
+          TEXTJOIN(", ", TRUE, top_teams)&char(10)&max_cnt
+        )
+      ),"")`
+    );
+  }
+
+  
+  if (config.eliminatorInclude && elimLivesCol > -1) {
+    sheet.getRange(outcomeRow, elimLivesCol).setFormulaR1C1(
+      `=IFERROR(LEN(REGEXREPLACE(JOIN("",${currentColR1C1}), "[^🟢]", ""))/2&" Lives", "")`
+    );
+    // sheet.getRange(summaryRow, elimStatusCol).setFormulaR1C1(
+    //   `=IFERROR(IF(COUNTIF(${currentColR1C1},"IN")>1, "Active:"&CHAR(10)&COUNTIF(${currentColR1C1},"IN"), "Complete"), "")`
+    // );
+    sheet.getRange(summaryRow, elimLivesCol).setFormulaR1C1(
+      `=IFERROR(LET(
+        data, FILTER(R${dataStartRow}C[1]:R${dataEndRow}C[1],R${dataStartRow}C[1]:R${dataEndRow}C[1] <> ""), 
+        uniques, UNIQUE(data), 
+        counts, MAP(uniques, LAMBDA(u, COUNTIF(data, u))), 
+        max_cnt, MAX(counts), 
+        top_teams, FILTER(uniques, counts = max_cnt), 
+        
+        IF(ROWS(top_teams) > 3, 
+          max_cnt&"-Way Tie"&char(10)&max_cnt,
+          TEXTJOIN(", ", TRUE, top_teams)&char(10)&max_cnt
+        )
+      ),"")`
+    );
+  }
 
   // -------------------------------------------------------------
   // Player Dynamic Sorting & Data Lookups
@@ -9088,13 +9108,6 @@ function leaderboardSheet(ss, config, memberData) {
 
   const membersRangeR1C1 = `R${dataStartRow}C1:R${dataEndRow}C1`;
 
-  // Season Totals Lookups
-  for (let b = 0; b < colNamedRangeReference.length; b++) {
-    sheet.getRange(dataStartRow, overallStartCol + b).setFormula(
-      `=ARRAYFORMULA(IFERROR(IF(${membersRangeR1C1}="","", XLOOKUP(${membersRangeR1C1}, INDIRECT("TOT_NAME"), INDIRECT("TOT_${colNamedRangeReference[b]}"), "")),""))`
-    );
-  }
-
   // Weekly Performance Lookups
   sheet.getRange(dataStartRow, weeklyStartCol).setFormula(`=ARRAYFORMULA(IFERROR(IF(${membersRangeR1C1}="","", XLOOKUP(${membersRangeR1C1}, INDIRECT("NAMES_" & ${weekCellString}), INDIRECT("TOT_" & ${weekCellString}))),""))`);
   sheet.getRange(dataStartRow, weeklyStartCol + 1).setFormula(`=ARRAYFORMULA(IFERROR(IF(${membersRangeR1C1}="","", XLOOKUP(${membersRangeR1C1}, INDIRECT("NAMES_" & ${weekCellString}), INDIRECT("RNK_" & ${weekCellString}))),""))`);
@@ -9115,20 +9128,45 @@ function leaderboardSheet(ss, config, memberData) {
     sheet.getRange(dataStartRow, commentCol).setFormula(`=ARRAYFORMULA(IFERROR(IF(${membersRangeR1C1}="","", XLOOKUP(${membersRangeR1C1}, INDIRECT("NAMES_" & ${weekCellString}), INDIRECT("COMMENTS_" & ${weekCellString}))),""))`);
   }
 
+  // Surv/Elim Lookups if Present
+  if ((config.survivorInclude || config.eliminatorInclude) && leaderboardSurvElimHeaders.length > 0) {
+    for (let b = 0; b < leaderboardSurvElimHeadersIdx.length; b++) {
+      if (leaderboardSurvElimHeaders[b] == 'SURVIVOR_PICK') {
+        sheet.getRange(dataStartRow, leaderboardSurvElimHeadersIdx[b]).setFormula(
+          `=ARRAYFORMULA(IFERROR(IF(${membersRangeR1C1}="","", VLOOKUP(${membersRangeR1C1}, {INDIRECT("SURVIVOR_NAMES"), INDIRECT("SURVIVOR_PICKS")},${weekCellString}+1,0)),""))`
+        );
+      } else if (leaderboardSurvElimHeaders[b] == 'ELIMINATOR_PICK') {
+        sheet.getRange(dataStartRow, leaderboardSurvElimHeadersIdx[b]).setFormula(
+          `=ARRAYFORMULA(IFERROR(IF(${membersRangeR1C1}="","", VLOOKUP(${membersRangeR1C1}, {INDIRECT("ELIMINATOR_NAMES"), INDIRECT("ELIMINATOR_PICKS")},${weekCellString}+1,0)),""))`
+        );
+      } else {
+        sheet.getRange(dataStartRow, leaderboardSurvElimHeadersIdx[b]).setFormula(
+          `=ARRAYFORMULA(IFERROR(IF(${membersRangeR1C1}="","", XLOOKUP(${membersRangeR1C1}, INDIRECT("TOT_NAME"), INDIRECT("TOT_${leaderboardSurvElimHeaders[b]}"), "")),""))`
+        );
+      }
+    }
+  }
+
   // Sparklines and Picks Spill Row-by-Row
   for (let r = dataStartRow; r <= dataEndRow; r++) {
     sheet.getRange(r, weeklyStartCol + 4).setFormula(
       `=IFERROR(IF(OR(R${r}C1="", ISBLANK(R[0]C[-1])),"", SPARKLINE(MAX(R[0]C[-1], 0.05), {"charttype","bar";"max",1;"color1", IF(R[0]C[-1]=MAX(R${dataStartRow}C[-1]:R${dataEndRow}C[-1]), "#00E676", IF(R[0]C[-1]<(MAX(R${dataStartRow}C[-1]:R${dataEndRow}C[-1])/3), "#FF8A80", "#FFD54F"))})),"")`
     );
+
+    // Formula filters for only incomplete matchups if data validated cell in A4 is selected
     sheet.getRange(r, firstMatchupCol).setFormula(
-      `=ARRAYFORMULA(IFERROR(IF(R${r}C1="","", XLOOKUP(R${r}C1, INDIRECT("NAMES_" & ${weekCellString}), INDIRECT("${LEAGUE}_PICKS_" & ${weekCellString}))),""))`
+      `=IFERROR(
+          IF(${filterCellString}="All Matchups",
+            ARRAYFORMULA(IFERROR(IF(R${r}C1="","", XLOOKUP(R${r}C1, INDIRECT("NAMES_" & ${weekCellString}), INDIRECT("${LEAGUE}_PICKS_" & ${weekCellString}))),"")),
+            FILTER(IFERROR(IF(R${r}C1="","", XLOOKUP(R${r}C1, INDIRECT("NAMES_" & ${weekCellString}), INDIRECT("${LEAGUE}_PICKS_" & ${weekCellString}))),""),INDIRECT("NFL_PICKEM_OUTCOMES_" & ${weekCellString}) = "")
+          ),
+        "")`
     );
   }
 
   // -------------------------------------------------------------
   // Explicit Number Formatting & Alignments
   // -------------------------------------------------------------
-  sheet.getRange(dataStartRow, pctOverallColIdx, totalMembers, 1).setNumberFormat('0.0%');
   sheet.getRange(dataStartRow, pctColIdx, totalMembers, 1).setNumberFormat('0.0%');
   sheet.getRange(dataStartRow, chancesColIdx, totalMembers, 1).setNumberFormat('0.0%');
   sheet.getRange(dataStartRow, wildColIdx, totalMembers, 1).setNumberFormat('0.0%');
@@ -9141,7 +9179,7 @@ function leaderboardSheet(ss, config, memberData) {
 
   // 3. Keep Comments left-aligned (if enabled)
   if (!config.commentsExclude && commentCol > -1) {
-    sheet.getRange(dataStartRow, commentCol, totalMembers, 1).setHorizontalAlignment('left');
+    sheet.getRange(dataStartRow, commentCol, totalMembers, 1).setHorizontalAlignment('left').setFontSize(9).setFontFamily("Arial Narrow").setFontColor('#111111');
   }
 
   sheet.setFrozenColumns(1);
@@ -9150,72 +9188,9 @@ function leaderboardSheet(ss, config, memberData) {
   // Conditional Formatting (Combining SUMMARY & WEEKLY Sheet Formatting)
   // -------------------------------------------------------------------------
   
-  // --- A. SEASON & POOL TOTALS RULES (from SUMMARY) ---
-  
-  // 1. Season Total Points Gradient: Green (#75F0A1) -> White
-  const seasonPtsRange = sheet.getRange(dataStartRow, pointsOverallColIdx, totalMembers, 1);
-  formatRules.push(
-    SpreadsheetApp.newConditionalFormatRule()
-      .setGradientMaxpoint('#75F0A1')
-      .setGradientMinpoint('#FFFFFF')
-      .setRanges([seasonPtsRange])
-      .build()
-  );
+  // --- A. WEEKLY METRICS RULES (from WEEKLY SHEETS) ---
 
-  // 2. Season Total Rank: Cyan (#5EDCFF, Rank 1) -> White -> Orange (#FF9B69)
-  const seasonRnkRange = sheet.getRange(dataStartRow, rankOverallColIdx, totalMembers, 1);
-  formatRules.push(
-    SpreadsheetApp.newConditionalFormatRule()
-      .setGradientMinpointWithValue("#5EDCFF", SpreadsheetApp.InterpolationType.NUMBER, "1")
-      .setGradientMidpointWithValue("#FFFFFF", SpreadsheetApp.InterpolationType.NUMBER, `${totalMembers / 2}`)
-      .setGradientMaxpointWithValue("#FF9B69", SpreadsheetApp.InterpolationType.NUMBER, `${totalMembers}`)
-      .setRanges([seasonRnkRange])
-      .build()
-  );
-
-  // 3. Season Average % Correct: Green (70%) -> White (60%) -> Orange (50%)
-  const seasonPctRange = sheet.getRange(dataStartRow, pctOverallColIdx, totalMembers, 1);
-  formatRules.push(
-    SpreadsheetApp.newConditionalFormatRule()
-      .setGradientMaxpointWithValue("#75F0A1", SpreadsheetApp.InterpolationType.NUMBER, "0.70")
-      .setGradientMidpointWithValue("#FFFFFF", SpreadsheetApp.InterpolationType.NUMBER, "0.60")
-      .setGradientMinpointWithValue("#FF9B69", SpreadsheetApp.InterpolationType.NUMBER, "0.50")
-      .setRanges([seasonPctRange])
-      .build()
-  );
-
-  // 4. MNF Totals & Ranks (if enabled)
-  if (mnfOverallCol > -1) {
-    const mnfPtsRange = sheet.getRange(dataStartRow, mnfOverallCol, totalMembers, 1);
-    formatRules.push(SpreadsheetApp.newConditionalFormatRule().setGradientMaxpoint('#75F0A1').setGradientMinpoint('#FFFFFF').setRanges([mnfPtsRange]).build());
-
-    const mnfRnkRange = sheet.getRange(dataStartRow, mnfOverallCol + 1, totalMembers, 1);
-    formatRules.push(
-      SpreadsheetApp.newConditionalFormatRule()
-        .setGradientMinpointWithValue("#5EDCFF", SpreadsheetApp.InterpolationType.NUMBER, "1")
-        .setGradientMidpointWithValue("#FFFFFF", SpreadsheetApp.InterpolationType.NUMBER, `${totalMembers / 2}`)
-        .setGradientMaxpointWithValue("#FF9B69", SpreadsheetApp.InterpolationType.NUMBER, `${totalMembers}`)
-        .setRanges([mnfRnkRange])
-        .build()
-    );
-  }
-
-  // 5. Survivor & Eliminator Status Colors (IN = Green, OUT = Red)
-  if (survStatusCol > -1) {
-    const survStatusRange = sheet.getRange(dataStartRow, survStatusCol, totalMembers, 1);
-    formatRules.push(SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo('IN').setBackground('#C9FFDF').setRanges([survStatusRange]).build());
-    formatRules.push(SpreadsheetApp.newConditionalFormatRule().whenTextContains('OUT').setBackground('#F2BDC2').setRanges([survStatusRange]).build());
-  }
-
-  if (elimStatusCol > -1) {
-    const elimStatusRange = sheet.getRange(dataStartRow, elimStatusCol, totalMembers, 1);
-    formatRules.push(SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo('IN').setBackground('#C9FFDF').setRanges([elimStatusRange]).build());
-    formatRules.push(SpreadsheetApp.newConditionalFormatRule().whenTextContains('OUT').setBackground('#F2BDC2').setRanges([elimStatusRange]).build());
-  }
-
-  // --- B. WEEKLY METRICS RULES (from WEEKLY SHEETS) ---
-
-  // 6. Weekly Total Picks/Points: Green (#75F0A1) -> White
+  // 1. Weekly Total Picks/Points: Green (#75F0A1) -> White
   const weeklyPtsRange = sheet.getRange(dataStartRow, pointsColIdx, totalMembers, 1);
   formatRules.push(
     SpreadsheetApp.newConditionalFormatRule()
@@ -9225,7 +9200,7 @@ function leaderboardSheet(ss, config, memberData) {
       .build()
   );
 
-  // 7. Weekly Rank: Cyan (#5EDCFF, Rank 1) -> White -> Orange (#FF9B69)
+  // 2. Weekly Rank: Cyan (#5EDCFF, Rank 1) -> White -> Orange (#FF9B69)
   const weeklyRnkRange = sheet.getRange(dataStartRow, rankColIdx, totalMembers, 1);
   formatRules.push(
     SpreadsheetApp.newConditionalFormatRule()
@@ -9236,7 +9211,7 @@ function leaderboardSheet(ss, config, memberData) {
       .build()
   );
 
-  // 8. Weekly Percent Correct: Green (70%) -> White (60%) -> Orange (50%)
+  // 3. Weekly Percent Correct: Green (70%) -> White (60%) -> Orange (50%)
   const weeklyPctRange = sheet.getRange(dataStartRow, pctColIdx, totalMembers, 1);
   formatRules.push(
     SpreadsheetApp.newConditionalFormatRule()
@@ -9247,7 +9222,7 @@ function leaderboardSheet(ss, config, memberData) {
       .build()
   );
 
-  // 9. Weekly Chances: Green (#33FF7A) -> Yellow (#FFE433) -> Orange (#FFA579)
+  // 4. Weekly Chances: Green (#33FF7A) -> Yellow (#FFE433) -> Orange (#FFA579)
   const weeklyChancesRange = sheet.getRange(dataStartRow, chancesColIdx, totalMembers, 1);
   formatRules.push(
     SpreadsheetApp.newConditionalFormatRule()
@@ -9258,7 +9233,69 @@ function leaderboardSheet(ss, config, memberData) {
       .build()
   );
   
-  // 10. Conditional Formatting for Day Names
+  // 5. Survivor & Eliminator Status Colors (IN = Green, OUT = Red)
+  if (survPickCol > -1) {
+    const survRange = sheet.getRange(dataStartRow, survLivesCol, totalMembers, 2);
+    
+    // Not participating/out already
+    formatRules.push(SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied(`=INDIRECT("R[0]C${survPickCol}",FALSE)=""`).setBackground("#FFF2F4").setRanges([survRange]).build());
+    
+    // Yellow for pending
+    const survPendingFormula = `=AND(NOT(ISNUMBER(MATCH(INDIRECT("R[0]C${survPickCol}",FALSE),INDIRECT("${LEAGUE}_${isAts ? "ATS" : "PICKEM"}_OUTCOMES_" & INDIRECT("${weekCellStringR1C1}","FALSE")),0))),ISNUMBER(SEARCH("🟢",INDIRECT("R[0]C${survLivesCol}",FALSE), 1)))`
+    formatRules.push(SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied(survPendingFormula).setBackground('#FFFDD4').setRanges([survRange]).build());
+    // Green for still in
+    formatRules.push(SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied(`=ISNUMBER(SEARCH("🟢",INDIRECT("R[0]C${survLivesCol}",FALSE), 1))`).setBackground('#C9FFDF').setRanges([survRange]).build());
+    // Red for eliminated this week
+    formatRules.push(SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied(`=NOT(ISNUMBER(SEARCH("🟢",INDIRECT("R[0]C${survLivesCol}",FALSE), 1)))`).setBackground('#F2BDC2').setRanges([survRange]).build());
+  }
+
+  if (elimPickCol > -1) {
+    const elimRange = sheet.getRange(dataStartRow, elimLivesCol, totalMembers, 2);
+
+    // Not participating/out already
+    formatRules.push(SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied(`=INDIRECT("R[0]C${elimPickCol}",FALSE)=""`).setBackground("#FFF2F4").setRanges([elimRange]).build());  
+
+    const recentElimFormula = `=AND(ISNUMBER(MATCH(INDIRECT("R[0]C${elimPickCol}",FALSE),INDIRECT("${LEAGUE}_${isAts ? "ATS" : "PICKEM"}_OUTCOMES_" & INDIRECT("${weekCellStringR1C1}","FALSE")),0)),ISNUMBER(SEARCH("❌",INDIRECT("R[0]C${elimLivesCol}",FALSE), 1)))`
+    formatRules.push(SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied(recentElimFormula).setBackground('#F2BDC2').setRanges([elimRange]).build());
+    
+    // Red for just out
+    const correctEliminator = `=AND(ISNUMBER(SEARCH("🟢",INDIRECT("R[0]C${elimLivesCol}",FALSE), 1)),ISNUMBER(MATCH(
+      INDIRECT("R[0]C${elimPickCol}",FALSE),
+        FILTER(
+          TRIM(
+            SPLIT(
+              JOIN("@",FILTER(
+                INDIRECT("${LEAGUE}_" & INDIRECT("${weekCellStringR1C1}","FALSE")),
+                NOT(ISBLANK(INDIRECT("${LEAGUE}_${isAts ? "ATS" : "PICKEM"}_OUTCOMES_" & INDIRECT("${weekCellStringR1C1}","FALSE"))))
+              )),
+              "@",
+            TRUE)
+          ),
+          ISNA(
+            MATCH(
+              TRIM(
+                SPLIT(
+                JOIN("@",FILTER(
+                  INDIRECT("${LEAGUE}_" & INDIRECT("${weekCellStringR1C1}","FALSE")),
+                  NOT(ISBLANK(INDIRECT("${LEAGUE}_${isAts ? "ATS" : "PICKEM"}_OUTCOMES_" & INDIRECT("${weekCellStringR1C1}","FALSE"))))
+                )),
+                "@",
+              TRUE)
+            ), 
+            INDIRECT("${LEAGUE}_${isAts ? "ATS" : "PICKEM"}_OUTCOMES_" & INDIRECT("${weekCellStringR1C1}","FALSE")),
+            0)
+          )
+        ),
+      0)))`;
+
+    // Green for still in
+    formatRules.push(SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied(correctEliminator).setBackground('#C9FFDF').setRanges([elimRange]).build());
+    
+    // Yellow for pending
+    formatRules.push(SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied(`=ISNUMBER(SEARCH("🟢",INDIRECT("R[0]C${elimLivesCol}",FALSE), 1))`).setBackground('#FFFDD4').setRanges([elimRange]).build());
+  }
+  
+  // 6. Conditional Formatting for Day Names
   const matchupDaysRange = sheet.getRange(matchupRow - 1, firstMatchupCol, 1, maxWeeklyGames)
   Object.keys(dayColorsFilledObj).forEach( day => {    
     const color = dayColorsFilledObj[day];
@@ -9271,7 +9308,7 @@ function leaderboardSheet(ss, config, memberData) {
         .build())
   });
 
-  // 11. Conditional Formatting for Team Colors
+  // 7. Conditional Formatting for Team Colors
   const matchupOutcomeRange = sheet.getRange(matchupRow + 1, firstMatchupCol, 1, maxWeeklyGames)
   Object.keys(LEAGUE_DATA).forEach( team => {    
     const teamData = LEAGUE_DATA[team];
@@ -9286,7 +9323,7 @@ function leaderboardSheet(ss, config, memberData) {
         .build())
   });
 
-  // 12. Weekly Wildcard (Contrarianism): Orange (#FCA503, 50%) -> Yellow (25%) -> Cyan (#7DFFFB, 0%)
+  // 8. Weekly Wildcard (Contrarianism): Orange (#FCA503, 50%) -> Yellow (25%) -> Cyan (#7DFFFB, 0%)
   const weeklyWildRange = sheet.getRange(dataStartRow, wildColIdx, totalMembers, 1);
   formatRules.push(
     SpreadsheetApp.newConditionalFormatRule()
@@ -9297,7 +9334,7 @@ function leaderboardSheet(ss, config, memberData) {
       .build()
   );
 
-  // 13. Tiebreaker Difference Exact Match (0 = Green #75F0A1)
+  // 9. Tiebreaker Difference Exact Match (0 = Green #75F0A1)
   if (config.tiebreakerInclude) {
     const diffColRange = sheet.getRange(dataStartRow, tiebreakerCol + 1, totalMembers, 1);
     formatRules.push(
@@ -9311,9 +9348,9 @@ function leaderboardSheet(ss, config, memberData) {
     );
   }
 
-  // --- C. MATCHUP GRID & OUTCOME RULES ---
+  // --- B. MATCHUP GRID & OUTCOME RULES ---
 
-  // 14. Home / Away Split Bias Colors (Row 6)
+  // 10. Home / Away Split Bias Colors (Row 6)
   const effectiveOutcomeRow = isAts ? spreadOutcomeRow : outcomeRow;
   const biasRange = sheet.getRange(summaryRow, firstMatchupCol, 1, maxWeeklyGames);
   let awayFormula = `=AND(REGEXEXTRACT(INDIRECT("R[0]C[0]",FALSE),"[A-Z]{2,3}")=REGEXEXTRACT(INDIRECT("R${matchupRow}C[0]",FALSE),"[A-Z]{2,3}"), VALUE(REGEXEXTRACT(INDIRECT("R[0]C[0]",FALSE),"[0-9\.]+"))>=%%)`;
@@ -9324,7 +9361,7 @@ function leaderboardSheet(ss, config, memberData) {
     formatRules.push(SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied(homeFormula.replace('%%', rule.percent)).setBackground(rule.home).setRanges([biasRange]).build());
   });
 
-  // 15. Completed Matchup Headers Dimming
+  // 11. Completed Matchup Headers Dimming
   const matchupHeadersRange = sheet.getRange(matchupRow, firstMatchupCol, 1, maxWeeklyGames);
   formatRules.push(
     SpreadsheetApp.newConditionalFormatRule()
@@ -9335,7 +9372,7 @@ function leaderboardSheet(ss, config, memberData) {
       .build()
   );
 
-  // 16. Matchup Grid Picks (Zebra Parity + Bonus Multipliers + Correct/Incorrect)
+  // 12. Matchup Grid Picks (Zebra Parity + Bonus Multipliers + Correct/Incorrect)
   const bonusCount = 3;
   const parities = { even: { fn: 'iseven' }, odd: { fn: 'isodd' } };
   const picksGridRange = sheet.getRange(dataStartRow, firstMatchupCol, totalMembers, maxWeeklyGames);
@@ -9378,6 +9415,18 @@ function leaderboardSheet(ss, config, memberData) {
 
   sheet.setConditionalFormatRules(formatRules);
 
+  // Merge survivor and/or eliminator headers if present
+  if (survLivesCol > -1) {
+    sheet.getRange(matchupRow,survLivesCol,1,2).merge();
+    sheet.getRange(outcomeRow,survLivesCol,2,2).merge();
+    sheet.getRange(summaryRow,survLivesCol,1,2).merge();
+  }
+  if (elimLivesCol > -1) {
+    sheet.getRange(matchupRow,elimLivesCol,1,2).merge();
+    sheet.getRange(outcomeRow,elimLivesCol,2,2).merge();
+    sheet.getRange(summaryRow,elimLivesCol,1,2).merge();
+  }
+  
   adjustRows(sheet, dataEndRow);
   adjustColumns(sheet, finalMatchupCol);
 
@@ -9763,6 +9812,7 @@ function countsSheet(ss, memberData) {
   return sheet;
 }
 
+
 // SEASON Sheet Creation
 function seasonSheet(ss, config, memberData) {
   ss = ss || fetchSpreadsheet(ss);
@@ -9795,10 +9845,11 @@ function seasonSheet(ss, config, memberData) {
   sheet.getRange(1, 1, sheet.getMaxRows(), sheet.getMaxColumns()).clearDataValidations();
   sheet.setTabColor('#00E676');
 
-  // Cols: 1:Members, 2:Total, 3:True %, 4:Rank, 5:Ticker, 6-16: Keyed Sparkline Area (11 cols = 700px)
-  const baseCols = 5;
-  const sparkCols = 11; // 6 color boxes (100px) + 5 spacers (20px) = 700px
-  const totalCols = baseCols + sparkCols; // 16 columns total
+  // Cols: 1:MEMBERS, 2:TOTAL, 3:CORRECT %, 4:CURRENT RANK, 5:PRIOR RANK, 6:RANK TICKER, 7:PRIOR PTS (Hidden), 8-18: Sparkline Area (11 cols = 700px)
+  const baseCols = 6;
+  const helperCols = 1;
+  const sparkCols = 11;
+  const totalCols = baseCols + helperCols + sparkCols; // 18 columns total
 
   const dataStartRow = 3;
   const dataEndRow = dataStartRow + totalMembers - 1;
@@ -9810,26 +9861,27 @@ function seasonSheet(ss, config, memberData) {
 
   // Set Widths
   sheet.setColumnWidth(1, 140); // Members
-  sheet.setColumnWidth(2, 105); // Total Correct
-  sheet.setColumnWidth(3, 100); // True Season %
-  sheet.setColumnWidth(4, 95);  // Overall Rank
-  sheet.setColumnWidth(5, 115); // Rank Ticker
+  sheet.setColumnWidth(2, 75);  // Total Correct
+  sheet.setColumnWidth(3, 75);  // True Season %
+  sheet.setColumnWidth(4, 75);  // Current Rank
+  sheet.setColumnWidth(5, 75);  // Prior Rank
+  sheet.setColumnWidth(6, 75); // Rank Ticker
+  sheet.setColumnWidth(7, 50);  // Helper Prior Points (Hidden)
 
-  // 11 Sub-Columns for Sparkline / Legend Key (Cols 6 through 16)
-  const keyWidths = [100, 20, 100, 20, 100, 20, 100, 20, 100, 20, 100];
+  // 11 Sub-Columns for Sparkline / Legend Key (Cols 8 through 18)
+  const keyWidths = [80, 15, 80, 15, 80, 15, 80, 15, 80, 15, 80];
   for (let k = 0; k < keyWidths.length; k++) {
-    sheet.setColumnWidth(baseCols + 1 + k, keyWidths[k]);
+    sheet.setColumnWidth(baseCols + helperCols + 1 + k, keyWidths[k]);
   }
 
   sheet.setRowHeight(1, 26);
-  sheet.setRowHeight(2, 28);
-  sheet.setRowHeight(avgRow, 28);
+  sheet.setRowHeight(2, 40);
+  sheet.setRowHeight(avgRow, 35);
   for (let r = dataStartRow; r <= dataEndRow; r++) {
     sheet.setRowHeight(r, 26);
   }
 
-  // --- 2. Top Control Bar & Unmerged Keyed Legend (Row 1) ---
-  // Cell A1: Sort Selector Dropdown
+  // --- 2. Top Control Bar & Legend (Row 1) ---
   const sortCell = sheet.getRange(1, 1);
   const sortOptions = ['Display Order', 'Sorted by Name', 'Sorted by Rank'];
   sortCell.setValue(sortOptions[2]) // Default: Sorted by Rank
@@ -9858,9 +9910,9 @@ function seasonSheet(ss, config, memberData) {
        .setHorizontalAlignment('center')
        .setVerticalAlignment('middle');
 
-  // E1: Ticker Header
-  sheet.getRange(1, 5)
-       .setValue('TREND')
+  // E1:F1: Trend Header
+  sheet.getRange(1, 5, 1, 2).merge()
+       .setValue('WEEKLY TREND')
        .setFontFamily('Montserrat')
        .setFontWeight('bold')
        .setFontSize(9)
@@ -9869,26 +9921,41 @@ function seasonSheet(ss, config, memberData) {
        .setHorizontalAlignment('center')
        .setVerticalAlignment('middle');
 
-  // F1:P1 (Cols 6 to 16): 6 Keyed Color Badges with Black Spacers
+  // Cell G1: Calculates active week number once using native SUM on TOT_WEEKLY
+  const weeks = Array.from({ length: WEEKS }, (_, index) => index + 1).filter(week => !WEEKS_TO_EXCLUDE.includes(week));
+  const weeksArrayLiteral = `{${weeks.join(',')}}`;
+
+  sheet.getRange(1, 7).setFormula(
+    `=IFERROR(IFERROR(MAX(IFERROR(FILTER(SEQUENCE(1, COLUMNS(INDIRECT("TOT_WEEKLY")), 1), BYCOL(INDIRECT("TOT_WEEKLY"), LAMBDA(c, SUM(c) > 0))), 1)), MAX(IFERROR(FILTER(${weeksArrayLiteral}, MAP(${weeksArrayLiteral}, LAMBDA(w, SUM(IFERROR(INDIRECT("TOT_" & w), IFERROR(INDIRECT("POINTS_" & w), 0))) > 0))), 1))), 1)`
+  );
+
+  // H1:R1 (Cols 8 to 18): 6 Keyed Color Badges with Black Spacers
   const keyLabels = ['1st / Win', '', '2nd Place', '', '3rd Place', '', 'Top Half', '', 'Low Half', '', 'Bottom 25%'];
-  const keyColors = ['#FFD600', '#000000', '#D4E157', '#000000', '#9CCC65', '#000000', '#66BB6A', '#000000', '#FF8A65', '#000000', '#EF5350'];
+  const keyColors = [
+    '#00F27C', '#000000',
+    '#9CCC65', '#000000',
+    '#D4E157', '#000000',
+    '#FFD600', '#000000',
+    '#FF8A65', '#000000',
+    '#EF5350'
+  ];
 
   for (let k = 0; k < keyLabels.length; k++) {
-    const colIdx = baseCols + 1 + k;
-    const cell = sheet.getRange(1, colIdx);
-    cell.setValue(keyLabels[k])
-        .setBackground(keyColors[k])
-        .setFontColor('#000000')
-        .setFontFamily('Montserrat')
-        .setFontWeight('bold')
-        .setFontSize(8)
-        .setHorizontalAlignment('center')
-        .setVerticalAlignment('middle');
+    const colIdx = baseCols + helperCols + 1 + k;
+    sheet.getRange(1, colIdx)
+         .setValue(keyLabels[k])
+         .setBackground(keyColors[k])
+         .setFontColor('#000000')
+         .setFontFamily('Montserrat')
+         .setFontWeight('bold')
+         .setFontSize(8)
+         .setHorizontalAlignment('center')
+         .setVerticalAlignment('middle');
   }
 
   // --- 3. Row 2 Column Headers ---
-  const headers = ['MEMBERS', 'TOTAL', 'CORRECT %', 'TOTAL RANK', 'RANK TICKER'];
-  sheet.getRange(2, 1, 1, 5)
+  const headers = ['MEMBERS', 'TOTAL' + '\n' + 'CORRECT', 'CORRECT' + '\n' + '%', 'CURRENT' + '\n' + 'RANK', 'PRIOR' + '\n' + 'RANK', 'RANK' + '\n' + 'TICKER', '_PRIOR_PTS'];
+  sheet.getRange(2, 1, 1, 7)
        .setValues([headers])
        .setBackground('#000000')
        .setFontColor('#FFFFFF')
@@ -9899,18 +9966,15 @@ function seasonSheet(ss, config, memberData) {
        .setVerticalAlignment('middle');
   sheet.getRange(2, 1).setHorizontalAlignment('left');
 
-  // F2:P2 Merged: Timeline Header (W1 -> W18 or W23)
-  const weeks = Array.from({ length: WEEKS }, (_, index) => index + 1).filter(week => !WEEKS_TO_EXCLUDE.includes(week));
-  const weeksArrayLiteral = `{${weeks.join(',')}}`;
-
+  // H2:R2 Merged: Timeline Header (Cols 8 to 18)
   const headerF2Formula = `=IFERROR(LET(
     playoffWeeks, {19, 20, 21, 23},
     hasPlayoffs, SUM(MAP(playoffWeeks, LAMBDA(w, IFERROR(COUNTIF(INDIRECT("${LEAGUE}_HOME_" & w), "<>"), 0)))) > 0,
     endW, IF(hasPlayoffs, 23, 18),
-    "SEASON ACCUMULATION & WEEKLY BREAKDOWN (W1 ————————————————————————→ W" & endW & ")"
-  ), "SEASON ACCUMULATION & WEEKLY BREAKDOWN (W1 ————————————————————————→ W18)")`;
+    "SEASON ACCUMULATION & WEEKLY BREAKDOWN (W1 —————————————→ W" & endW & ")"
+  ), "SEASON ACCUMULATION & WEEKLY BREAKDOWN (W1 —————————————→ W18)")`;
 
-  sheet.getRange(2, baseCols + 1, 1, sparkCols).merge()
+  sheet.getRange(2, baseCols + helperCols + 1, 1, sparkCols).merge()
        .setFormula(headerF2Formula)
        .setBackground('#000000')
        .setFontColor('#FFFFFF')
@@ -9920,50 +9984,52 @@ function seasonSheet(ss, config, memberData) {
        .setHorizontalAlignment('center')
        .setVerticalAlignment('middle');
 
-  // --- 4. Dynamic Sorting Formula in Cell A3 ---
-  const colAFormula = `=IFERROR(LET(
-    rawNames, INDIRECT("NAMES_1"),
-    wks, ${weeksArrayLiteral},
-    scores, MAP(rawNames, LAMBDA(name,
-      SUM(MAP(wks, LAMBDA(w,
-        IF(COUNTA(IFERROR(FILTER(INDIRECT("NAMES_" & w), INDIRECT("NAMES_" & w)=name), ""))=0, 0,
-          IFERROR(SUMPRODUCT(--(FILTER(INDIRECT("${LEAGUE}_PICKS_" & w), INDIRECT("NAMES_" & w)=name) = INDIRECT("${LEAGUE}_PICKEM_OUTCOMES_" & w)), IFERROR(INDIRECT("${LEAGUE}_BONUS_" & w), 1)), 0)
-        )
-      )))
-    )),
-    ranks, ARRAYFORMULA(IFERROR(RANK(scores, scores, 0), 999)),
-    data, {rawNames, scores, ranks, SEQUENCE(ROWS(rawNames), 1, 1, 1)},
-    INDEX(
-      IF($A$1="Sorted by Name",
-        SORT(data, 1, TRUE),
-        IF($A$1="Sorted by Rank",
-          SORT(data, 3, TRUE, 1, TRUE),
-          SORT(data, 4, TRUE)
-        )
+  // --- 4. Dynamic Sorting in Cell A3 ---
+  // Calculates season points using SUM(rw) on TOT_WEEKLY and sorts by score descending (Rank 1 at top)
+  const colAFormula = `=IFERROR(
+    LET(
+      rawNames, IFERROR(TOCOL(INDIRECT("TOT_OVERALL_NAMES"), 1), INDIRECT("NAMES_1")),
+      scores, IFERROR(
+        BYROW(INDIRECT("TOT_WEEKLY"), LAMBDA(rw, SUM(rw))),
+        MAP(rawNames, LAMBDA(n,
+          SUM(MAP(${weeksArrayLiteral}, LAMBDA(w,
+            IFERROR(XLOOKUP(n, INDIRECT("NAMES_" & w), IFERROR(INDIRECT("TOT_" & w), INDIRECT("POINTS_" & w)), 0), 0)
+          )))
+        ))
       ),
-      , 1
-    )
-  ), "NO DATA")`;
+      IF($A$1="Sorted by Name",
+        SORT(rawNames, 1, TRUE),
+        IF($A$1="Sorted by Rank",
+          SORT(rawNames, scores, FALSE, rawNames, TRUE),
+          rawNames
+        )
+      )
+    ),
+    INDIRECT("NAMES_1")
+  )`;
   sheet.getRange(dataStartRow, 1).setFormula(colAFormula);
 
-  // --- 5. Data Row Formulas (B3:F) ---
+  // --- 5. Data Row Formulas (B3:R) ---
   const halfRank = Math.ceil(totalMembers / 2);
   const q3Rank = Math.ceil(totalMembers * 0.75);
 
   for (let r = dataStartRow; r <= dataEndRow; r++) {
-    // Total Correct
+    // Total Correct (Col B) - Uses clean SUM(rw) without VALUE()
     sheet.getRange(r, 2).setFormula(
-      `=IFERROR(IF($A${r}="","", LET(
-        wks, ${weeksArrayLiteral},
-        SUM(MAP(wks, LAMBDA(w,
-          IF(COUNTA(IFERROR(FILTER(INDIRECT("NAMES_" & w), INDIRECT("NAMES_" & w)=$A${r}), ""))=0, 0,
-            IFERROR(SUMPRODUCT(--(FILTER(INDIRECT("${LEAGUE}_PICKS_" & w), INDIRECT("NAMES_" & w)=$A${r}) = INDIRECT("${LEAGUE}_PICKEM_OUTCOMES_" & w)), IFERROR(INDIRECT("${LEAGUE}_BONUS_" & w), 1)), 0)
+      `=IFERROR(IF($A${r}="","", 
+        IFERROR(
+          XLOOKUP($A${r}, TOCOL(INDIRECT("TOT_OVERALL_NAMES"), 1), BYROW(INDIRECT("TOT_WEEKLY"), LAMBDA(rw, SUM(rw)))),
+          LET(
+            wks, ${weeksArrayLiteral},
+            SUM(MAP(wks, LAMBDA(w,
+              IFERROR(SUMPRODUCT(--(FILTER(INDIRECT("${LEAGUE}_PICKS_" & w), INDIRECT("NAMES_" & w)=$A${r}) = INDIRECT("${LEAGUE}_PICKEM_OUTCOMES_" & w)), IFERROR(INDIRECT("${LEAGUE}_BONUS_" & w), 1)), 0)
+            )))
           )
-        )))
-      )), "")`
+        )
+      ), "")`
     );
 
-    // True Season % (Resilient)
+    // True Season % (Col C)
     sheet.getRange(r, 3).setFormula(
       `=IFERROR(IF(OR($A${r}="", $B${r}=""), "", LET(
         wks, ${weeksArrayLiteral},
@@ -9976,66 +10042,65 @@ function seasonSheet(ss, config, memberData) {
       )), "")`
     );
 
-    // Overall Rank
+    // Current Rank (Col D)
     sheet.getRange(r, 4).setFormula(
       `=IFERROR(IF($B${r}="","", RANK($B${r}, $B$${dataStartRow}:$B$${dataEndRow}, 0)), "")`
     );
 
-    // Column E: Rank Movement Ticker
+    // Prior Rank (Col E) - Evaluates rank of prior points in Column G
     sheet.getRange(r, 5).setFormula(
-      `=IFERROR(IF($A${r}="","", LET(
-        wks, ${weeksArrayLiteral},
-        activeWks, FILTER(wks, MAP(wks, LAMBDA(w, IFERROR(COUNTA(INDIRECT("NAMES_" & w)) > 0, FALSE)))),
-        numActive, COUNTA(activeWks),
-        IF(numActive < 2, "—",
-          LET(
-            currW, INDEX(activeWks, numActive),
-            prevW, INDEX(activeWks, numActive - 1),
-            currRnk, IFERROR(VLOOKUP($A${r}, {INDIRECT("NAMES_" & currW), INDIRECT("RNK_" & currW)}, 2, FALSE), ""),
-            prevRnk, IFERROR(VLOOKUP($A${r}, {INDIRECT("NAMES_" & prevW), INDIRECT("RNK_" & prevW)}, 2, FALSE), ""),
-            IF(OR(currRnk="", prevRnk=""), "—",
-              LET(
-                diff, prevRnk - currRnk,
-                IF(diff > 0, "▲ +" & diff & " (W" & currW & ")",
-                  IF(diff < 0, "▼ " & diff & " (W" & currW & ")",
-                    "▬ 0 (W" & currW & ")"
-                  )
-                )
-              )
-            )
+      `=IFERROR(IF($G${r}="","", RANK($G${r}, $G$${dataStartRow}:$G$${dataEndRow}, 0)), "")`
+    );
+
+    // Rank Movement Ticker (Col F) - Prior Rank ($E) - Current Rank ($D)
+    sheet.getRange(r, 6).setFormula(
+      `=IFERROR(IF(OR($D${r}="", $E${r}="", $G$1 < 2), "—", LET(
+        diff, $E${r} - $D${r},
+        IF(diff > 0, "▲ +" & diff,
+          IF(diff < 0, "▼ " & diff,
+            "▬ 0"
           )
-        )
+        ) & " (W" & $G$1 & ")"
       )), "—")`
     );
 
-    // Column F:P Merged: 700px Multi-Tiered Performance Sparkline with Odd/Even Alternating Tone Shifts
+    // Helper: Prior Points (Col G - Hidden) = Total ($B) minus Week W points
+    sheet.getRange(r, 7).setFormula(
+      `=IFERROR(IF($A${r}="","", $B${r} - IFERROR(
+        XLOOKUP($A${r}, TOCOL(INDIRECT("TOT_OVERALL_NAMES"), 1), CHOOSECOLS(INDIRECT("TOT_WEEKLY"), $G$1), 0),
+        IFERROR(SUMPRODUCT(--(FILTER(INDIRECT("${LEAGUE}_PICKS_" & $G$1), INDIRECT("NAMES_" & $G$1)=$A${r}) = INDIRECT("${LEAGUE}_PICKEM_OUTCOMES_" & $G$1)), IFERROR(INDIRECT("${LEAGUE}_BONUS_" & $G$1), 1)), 0)
+      )), "")`
+    );
+
+    // Column H:R Merged (Cols 8 to 18): 700px Multi-Tiered Performance Sparkline
     let tierColorOptions = '';
     for (let i = 1; i <= weeks.length; i++) {
       const w = weeks[i - 1];
       const isOdd = (w % 2 === 1);
 
-      // 6-Tier Finish Color Mapping with subtle Odd/Even variations:
-      const c1 = isOdd ? '#FFD600' : '#FFC107'; // 1st Place / Gold
-      const c2 = isOdd ? '#EEFF41' : '#C6FF00'; // 2nd Place / Yellow-Green
-      const c3 = isOdd ? '#AEEA00' : '#76FF03'; // 3rd Place / Greenish-Yellow
-      const c4 = isOdd ? '#00E676' : '#00C853'; // Top Half / Standard Green
-      const c5 = isOdd ? '#FF8A65' : '#FF7043'; // Low Half / Coral-Orange
-      const c6 = isOdd ? '#FF5252' : '#D50000'; // Bottom 25% / Red
+      const c1 = isOdd ? '#00E676' : '#00F27C';
+      const c2 = isOdd ? '#9CCC65' : '#8BC34A';
+      const c3 = isOdd ? '#D4E157' : '#CDDC39';
+      const c4 = isOdd ? '#FFD600' : '#FFC107';
+      const c5 = isOdd ? '#FF8A65' : '#FF7043';
+      const c6 = isOdd ? '#FF5252' : '#D50000';
 
-      const rnkExp = `IFERROR(VLOOKUP($A${r}, {INDIRECT("NAMES_${w}"), INDIRECT("RNK_${w}")}, 2, FALSE), 99)`;
+      const rnkExp = `IFERROR(XLOOKUP($A${r}, INDIRECT("NAMES_${w}"), IFERROR(INDIRECT("RANK_${w}"), IFERROR(INDIRECT("RNK_${w}"), 99)), 99), 99)`;
       const colorExp = `IF(${rnkExp}=1, "${c1}", IF(${rnkExp}=2, "${c2}", IF(${rnkExp}=3, "${c3}", IF(${rnkExp}<=${halfRank}, "${c4}", IF(${rnkExp}<=${q3Rank}, "${c5}", "${c6}")))))`;
       tierColorOptions += `"color${i}", ${colorExp}; `;
     }
 
-    sheet.getRange(r, baseCols + 1, 1, sparkCols).merge().setFormula(
+    sheet.getRange(r, baseCols + helperCols + 1, 1, sparkCols).merge().setFormula(
       `=IFERROR(IF($A${r}="","", LET(
-        wks, ${weeksArrayLiteral},
-        weeklyScores, MAP(wks, LAMBDA(w,
-          IF(COUNTA(IFERROR(FILTER(INDIRECT("NAMES_" & w), INDIRECT("NAMES_" & w)=$A${r}), ""))=0, 0,
-            IFERROR(SUMPRODUCT(--(FILTER(INDIRECT("${LEAGUE}_PICKS_" & w), INDIRECT("NAMES_" & w)=$A${r}) = INDIRECT("${LEAGUE}_PICKEM_OUTCOMES_" & w)), IFERROR(INDIRECT("${LEAGUE}_BONUS_" & w), 1)), 0)
-          )
-        )),
-        maxSeasonPossible, SUM(MAP(wks, LAMBDA(w, IFERROR(COLUMNS(INDIRECT("${LEAGUE}_PICKS_" & w)), 0)))),
+        weeklyScores, IFERROR(
+          XLOOKUP($A${r}, TOCOL(INDIRECT("TOT_OVERALL_NAMES"), 1), INDIRECT("TOT_WEEKLY")),
+          MAP(${weeksArrayLiteral}, LAMBDA(w,
+            IF(COUNTA(IFERROR(FILTER(INDIRECT("NAMES_" & w), INDIRECT("NAMES_" & w)=$A${r}), ""))=0, 0,
+              IFERROR(SUMPRODUCT(--(FILTER(INDIRECT("${LEAGUE}_PICKS_" & w), INDIRECT("NAMES_" & w)=$A${r}) = INDIRECT("${LEAGUE}_PICKEM_OUTCOMES_" & w)), IFERROR(INDIRECT("${LEAGUE}_BONUS_" & w), 1)), 0)
+            )
+          ))
+        ),
+        maxSeasonPossible, SUM(MAP(${weeksArrayLiteral}, LAMBDA(w, IFERROR(COLUMNS(INDIRECT("${LEAGUE}_PICKS_" & w)), 0)))),
         SPARKLINE(weeklyScores, {"charttype","bar"; ${tierColorOptions} "max", IF(maxSeasonPossible > 0, maxSeasonPossible, 272)})
       )), "")`
     );
@@ -10047,15 +10112,16 @@ function seasonSheet(ss, config, memberData) {
   sheet.getRange(avgRow, 3).setFormula(`=IFERROR(AVERAGE($C$${dataStartRow}:$C$${dataEndRow}), "")`);
   sheet.getRange(avgRow, 4).setValue('-');
   sheet.getRange(avgRow, 5).setValue('-');
+  sheet.getRange(avgRow, 6).setValue('-');
+  sheet.getRange(avgRow, 7).setValue('-');
 
-  // Group Average Stacked Bar (Parentheses syntax fixed & scaled to maxSeasonPossible)
   let avgTierColors = '';
   for (let i = 1; i <= weeks.length; i++) {
     const defaultHex = (i % 2 === 1) ? '#00B0FF' : '#00E676';
     avgTierColors += `"color${i}", "${defaultHex}"; `;
   }
 
-  sheet.getRange(avgRow, baseCols + 1, 1, sparkCols).merge().setFormula(
+  sheet.getRange(avgRow, baseCols + helperCols + 1, 1, sparkCols).merge().setFormula(
     `=IFERROR(LET(
       wks, ${weeksArrayLiteral},
       names, INDIRECT("NAMES_1"),
@@ -10082,19 +10148,21 @@ function seasonSheet(ss, config, memberData) {
        .setVerticalAlignment('middle');
 
   sheet.getRange(dataStartRow, 1, totalMembers, 1).setHorizontalAlignment('left');
-  sheet.getRange(dataStartRow, 2, totalMembers, 4).setHorizontalAlignment('center');
+  sheet.getRange(dataStartRow, 2, totalMembers, 6).setHorizontalAlignment('center');
 
   sheet.getRange(dataStartRow, 2, totalMembers, 1).setNumberFormat('0');
   sheet.getRange(dataStartRow, 3, totalMembers, 1).setNumberFormat('0.0%');
-  sheet.getRange(dataStartRow, 4, totalMembers, 1).setNumberFormat('0');
+  sheet.getRange(dataStartRow, 4, totalMembers, 2).setNumberFormat('0');
 
-  // Summary Row Styling
   const avgRange = sheet.getRange(avgRow, 1, 1, totalCols);
   avgRange.setBackground('#E6E6E6').setFontWeight('bold').setFontFamily('Montserrat').setFontSize(9).setVerticalAlignment('middle');
   sheet.getRange(avgRow, 1).setHorizontalAlignment('left');
-  sheet.getRange(avgRow, 2, 1, 4).setHorizontalAlignment('center');
+  sheet.getRange(avgRow, 2, 1, 5).setHorizontalAlignment('center');
   sheet.getRange(avgRow, 2).setNumberFormat('0.0');
   sheet.getRange(avgRow, 3).setNumberFormat('0.0%');
+
+  // Hide the Helper Column (Col 7: _PRIOR_PTS)
+  sheet.hideColumns(7);
 
   sheet.setFrozenColumns(1);
   sheet.setFrozenRows(2);
@@ -10102,11 +10170,11 @@ function seasonSheet(ss, config, memberData) {
   // --- 8. Conditional Formatting ---
   const formatRules = [];
 
-  // Total Correct Gradient: Green (#75F0A1) -> White
+  // Points Gradient
   const ptsRange = sheet.getRange(dataStartRow, 2, totalMembers, 1);
   formatRules.push(SpreadsheetApp.newConditionalFormatRule().setGradientMaxpoint('#75F0A1').setGradientMinpoint('#FFFFFF').setRanges([ptsRange]).build());
 
-  // Dynamic True Win % Scale: Min (Orange) -> Avg (White) -> Max (Green)
+  // Win % Scale
   const pctRange = sheet.getRange(dataStartRow, 3, totalMembers, 1);
   formatRules.push(
     SpreadsheetApp.newConditionalFormatRule()
@@ -10117,19 +10185,30 @@ function seasonSheet(ss, config, memberData) {
       .build()
   );
 
-  // Rank Scale: Cyan (#5EDCFF, Rank 1) -> White -> Orange (#FF9B69, Last Place)
-  const rnkRange = sheet.getRange(dataStartRow, 4, totalMembers, 1);
+  // Current Rank Scale
+  const currRnkRange = sheet.getRange(dataStartRow, 4, totalMembers, 1);
   formatRules.push(
     SpreadsheetApp.newConditionalFormatRule()
       .setGradientMinpointWithValue('#5EDCFF', SpreadsheetApp.InterpolationType.NUMBER, '1')
       .setGradientMidpointWithValue('#FFFFFF', SpreadsheetApp.InterpolationType.NUMBER, `${totalMembers / 2}`)
       .setGradientMaxpointWithValue('#FF9B69', SpreadsheetApp.InterpolationType.NUMBER, `${totalMembers}`)
-      .setRanges([rnkRange])
+      .setRanges([currRnkRange])
+      .build()
+  );
+
+  // Prior Rank Scale
+  const priorRnkRange = sheet.getRange(dataStartRow, 5, totalMembers, 1);
+  formatRules.push(
+    SpreadsheetApp.newConditionalFormatRule()
+      .setGradientMinpointWithValue('#5EDCFF', SpreadsheetApp.InterpolationType.NUMBER, '1')
+      .setGradientMidpointWithValue('#FFFFFF', SpreadsheetApp.InterpolationType.NUMBER, `${totalMembers / 2}`)
+      .setGradientMaxpointWithValue('#FF9B69', SpreadsheetApp.InterpolationType.NUMBER, `${totalMembers}`)
+      .setRanges([priorRnkRange])
       .build()
   );
 
   // Ticker Highlights: Green for Gains (▲), Red for Drops (▼), Gray for Unchanged (▬)
-  const tickerRange = sheet.getRange(dataStartRow, 5, totalMembers, 1);
+  const tickerRange = sheet.getRange(dataStartRow, 6, totalMembers, 1);
   formatRules.push(SpreadsheetApp.newConditionalFormatRule().whenTextContains('▲').setBackground('#C9FFDF').setFontColor('#00701A').setBold(true).setRanges([tickerRange]).build());
   formatRules.push(SpreadsheetApp.newConditionalFormatRule().whenTextContains('▼').setBackground('#FFCCD6').setFontColor('#D50000').setBold(true).setRanges([tickerRange]).build());
   formatRules.push(SpreadsheetApp.newConditionalFormatRule().whenTextContains('▬').setBackground('#F5F5F5').setFontColor('#757575').setRanges([tickerRange]).build());
@@ -10140,7 +10219,7 @@ function seasonSheet(ss, config, memberData) {
   adjustColumns(sheet, totalCols);
   SpreadsheetApp.flush();
 
-  Logger.log('🗓️ SEASON sheet successfully created with alternating-shade tiered sparklines.');
+  Logger.log('🗓️ SEASON sheet successfully created with positive totals, accurate standings, and correct prior rank.');
   return sheet;
 }
 
