@@ -795,12 +795,17 @@ function processConfigurationSubmission(formObject) {
       'pickemsAts',
       'mnfExclude',
       'commentsExclude',
-      'bonusInclude',
       'mnfDouble',
       'tiebreakerInclude',
       'overUnderInclude',
       'weeklyPaidTracking',
       'hideNonParticipants',
+      'bonusInclude',
+      'individualBonus',
+      'individualBonusCount',
+      'individualBonusWeighting',
+      'individualBonusPenalty',
+      'individualBonusMandatory',
       
       'survivorInclude', // Survivor options below
       'survivorStartWeek',
@@ -11064,7 +11069,7 @@ function weeklySheet(ss,week,config,forms,memberData,displayEmpty,rebuild) {
     .build();
   formatRules.push(formatRuleWinner);  
   // WINNER NAME RULE
-  range = sheet.getRange(entryRowStart,winCol,totalMembers,1);
+  range = sheet.getRange(entryRowStart,1,totalMembers,1);
   let formatRuleWinnerName = SpreadsheetApp.newConditionalFormatRule()
     .whenFormulaSatisfied(`=indirect("R[0]C${winCol}",false)=1`)
     .setBackground('#75F0A1')
@@ -11307,7 +11312,7 @@ function weeklySheet(ss,week,config,forms,memberData,displayEmpty,rebuild) {
     .setHorizontalAlignment('left');
  
   sheet.setFrozenColumns(firstMatchupCol-1);
-  sheet.setFrozenRows(subHeaderRow);
+  sheet.setFrozenRows(subHeaderRow);=1
   sheet.getRange(1,1,1,columns)
     .setBackground('black')
     .setFontColor('white')
