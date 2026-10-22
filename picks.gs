@@ -4955,24 +4955,29 @@ function buildPickemQuestions(ss, form, gamePlan, config) {
     let helpText = `${mnf ? 'Monday Night Football' : game.dayName} at ${formatTime(game.hour, game.minute)}`;
     if (config.pickemsAts && game.spread) helpText += `  | ${config.hideEmojis ? '' : '↔️ '}Spread: ${game.spread}`;
     if (game.bonus > 1) title += ` (${game.bonus == 3 ? config.hideEmojis ? '3' : '3️⃣' : config.hideEmojis ? '2' : '2️⃣'}x Bonus)`;
-    if (index === tbIndex && isTbNotLast) helpText += `  | ${config.hideEmojis ? '*' : '⚖️ '}Tiebreaker`; // Adds scale emoji if tiebreaker is not the final game
+    if (index === tbIndex && isTbNotLast) helpText += `  | ${config.hideEmojis ? '*' : '⚖️ '}Tiebreaker`; 
     item.setTitle(title)
       .setHelpText(helpText)
       .setChoices([
-        item.createChoice(`${!config.hideEmojis ? ' ' + LEAGUE_DATA[game.awayTeam].mascot : ''} ${game.awayTeam}`), // + LEAGUE_DATA[game.awayTeam].colors_emoji 
-        item.createChoice(`${!config.hideEmojis ? ' ' + LEAGUE_DATA[game.homeTeam].mascot : ''} ${game.homeTeam}`)]) // + LEAGUE_DATA[game.homeTeam].colors_emoji 
+        item.createChoice(`${!config.hideEmojis ? ' ' + LEAGUE_DATA[game.awayTeam].mascot : ''} ${game.awayTeam}`),  
+        item.createChoice(`${!config.hideEmojis ? ' ' + LEAGUE_DATA[game.homeTeam].mascot : ''} ${game.homeTeam}`)]) 
       .showOtherOption(false)
       .setRequired(true);
     ss.toast(`Added pick 'ems question of ${game.awayTeam}@${game.homeTeam}`,`${LEAGUE_DATA[game.awayTeam].mascot}@${LEAGUE_DATA[game.homeTeam].mascot}`);
     Logger.log(`🏈 Pick 'Ems: ${LEAGUE_DATA[game.awayTeam].mascot}@${LEAGUE_DATA[game.homeTeam].mascot} created`);
   });
-  if (config.tiebreakerInclude) { // Excludes tiebreaker question if tiebreaker is disabled
+
+  if (config.bonusInclude && config.individualBonus) {
+    buildIndividualBonusQuestion(ss, form, gamePlan, config);
+  }
+
+  if (config.tiebreakerInclude) { 
     let numberValidation = FormApp.createTextValidation()
       .setHelpText('Input must be a whole number between 0 and 120')
       .requireWholeNumber()
       .requireNumberBetween(0,120)
       .build();
-      // Tiebreaker question
+      
     let helpText = `Combined points between ${tiebreakerMatchup}${config.overUnderInclude && tiebreakerOverUnder > 0 ? ' (betting line: ' + tiebreakerOverUnder + ')' : ''}`
     form.addTextItem()
       .setTitle('Tiebreaker')
@@ -4982,7 +4987,8 @@ function buildPickemQuestions(ss, form, gamePlan, config) {
     ss.toast(`Created tiebreaker question for ${tiebreakerMatchup}`,`⚖️ TIEBREAKER CREATED`);
     Logger.log(`⚖️ Tiebreaker question created for ${tiebreakerMatchup}`);
   }
-  if(!config.commentsExclude) { // Excludes comment question if comments are disabled
+  
+  if(!config.commentsExclude) { 
     form.addTextItem()
       .setTitle('Comments')
       .setHelpText('Passing thoughts...');
@@ -4992,104 +4998,70 @@ function buildPickemQuestions(ss, form, gamePlan, config) {
 }
 
 /**
- * Builds the page for a new user to sign up.
- * This function now intelligently adds Survivor and/or Eliminator questions
- * directly to the same page if it's the first week of the contest.
- *
- * @param {Form} form The Google Form object to add items to.
- * @param {Object} config The main configuration object for the pool.
- * @param {Object} gamePlan The game plan for the current week.
- * @returns {PageBreakItem} The created page break item for navigation.
+ * Builds the individual bonus question if enabled in the configuration.
+ * Evaluates counts, weightings, and requirements to deploy either a Dropdown or Checkbox item.
  */
-function buildNewUserPage(ss, form, config, gamePlan, survivor, eliminator, survivorStart, eliminatorStart) {
-  // 1. Create the page break and set its final destination.
-  const newUserPage = form.addPageBreakItem();
-  newUserPage.setGoToPage(FormApp.PageNavigationType.SUBMIT);
+function buildIndividualBonusQuestion(ss, form, gamePlan, config) {
+  const bonusCount = parseInt(config.individualBonusCount, 10) || 1;
+  const mandatory = !!config.individualBonusMandatory;
+  const weighting = config.individualBonusWeighting || 1;
+  const penalty = config.individualBonusPenalty || 0;
   
-  // --- [THE NEW LOGIC] ---
-  // 3. Conditionally add contest questions directly to this page.  
-  contests = 0;
-  if ((survivor && survivorStart) || (eliminator && eliminatorStart)) {
-    form.addSectionHeaderItem().setTitle(`🏆 Contest Pick${(survivor && survivorStart) && (eliminator && eliminatorStart) ? 's' : ''}`);
-  }
-  if (survivor) {
-    if (survivorStart) {
-      Logger.log(`👑 NEW USER: Eligible for survivor start week (${gamePlan.week}), adding queston...`);
-      let allSurvivorTeamsForWeek = buildTeamList(gamePlan, config, config.survivorAts);
-      addContestQuestion(form, 'survivor', {}, config.survivorAts, config.survivorStartWeek, allSurvivorTeamsForWeek, survivorStart); // Pass empty member object
-      ss.toast(`Generated new user survivor question`,`👑 NEW USER SURVIVOR`);
-      contests++;
+  // Build the matchup list (Game selection rather than individual team selection)
+  const availableMatchups = gamePlan.games.map(game => {
+    
+    // If Pick 'ems are ATS, logically show the spread for the bonus picks as well
+    if (config.pickemsAts && game.spread && game.spread !== 'PK' && game.spread != 0) {
+      const spreadMatch = game.spread.match(/([A-Z]+)\s*(-?\d+\.?\d*)/);
+      if (spreadMatch) {
+        const [, favoriteTeam, spreadValue] = spreadMatch;
+        const numericSpread = parseFloat(spreadValue);
+        
+        const awaySpread = favoriteTeam === game.awayTeam ? numericSpread : Math.abs(numericSpread);
+        const homeSpread = favoriteTeam === game.homeTeam ? numericSpread : Math.abs(numericSpread);
+        
+        const awayStr = `${game.awayTeam} ${awaySpread > 0 ? '+' : ''}${awaySpread}`;
+        const homeStr = `${game.homeTeam} ${homeSpread > 0 ? '+' : ''}${homeSpread}`;
+        
+        return `${awayStr} @ ${homeStr}`;
+      }
+    }
+    
+    // Fallback for non-ATS or Pick 'Em (PK) spreads
+    return `${game.awayTeam} @ ${game.homeTeam}`;
+    
+  }).sort((a, b) => a.localeCompare(b)); // Sort alphabetically by Away team
+  
+  const title = `⭐ Individual Bonus Matchup${bonusCount > 1 ? 's' : ''}`;
+  let helpText = `Bonus Value: ${weighting}x points  |  Penalty: ${penalty} points for an incorrect pick.\n\n`;
+  helpText += mandatory ? `You MUST select exactly ${bonusCount} matchup${bonusCount > 1 ? 's' : ''}.` : `Select up to ${bonusCount} matchup${bonusCount > 1 ? 's' : ''}.`;
+  
+  if (bonusCount === 1) {
+    // Dropdown for a single choice
+    form.addListItem()
+      .setTitle(title)
+      .setHelpText(helpText)
+      .setChoiceValues(availableMatchups)
+      .setRequired(mandatory);
+  } else {
+    // Checkboxes for multiple choices with validation
+    let checkboxItem = form.addCheckboxItem()
+      .setTitle(title)
+      .setHelpText(helpText)
+      .setChoiceValues(availableMatchups)
+      .setRequired(mandatory);
+      
+    let validationBuilder = FormApp.createCheckboxValidation();
+    if (mandatory) {
+      validationBuilder.requireSelectExactly(bonusCount); // Exact count if mandatory
     } else {
-      Logger.log(`👑 NEW USER: Ineligible for survivor start week (${gamePlan.week})`);
+      validationBuilder.requireSelectAtMost(bonusCount);  // Max cap if optional
     }
-  } else {
-    Logger.log(`👑 NEW USER: No eliminator pool present`);
+    checkboxItem.setValidation(validationBuilder.build());
   }
-
-  if (eliminator) {
-    if (eliminatorStart) {
-      Logger.log(`💀 NEW USER: Eligible for eliminator start week (${gamePlan.week}), adding queston...`);
-      let allEliminatorTeamsForWeek = buildTeamList(gamePlan, config, config.eliminatorAts);
-      addContestQuestion(form, 'eliminator', {}, config.eliminatorAts, config.eliminatorStartWeek, allEliminatorTeamsForWeek, eliminatorStart); // Pass empty member object
-      ss.toast(`Generated new user eliminator question`,`💀 NEW USER ELIMINATOR`);
-      contests++;
-    } else {
-      Logger.log(`💀 NEW USER: Ineligible for eliminator start week (${gamePlan.week})`);
-    }
-  } else {
-    Logger.log(`💀 NEW USER: No eliminator pool present`);
-  }
-
-  if (contests > 0) {
-    form.addSectionHeaderItem().setTitle('✏️ Name Entry');
-    newUserPage.setTitle('New User Contest Entry & Signup')
-  } else {
-    newUserPage.setTitle('New User Signup')
-  }
-
-  form.addTextItem()
-    .setTitle('Enter Your Name')
-    .setHelpText('Please enter your name as it will appear in the pool.')
-    .setRequired(true)
-    .setValidation(nameValidation);
-  // 4. Return the page break item so the main function can use it for navigation.
-  return newUserPage;
-}
-
-/**
- * Takes all games within gameplan and populates an array with the team abbreviations, including emojis if enabled
- * 
- * @param {object} all data submitted by form creation panel
- * @param {object} league data with necessary booleans/values
- * @param {boolean} optional value to determin if spreads should be added
- * @returns {array} all teams selected for the given week to provide in a survivor/eliminator drop-down with ATS
- */
-function buildTeamList(gamePlan, config, isAts) {
-  isAts = isAts || (config.survivorAts || config.elminatorAts); // Fallback
-  return gamePlan.games.flatMap(game => {
-    const awayEmojis = `${!config.hideEmojis ? ' ' + LEAGUE_DATA[game.awayTeam].mascot : ''}`;
-    const homeEmojis = `${!config.hideEmojis ? ' ' + LEAGUE_DATA[game.homeTeam].mascot : ''}`;
-    if (!isAts || game.spread === 'PK' || game.spread == 0) {
-      return [
-        `${game.awayTeam}${awayEmojis}`,
-        `${game.homeTeam}${homeEmojis}`];
-    }
-    // Extract the numeric value and determine which team is favored
-    const spreadMatch = game.spread.match(/([A-Z]+)\s*(-?\d+\.?\d*)/);
-    if (!spreadMatch) return [`${game.awayTeam}${awayEmojis}`,`${game.homeTeam}${homeEmojis}`]; // Fallback
-    
-    const [,favoriteTeam, spreadValue] = spreadMatch;
-    const numericSpread = parseFloat(spreadValue);
-    
-    // Determine spreads for away and home teams
-    const awaySpread = favoriteTeam === game.awayTeam ? numericSpread : Math.abs(numericSpread);
-    const homeSpread = favoriteTeam === game.homeTeam ? numericSpread : Math.abs(numericSpread);
-    
-    return [
-      `${game.awayTeam} ${awaySpread > 0 ? '+' : ''}${awaySpread}${awayEmojis}`,
-      `${game.homeTeam} ${homeSpread > 0 ? '+' : ''}${homeSpread}${homeEmojis}`
-    ];
-  }).sort((a, b) => a.charAt(0).localeCompare(b.charAt(0)));
+  
+  ss.toast(`Added Individual Bonus question (Count: ${bonusCount})`, `⭐ BONUS CREATED`);
+  Logger.log(`⭐ Individual bonus matchup question created.`);
 }
 
 /**
