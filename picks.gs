@@ -1,7 +1,7 @@
 const VERSION = '1.2.8';
 /** GOOGLE SHEETS FOOTBALL PICK 'EMS, SURVIVOR, & ELIMINATOR TOOL | 2025 Edition
  * Script Library for League Creator & Management Platform
- * 10/20/2026
+ * 10/21/2026
  * 
  * Created by Ben Powers
  * ben.powers.creative@gmail.com
@@ -11312,7 +11312,7 @@ function weeklySheet(ss,week,config,forms,memberData,displayEmpty,rebuild) {
     .setHorizontalAlignment('left');
  
   sheet.setFrozenColumns(firstMatchupCol-1);
-  sheet.setFrozenRows(subHeaderRow);=1
+  sheet.setFrozenRows(subHeaderRow);
   sheet.getRange(1,1,1,columns)
     .setBackground('black')
     .setFontColor('white')
