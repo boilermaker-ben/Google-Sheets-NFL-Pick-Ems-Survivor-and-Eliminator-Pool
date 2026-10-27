@@ -143,6 +143,9 @@
     .ib-note { display: block; font-size: 11px; color: #333; }
     #poolwideused { transition: color 0.2s ease, font-weight 0.2s ease; }
     #poolwideused.active-warning { color: #D50A0A; font-weight: 700;  }
+    .tooltip { position: relative; display: inline-block; cursor: help; }
+    .tooltip .tooltiptext { visibility: hidden; font-size: 10pt; width: 220px; background-color: #ffffff; border-radius: 6px; border: 2px solid #D50A0A; color: #000000; text-align: center; padding: 6px; position: absolute; z-index: 100; bottom: 125%; left: 50%; margin-left: -110px; opacity: 0; transition: opacity 0.3s; box-shadow: 0 2px 8px rgba(0,0,0,0.15); pointer-events: none; }
+    .tooltip:hover .tooltiptext { visibility: visible; opacity: 1; }
   </style>
 </head>
 <body>
@@ -368,9 +371,9 @@
         bonusBanner.innerHTML = `
           <div class="ib-icon">⭐</div>
           <div class="ib-text">
-            <strong>${reqText == "Required" ? "Required Individual Bonus" : "Individual Bonus Active"}:</strong> Users ${reqText == "Required" ? "<strong>must</strong>" : "may"} pick <strong>${count}</strong> ${gameText} in the form  (<strong>+${weight}x</strong> points if correct${penalty == 0 ? ")" : ", <strong>" + penalty + "</strong> points if incorrect)"}
-            <span class="ib-note" id="poolwideused">Pool-wide bonus game(s) will be removed from available matchups if selected.</span>
-            <span class="ib-note">To modify these rules, please use the Configuration menu.</span>
+            <span class="tooltip"><strong>${reqText == "Required" ? "Required Individual Bonus" : "Individual Bonus Active"}:</strong> Users ${reqText == "Required" ? "<strong>must</strong>" : "may"} pick <strong>${count}</strong> ${gameText} in the form (<strong>+${weight}x</strong> points if correct${penalty == 0 ? ")" : ", <strong>" + penalty + "</strong> points if incorrect)"}<span class="tooltiptext">To modify these rules, please use the Configuration menu.</span></span>
+            <br>
+            <span class="ib-note hidden" id="poolwideused"></span>
           </div>
         `;
         bonusBanner.classList.remove('hidden');
@@ -1105,15 +1108,25 @@
       const warningSpan = document.getElementById('poolwideused');
       if (!warningSpan) return; // Might not exist if Individual Bonus banner isn't active
 
-      // Look at all values in the state. If ANY are greater than 1, return true.
-      const hasPoolwideBonus = Object.values(bonusMultiplierState).some(multiplier => multiplier > 1);
+      // Find all games with a pool-wide bonus
+      const bonusGames = [];
+      for (const [gameId, multiplier] of Object.entries(bonusMultiplierState)) {
+        if (multiplier > 1) {
+          bonusGames.push(gameId);
+        }
+      }
 
-      if (hasPoolwideBonus) {
+      // Look at all values in the state. If ANY are greater than 1, return true.
+      if (bonusGames.length > 0) {
+        warningSpan.innerHTML = `⚠️ Pool-wide bonus game${bonusGames.length > 1 ? 's' : ''} will be removed from available matchups: ${bonusGames.join(', ')}`;
+        warningSpan.classList.remove('hidden');
         warningSpan.classList.add('active-warning');
       } else {
+        warningSpan.classList.add('hidden');
         warningSpan.classList.remove('active-warning');
       }
     }
+
 
     /**
      * Handles the click on the "Fetch Latest Spreads" button.
