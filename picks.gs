@@ -1,7 +1,7 @@
-const VERSION = '1.2.8';
+const VERSION = '1.2.9';
 /** GOOGLE SHEETS FOOTBALL PICK 'EMS, SURVIVOR, & ELIMINATOR TOOL | 2025 Edition
  * Script Library for League Creator & Management Platform
- * 10/21/2026
+ * 10/27/2026
  * 
  * Created by Ben Powers
  * ben.powers.creative@gmail.com
@@ -4967,7 +4967,7 @@ function buildPickemQuestions(ss, form, gamePlan, config) {
     Logger.log(`🏈 Pick 'Ems: ${LEAGUE_DATA[game.awayTeam].mascot}@${LEAGUE_DATA[game.homeTeam].mascot} created`);
   });
 
-  if (config.bonusInclude && config.individualBonus) {
+  if (gamePlan.bonusInclude && gamePlan.individualBonus) {
     buildIndividualBonusQuestion(ss, form, gamePlan, config);
   }
 
@@ -5002,12 +5002,12 @@ function buildPickemQuestions(ss, form, gamePlan, config) {
  * Evaluates counts, weightings, and requirements to deploy either a Dropdown or Checkbox item.
  */
 function buildIndividualBonusQuestion(ss, form, gamePlan, config) {
-  const bonusCount = parseInt(config.individualBonusCount, 10) || 1;
-  const mandatory = !!config.individualBonusMandatory;
-  const weighting = config.individualBonusWeighting || 1;
-  const penalty = config.individualBonusPenalty || 0;
+  const bonusCount = gamePlan.individualBonusCount || 1;
+  const mandatory = gamePlan.individualBonusMandatory;
+  const weighting = gamePlan.individualBonusWeighting || 1;
+  const penalty = gamePlan.individualBonusPenalty || 0;
   
-  // Build the matchup list (Game selection rather than individual team selection)
+  // Build the matchup list
   const availableMatchups = gamePlan.games.map(game => {
     
     // If Pick 'ems are ATS, logically show the spread for the bonus picks as well
