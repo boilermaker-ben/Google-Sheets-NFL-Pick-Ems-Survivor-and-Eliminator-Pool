@@ -50,7 +50,7 @@
     .spinner { border: 5px solid #f3f3f3; border-top: 5px solid #013369; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
     @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     .hidden { display: none !important; }
-    #matchup-table-container { margin-top: 20px; overflow-y: auto; border: 1px solid #ccc; transition: height 0.3s ease; }
+    #matchup-table-container { margin-top: 10px; overflow-y: auto; border: 1px solid #ccc; transition: height 0.3s ease; }
     table { width: 100%; border-collapse: collapse; }
     th, td { padding: 8px; text-align: left; font-size: 12px; border-bottom: 1px solid #ddd; text-align: center; }
     th { background-color: #f2f2f2; font-weight: 600; text-align: center; }
@@ -136,6 +136,13 @@
     input[type=number]::-webkit-inner-spin-button, 
     input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
     #random-count { -moz-appearance: textfield; }
+    #individual-bonus-banner { background-color: #f0f7ff; border: 2px solid #bce0fd; border-radius: 6px; padding: 8px 8px; margin-top: 10px; font-size: 12px; line-height: 1.4; color: #013369; display: flex; align-items: center; gap: 10px; }
+    #individual-bonus-banner.hidden { display: none !important; }
+    .ib-icon { font-size: 20px; }
+    .ib-text strong { color: #001f42; }
+    .ib-note { display: block; font-size: 11px; color: #333; }
+    #poolwideused { transition: color 0.2s ease, font-weight 0.2s ease; }
+    #poolwideused.active-warning { color: #D50A0A; font-weight: 700;  }
   </style>
 </head>
 <body>
@@ -194,6 +201,8 @@
   <div id="matchup-table-container"></div>
 
   <div id="tiebreaker-container" class="hidden"></div>
+
+  <div id="individual-bonus-banner" class="hidden"></div>
 
   <div class="button-row">
     <div id="randomizer-section" class="hidden" style="display: flex; align-items: center; border-radius: 5px; border: 3px solid #d39e00; height: 40px; overflow: hidden; background: #dbd6c5;">
@@ -346,6 +355,27 @@
         document.getElementById('modeWeekday').checked = true;
       } else if (config.matchupCustomization && config.matchupCustomization.mode === 'matchup') {
         document.getElementById('modeMatchup').checked = true;
+      }
+
+      const bonusBanner = document.getElementById('individual-bonus-banner');
+      if (config.bonusInclude && config.individualBonus) {
+        const count = parseInt(config.individualBonusCount, 10) || 1;
+        const weight = config.individualBonusWeighting || 1;
+        const penalty = config.individualBonusPenalty || 0;
+        const reqText = config.individualBonusMandatory ? "Required" : "Optional";
+        const gameText = count > 1 ? "matchups" : "matchup";
+
+        bonusBanner.innerHTML = `
+          <div class="ib-icon">⭐</div>
+          <div class="ib-text">
+            <strong>${reqText == "Required" ? "Required Individual Bonus" : "Individual Bonus Active"}:</strong> Users ${reqText == "Required" ? "<strong>must</strong>" : "may"} pick <strong>${count}</strong> ${gameText} in the form  (<strong>+${weight}x</strong> points if correct${penalty == 0 ? ")" : ", <strong>" + penalty + "</strong> points if incorrect)"}
+            <span class="ib-note" id="poolwideused">Pool-wide bonus game(s) will be removed from available matchups if selected.</span>
+            <span class="ib-note">To modify these rules, please use the Configuration menu.</span>
+          </div>
+        `;
+        bonusBanner.classList.remove('hidden');
+      } else {
+        bonusBanner.classList.add('hidden');
       }
 
       // Initial render
@@ -690,6 +720,7 @@
       }
       adjustDialogHeight(selectedWeek);
       renderTiebreakerOverUnder();
+      checkBonusWarning();
     }
     
     function refreshTiebreakerState() {
@@ -773,6 +804,10 @@
       // 2. Status message banner (if active/visible)
       if (showSpreads) {
         calculatedHeight += 45;
+      }
+
+      if (config.bonusInclude && config.individualBonus) {
+        calculatedHeight += 72; // Adds room for the banner + margins
       }
 
       // 3. Day of week section dividers (only exist in non-custom modes)
@@ -989,7 +1024,7 @@
       
       // Track this as a manual override
       manualBonusOverrides.add(targetGameId); 
-
+      
       const row = e.target.closest('tr');
       if (row.matches('.deselected-row')) {
         row.classList.remove('bonus-2x', 'bonus-3x');
@@ -1010,6 +1045,7 @@
       } else if (nextMultiplier === 3) {
         row.classList.add('bonus-3x');
       }
+      checkBonusWarning();
     }
 
     function randomizeBonusGames() {
@@ -1062,6 +1098,21 @@
       bonusMultiplierState[gameId] = 1;
       // Remove from manual overrides
       manualBonusOverrides.delete(gameId);
+      checkBonusWarning();
+    }
+
+    function checkBonusWarning() {
+      const warningSpan = document.getElementById('poolwideused');
+      if (!warningSpan) return; // Might not exist if Individual Bonus banner isn't active
+
+      // Look at all values in the state. If ANY are greater than 1, return true.
+      const hasPoolwideBonus = Object.values(bonusMultiplierState).some(multiplier => multiplier > 1);
+
+      if (hasPoolwideBonus) {
+        warningSpan.classList.add('active-warning');
+      } else {
+        warningSpan.classList.remove('active-warning');
+      }
     }
 
     /**
