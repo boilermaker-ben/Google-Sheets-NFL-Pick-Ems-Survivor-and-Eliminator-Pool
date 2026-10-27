@@ -1447,7 +1447,14 @@
         week: selectedWeek,
         membershipLocked: config.membershipLocked,
         formName: formName,
-        games: []
+        games: [],
+        
+        bonusInclude: !!config.bonusInclude,
+        individualBonus: !!config.individualBonus,
+        individualBonusCount: parseInt(config.individualBonusCount, 10) || 0,
+        individualBonusWeighting: config.individualBonusWeighting || 1,
+        individualBonusPenalty: config.individualBonusPenalty || 0,
+        individualBonusMandatory: !!config.individualBonusMandatory
       };
 
       includedGames.forEach((originalGame) => {
