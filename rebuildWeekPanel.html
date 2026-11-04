@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    body { 
+      font-family: 'Montserrat', Arial, sans-serif; 
+      padding: 15px 25px; 
+      text-align: center; 
+    }
+    p { 
+      font-size: 14px; 
+      line-height: 1.5; 
+      margin-bottom: 25px;
+      color: #333;
+    }
+    .select-container {
+      margin-bottom: 25px;
+    }
+    label { 
+      font-weight: 500; 
+      font-size: 14px;
+      margin-right: 8px;
+    }
+    select { 
+      font-size: 14px; 
+      font-family: 'Montserrat', Arial, sans-serif; 
+      font-weight: 600; 
+      padding: 7px 10px; 
+      border-radius: 6px; 
+      border: 2px solid #D50A0A; 
+      outline: none; 
+      cursor: pointer; 
+      transition: all 0.2s ease-in-out; 
+    }
+    .button-row { 
+      display: flex; 
+      gap: 8px; 
+      justify-content: center;
+    }
+    .btn { 
+      flex: 0.6; 
+      padding: 8px 14px; 
+      border: none; 
+      border-radius: 5px; 
+      cursor: pointer; 
+      font-size: 16px; 
+      font-weight: 600; 
+    }
+    .btn-primary { 
+      background-color: #013369; 
+      color: white; 
+    }
+    .btn-primary:hover:not(:disabled) { 
+      background-color: #2067b3; 
+    }
+    .btn-secondary { 
+      background-color: #D50A0A; 
+      color: white; 
+    }
+    .btn-secondary:hover:not(:disabled) { 
+      background-color: #ff3d3d; 
+    }
+    .btn:disabled {
+      background-color: #cccccc;
+      color: #666666;
+      cursor: not-allowed;
+    }
+    #status-msg { 
+      display: none; 
+      margin-top: 15px; 
+      font-weight: bold; 
+      font-size: 12px;
+    }
+    .loading { color: #013369; }
+    .error { color: #D50A0A; }
+  </style>
+</head>
+<body>
+  
+  <p>Select a week below to safely rebuild its layout. Existing picks, margins, and outcomes will be backed up and restored automatically.</p>
+  
+  <div class="select-container">
+    <label for="week-select">Select Week:</label>
+    <select id="week-select">
+      <? for (let i = 0; i < availableWeeks.length; i++) { ?>
+        <option value="<?= availableWeeks[i] ?>" <?= availableWeeks[i] === currentWeek ? 'selected' : '' ?>>
+          Week <?= availableWeeks[i] ?>
+        </option>
+      <? } ?>
+    </select>
+  </div>
+  
+  <div class="button-row">
+    <button id="cancel-btn" class="btn btn-secondary" onclick="google.script.host.close()">Cancel</button>
+    <button id="submit-btn" class="btn btn-primary" onclick="submitRebuild()">Rebuild</button>
+  </div>
+  
+  <div id="status-msg"></div>
+  
+  <script>
+    function submitRebuild() {
+      const week = document.getElementById('week-select').value;
+      const statusDiv = document.getElementById('status-msg');
+      const submitBtn = document.getElementById('submit-btn');
+      const cancelBtn = document.getElementById('cancel-btn');
+      
+      submitBtn.disabled = true;
+      cancelBtn.disabled = true;
+      submitBtn.innerText = "Processing...";
+      
+      statusDiv.style.display = 'block';
+      statusDiv.className = 'loading';
+      statusDiv.innerText = `Rebuilding Week ${week}... This may take a few moments.`;
+      
+      google.script.run
+        .withSuccessHandler(() => {
+          google.script.host.close();
+        })
+        .withFailureHandler((err) => {
+          submitBtn.disabled = false;
+          cancelBtn.disabled = false;
+          submitBtn.innerText = "Rebuild";
+          statusDiv.className = 'error';
+          statusDiv.innerText = '❌ Error: ' + err.message;
+        })
+        .processRebuildWeeklySheet(week);
+    }
+  </script>
+</body>
+</html>
