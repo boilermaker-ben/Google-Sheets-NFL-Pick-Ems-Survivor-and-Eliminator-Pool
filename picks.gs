@@ -118,12 +118,15 @@ function onOpen() {
         // Dynamically show Deploy vs Rebuild based on sheet existence
         if (config.survivorInclude) {
           if (SpreadsheetApp.getActiveSpreadsheet().getSheetByName('SURVIVOR')) {
-            sheetsMenu.addItem('👑 Rebuild Survivor Sheet', 'rebuildSurvivorSheet');
+            sheetsMenu.addSeparator().addItem('👑 Rebuild Survivor Sheet', 'rebuildSurvivorSheet');
           } else {
-            sheetsMenu.addItem('👑 Deploy Survivor Sheet', 'deploySurvivorSheet');
+            sheetsMenu.addSeparator().addItem('👑 Deploy Survivor Sheet', 'deploySurvivorSheet');
           }
         }
         if (config.eliminatorInclude) {
+          if (!config.survivorInclude) {
+            sheetsMenu.addSeparator();
+          }
           if (SpreadsheetApp.getActiveSpreadsheet().getSheetByName('ELIMINATOR')) {
             sheetsMenu.addItem('💀 Rebuild Eliminator Sheet', 'rebuildEliminatorSheet');
           } else {
@@ -9310,8 +9313,19 @@ function leaderboardSheet(ss, config, memberData) {
       .setRanges([weeklyChancesRange])
       .build()
   );
+
+  // 5. Comment of the Week Selected (excluded if no Comments)
+  if (!config.commentsExclude) {
+    formatRules.push(
+      SpreadsheetApp.newConditionalFormatRule()
+        .whenFormulaSatisfied(`=${sheet.getRange(dataStartRow, commentCol).getA1Notation()}=INDIRECT("COMMENT_WINNER_"&${weekCellString.replace(/^([A-Z]+)([0-9]+)$/i, '$$$1$$$2')})`)
+        .setBackground('#C9FFDF')
+        .setRanges([sheet.getRange(dataStartRow, commentCol, totalMembers, 1)])
+        .build()
+    );
+  }
   
-  // 5. Survivor & Eliminator Status Colors (IN = Green, OUT = Red)
+  // 6. Survivor & Eliminator Status Colors (IN = Green, OUT = Red)
   if (survPickCol > -1) {
     const survRange = sheet.getRange(dataStartRow, survLivesCol, totalMembers, 2);
     
@@ -9373,7 +9387,7 @@ function leaderboardSheet(ss, config, memberData) {
     formatRules.push(SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied(`=ISNUMBER(SEARCH("🟢",INDIRECT("R[0]C${elimLivesCol}",FALSE), 1))`).setBackground('#FFFDD4').setRanges([elimRange]).build());
   }
   
-  // 6. Conditional Formatting for Day Names
+  // 7. Conditional Formatting for Day Names
   const matchupDaysRange = sheet.getRange(matchupRow - 1, firstMatchupCol, 1, maxWeeklyGames)
   Object.keys(dayColorsFilledObj).forEach( day => {    
     const color = dayColorsFilledObj[day];
@@ -9386,7 +9400,7 @@ function leaderboardSheet(ss, config, memberData) {
         .build())
   });
 
-  // 7. Conditional Formatting for Team Colors
+  // 8. Conditional Formatting for Team Colors
   const matchupOutcomeRange = sheet.getRange(matchupRow + 1, firstMatchupCol, 1, maxWeeklyGames)
   Object.keys(LEAGUE_DATA).forEach( team => {    
     const teamData = LEAGUE_DATA[team];
@@ -9401,7 +9415,7 @@ function leaderboardSheet(ss, config, memberData) {
         .build())
   });
 
-  // 8. Weekly Wildcard (Contrarianism): Orange (#FCA503, 50%) -> Yellow (25%) -> Cyan (#7DFFFB, 0%)
+  // 9. Weekly Wildcard (Contrarianism): Orange (#FCA503, 50%) -> Yellow (25%) -> Cyan (#7DFFFB, 0%)
   const weeklyWildRange = sheet.getRange(dataStartRow, wildColIdx, totalMembers, 1);
   formatRules.push(
     SpreadsheetApp.newConditionalFormatRule()
@@ -9412,7 +9426,7 @@ function leaderboardSheet(ss, config, memberData) {
       .build()
   );
 
-  // 9. Tiebreaker Difference Exact Match (0 = Green #75F0A1)
+  // 10. Tiebreaker Difference Exact Match (0 = Green #75F0A1)
   if (config.tiebreakerInclude) {
     const diffColRange = sheet.getRange(dataStartRow, tiebreakerCol + 1, totalMembers, 1);
     formatRules.push(
@@ -9428,7 +9442,7 @@ function leaderboardSheet(ss, config, memberData) {
 
   // --- B. MATCHUP GRID & OUTCOME RULES ---
 
-  // 10. Home / Away Split Bias Colors (Row 6)
+  // 11. Home / Away Split Bias Colors (Row 6)
   const effectiveOutcomeRow = isAts ? spreadOutcomeRow : outcomeRow;
   const biasRange = sheet.getRange(summaryRow, firstMatchupCol, 1, maxWeeklyGames);
   let awayFormula = `=AND(REGEXEXTRACT(INDIRECT("R[0]C[0]",FALSE),"[A-Z]{2,3}")=REGEXEXTRACT(INDIRECT("R${matchupRow}C[0]",FALSE),"[A-Z]{2,3}"), VALUE(REGEXEXTRACT(INDIRECT("R[0]C[0]",FALSE),"[0-9\.]+"))>=%%)`;
@@ -9439,7 +9453,7 @@ function leaderboardSheet(ss, config, memberData) {
     formatRules.push(SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied(homeFormula.replace('%%', rule.percent)).setBackground(rule.home).setRanges([biasRange]).build());
   });
 
-  // 11. Completed Matchup Headers Dimming
+  // 12. Completed Matchup Headers Dimming
   const matchupHeadersRange = sheet.getRange(matchupRow, firstMatchupCol, 1, maxWeeklyGames);
   formatRules.push(
     SpreadsheetApp.newConditionalFormatRule()
@@ -9450,7 +9464,7 @@ function leaderboardSheet(ss, config, memberData) {
       .build()
   );
 
-  // 12. Matchup Grid Picks (Zebra Parity + Bonus Multipliers + Correct/Incorrect)
+  // 13. Matchup Grid Picks (Zebra Parity + Bonus Multipliers + Correct/Incorrect)
   const bonusCount = 3;
   const parities = { even: { fn: 'iseven' }, odd: { fn: 'isodd' } };
   const picksGridRange = sheet.getRange(dataStartRow, firstMatchupCol, totalMembers, maxWeeklyGames);
@@ -11263,19 +11277,21 @@ function weeklySheet(ss,week,config,forms,memberData,displayEmpty,rebuild) {
     sheet.getRange(entryRowStart,commentCol,totalMembers,1).setHorizontalAlignment('left').setFontSize(9).setFontFamily("Arial Narrow").setFontColor('#111111');
     // sheet.getRange(summaryLabelRow,commentCol,2,1).merge();
     sheet.getRange(summaryLabelRow,commentCol).setValue('🏅 COMMENT OF THE WEEK').setHorizontalAlignment('left').setFontSize(9).setFontWeight('bold').setFontColor('#FFFFFF').setBackground('#333333');
+    const commentOfTheWeek = sheet.getRange(summaryRow,commentCol);
     if (!rebuild) {
       const commentValidation = SpreadsheetApp.newDataValidation()
         .setHelpText('Select one of the comments once the sheet has been populated')
         .requireValueInList(['No Comments Yet'],true)
         .setAllowInvalid(true)
         .build();
-      sheet.getRange(summaryRow,commentCol).setDataValidation(commentValidation).setValue('No Comments Yet');
+      commentOfTheWeek.setDataValidation(commentValidation).setValue('No Comments Yet');
     }
-    sheet.getRange(summaryRow,commentCol).setHorizontalAlignment('left')
+    commentOfTheWeek.setHorizontalAlignment('left')
       .setFontSize(9)
       .setFontFamily("Arial Narrow")
       .setFontColor('#111111')
       .setBackground('#CCCCCC');
+    ss.setNamedRange(`COMMENT_WINNER_${week}`,commentOfTheWeek);
   }
   // Set cohesion/contrarian ranges to Arial Narrow and smaller font
   sheet.getRange(entryRowStart,diffCol,members.length,diffCount).setHorizontalAlignment('left').setFontSize(9).setFontFamily("Arial Narrow");
@@ -11295,6 +11311,7 @@ function weeklySheet(ss,week,config,forms,memberData,displayEmpty,rebuild) {
   sheet.getRange(matchupRow,1,1,sheet.getMaxColumns()).setVerticalAlignment('middle');
   sheet.setRowHeight(matchupRow,50);
   sheet.getRange(matchupRow,1).setHorizontalAlignment('center');
+  sheet.getRange(entryRowStart, 1, totalMembers, 1).setHorizontalAlignment('left');
   
   sheet.getRange(subHeaderRow,firstMatchupCol,1,matchups).setFontSize(7);
   sheet.getRange(subHeaderRow,1,1,maxCols).setBackground('#CCCCCC');
