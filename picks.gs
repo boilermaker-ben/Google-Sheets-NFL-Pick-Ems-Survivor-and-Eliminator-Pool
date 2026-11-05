@@ -11171,6 +11171,15 @@ function weeklySheet(ss,week,config,forms,memberData,displayEmpty,rebuild) {
     .setRanges([range])
     .build());
 
+  // Comment of the week selected highlighting
+  if (!config.commentsExclude) {
+    formatRules.push(SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied(`=${sheet.getRange(entryRowStart, commentCol).getA1Notation()}=${sheet.getRange(summaryRow,commentCol).getA1Notation().replace(/^([A-Z]+)([0-9]+)$/i, '$$$1$$$2')}`)
+      .setBackground('#C9FFDF')
+      .setRanges([sheet.getRange(entryRowStart,commentCol,totalMembers,1)])
+      .build());
+  }
+
   ss.setNamedRange(`WILDCARD_${week}`, sheet.getRange(entryRowStart, wildcardCol, totalMembers, 1));
   const wildcardWithSummaryRange = sheet.getRange(entryRowStart, wildcardCol, totalMembers + 2, 1);
   wildcardWithSummaryRange.setNumberFormat('0.0%');
