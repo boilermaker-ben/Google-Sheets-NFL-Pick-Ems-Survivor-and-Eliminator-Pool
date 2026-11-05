@@ -5073,6 +5073,104 @@ function buildIndividualBonusQuestion(ss, form, gamePlan, config) {
 }
 
 /**
+ * Builds the page for a new user to sign up.
+ * This function now intelligently adds Survivor and/or Eliminator questions
+ * directly to the same page if it's the first week of the contest.
+ *
+ * @param {Form} form The Google Form object to add items to.
+ * @param {Object} config The main configuration object for the pool.
+ * @param {Object} gamePlan The game plan for the current week.
+ * @returns {PageBreakItem} The created page break item for navigation.
+ */
+function buildNewUserPage(ss, form, config, gamePlan, survivor, eliminator, survivorStart, eliminatorStart) {
+  // Create the page break and set its final destination.
+  const newUserPage = form.addPageBreakItem();
+  newUserPage.setGoToPage(FormApp.PageNavigationType.SUBMIT);
+  contests = 0;
+  if ((survivor && survivorStart) || (eliminator && eliminatorStart)) {
+    form.addSectionHeaderItem().setTitle(`🏆 Contest Pick${(survivor && survivorStart) && (eliminator && eliminatorStart) ? 's' : ''}`);
+  }
+  if (survivor) {
+    if (survivorStart) {
+      Logger.log(`👑 NEW USER: Eligible for survivor start week (${gamePlan.week}), adding queston...`);
+      let allSurvivorTeamsForWeek = buildTeamList(gamePlan, config, config.survivorAts);
+      addContestQuestion(form, 'survivor', {}, config.survivorAts, config.survivorStartWeek, allSurvivorTeamsForWeek, survivorStart); // Pass empty member object
+      ss.toast(`Generated new user survivor question`,`👑 NEW USER SURVIVOR`);
+      contests++;
+    } else {
+      Logger.log(`👑 NEW USER: Ineligible for survivor start week (${gamePlan.week})`);
+    }
+  } else {
+    Logger.log(`👑 NEW USER: No eliminator pool present`);
+  }
+
+  if (eliminator) {
+    if (eliminatorStart) {
+      Logger.log(`💀 NEW USER: Eligible for eliminator start week (${gamePlan.week}), adding queston...`);
+      let allEliminatorTeamsForWeek = buildTeamList(gamePlan, config, config.eliminatorAts);
+      addContestQuestion(form, 'eliminator', {}, config.eliminatorAts, config.eliminatorStartWeek, allEliminatorTeamsForWeek, eliminatorStart); // Pass empty member object
+      ss.toast(`Generated new user eliminator question`,`💀 NEW USER ELIMINATOR`);
+      contests++;
+    } else {
+      Logger.log(`💀 NEW USER: Ineligible for eliminator start week (${gamePlan.week})`);
+    }
+  } else {
+    Logger.log(`💀 NEW USER: No eliminator pool present`);
+  }
+
+  if (contests > 0) {
+    form.addSectionHeaderItem().setTitle('✏️ Name Entry');
+    newUserPage.setTitle('New User Contest Entry & Signup')
+  } else {
+    newUserPage.setTitle('New User Signup')
+  }
+
+  form.addTextItem()
+    .setTitle('Enter Your Name')
+    .setHelpText('Please enter your name as it will appear in the pool.')
+    .setRequired(true)
+    .setValidation(nameValidation);
+  // Return the page break item so the main function can use it for navigation.
+  return newUserPage;
+}
+
+/**
+ * Takes all games within gameplan and populates an array with the team abbreviations, including emojis if enabled
+ * 
+ * @param {object} all data submitted by form creation panel
+ * @param {object} league data with necessary booleans/values
+ * @param {boolean} optional value to determin if spreads should be added
+ * @returns {array} all teams selected for the given week to provide in a survivor/eliminator drop-down with ATS
+ */
+function buildTeamList(gamePlan, config, isAts) {
+  isAts = isAts || (config.survivorAts || config.elminatorAts); // Fallback
+  return gamePlan.games.flatMap(game => {
+    const awayEmojis = `${!config.hideEmojis ? ' ' + LEAGUE_DATA[game.awayTeam].mascot : ''}`;
+    const homeEmojis = `${!config.hideEmojis ? ' ' + LEAGUE_DATA[game.homeTeam].mascot : ''}`;
+    if (!isAts || game.spread === 'PK' || game.spread == 0) {
+      return [
+        `${game.awayTeam}${awayEmojis}`,
+        `${game.homeTeam}${homeEmojis}`];
+    }
+    // Extract the numeric value and determine which team is favored
+    const spreadMatch = game.spread.match(/([A-Z]+)\s*(-?\d+\.?\d*)/);
+    if (!spreadMatch) return [`${game.awayTeam}${awayEmojis}`,`${game.homeTeam}${homeEmojis}`]; // Fallback
+    
+    const [,favoriteTeam, spreadValue] = spreadMatch;
+    const numericSpread = parseFloat(spreadValue);
+    
+    // Determine spreads for away and home teams
+    const awaySpread = favoriteTeam === game.awayTeam ? numericSpread : Math.abs(numericSpread);
+    const homeSpread = favoriteTeam === game.homeTeam ? numericSpread : Math.abs(numericSpread);
+    
+    return [
+      `${game.awayTeam} ${awaySpread > 0 ? '+' : ''}${awaySpread}${awayEmojis}`,
+      `${game.homeTeam} ${homeSpread > 0 ? '+' : ''}${homeSpread}${homeEmojis}`
+    ];
+  }).sort((a, b) => a.charAt(0).localeCompare(b.charAt(0)));
+}
+
+/**
  * Combines emoji or square entries to present user with visual of remaining lives
  * 
  * @param {boolean} state of whether emojis are present or not
