@@ -10666,7 +10666,7 @@ function launchRebuildWeeklyPanel() {
 
   const html = template.evaluate()
       .setWidth(400)
-      .setHeight(220); // Shorter, cleaner popup
+      .setHeight(275); // Shorter, cleaner popup
   SpreadsheetApp.getUi().showModalDialog(html, 'Rebuild a Weekly Sheet');
 }
 
@@ -10937,7 +10937,7 @@ function weeklySheet(ss,week,config,forms,memberData,displayEmpty,rebuild) {
   let finalCol = diffCol + (diffCount-1);
   headers.push('', '', '🤺 CONTRARY', '');
   subHeaders.push('Most similar pickers', '', '', 'Most different pickers', '');
-  widths.push(...Array(diffCount).fill(90));
+  widths.push(...Array(diffCount).fill(145));
   fontSizes.push(...Array(diffCount).fill(10));
   subFontSizes.push(...Array(diffCount).fill(7));
 
@@ -11814,6 +11814,7 @@ function paintWeeklyPicksGrid(ss, week, memberData, config) {
 
 /**
  * Calculates Cohesion (Similar), Contrary, Chalk, and Lone Wolf metrics.
+ * Uses a dynamic scale based on the total number of games to appropriately weight colors.
  * Returns an object with rich text and backgrounds for both the main grid and summary rows.
  */
 function calculateCohesionMetrics(picks, tiebreakers, names) {
@@ -11822,8 +11823,24 @@ function calculateCohesionMetrics(picks, tiebreakers, names) {
   const playerRows = [];
   const boldStyle = SpreadsheetApp.newTextStyle().setBold(true).build();
   
-  const simColors = ['#46f081', '#6ef29c', '#96f5b7', '#bdf7d1', '#e4f0e8', '#f2f2f2'];
-  const contColors = { 7: '#ff4d4d', 6: '#ff6666', 5: '#ff8080', 4: '#ff9999', 3: '#ffb3b3', fallback: '#ffe6e6' };
+  // Dynamic Color Fader: 0 (Green) -> 50% (White) -> 100% (Red)
+  const getDynamicColor = (diff, maxDiff) => {
+    if (maxDiff === 0) return '#46f081'; // Safeguard
+    const pct = diff / maxDiff;
+    if (pct <= 0.5) {
+      const weight = pct / 0.5; // Scale 0 to 1
+      const r = Math.round(70 + (255 - 70) * weight).toString(16).padStart(2,'0');   // #46 -> 255
+      const g = Math.round(240 + (255 - 240) * weight).toString(16).padStart(2,'0'); // #f0 -> 255
+      const b = Math.round(129 + (255 - 129) * weight).toString(16).padStart(2,'0'); // #81 -> 255
+      return `#${r}${g}${b}`;
+    } else {
+      const weight = (pct - 0.5) / 0.5; // Scale 0 to 1
+      const r = 'ff'; // 255 -> 255
+      const g = Math.round(255 - (255 - 77) * weight).toString(16).padStart(2,'0'); // 255 -> #4d
+      const b = Math.round(255 - (255 - 77) * weight).toString(16).padStart(2,'0'); // 255 -> #4d
+      return `#${r}${g}${b}`;
+    }
+  };
 
   // 1. Determine Group Consensus ("Chalk") per game
   const consensusPicks = [];
@@ -11882,29 +11899,34 @@ function calculateCohesionMetrics(picks, tiebreakers, names) {
       p2pDistances.push({ name: playerB, diff: diffCount, tbDiff: Math.abs(tbA - tbB) });
     }
 
-    // Sort P2P and Group
+    // Sort P2P: Ascending by difference, then ascending by tiebreaker gap
     p2pDistances.sort((a, b) => (a.diff !== b.diff) ? (a.diff - b.diff) : (a.tbDiff - b.tbDiff));
 
     const similarGroups = [], contraryGroups = [];
+    const assignedNames = new Set(); // Prevent the same person from showing up in both blocks
+    
     let currentSimDiff = -1, simGroupIndex = -1;
     for (let d = 0; d < p2pDistances.length; d++) {
       const match = p2pDistances[d];
       if (match.diff !== currentSimDiff) {
-        if (simGroupIndex >= 2) break;
+        if (simGroupIndex >= 2) break; // Max 3 similar groups
         currentSimDiff = match.diff;
         simGroupIndex++;
         similarGroups.push({ diff: match.diff, names: [match.name] });
       } else {
         similarGroups[simGroupIndex].names.push(match.name);
       }
+      assignedNames.add(match.name);
     }
 
     let currentContDiff = -1, contGroupIndex = -1;
     for (let d = p2pDistances.length - 1; d >= 0; d--) {
       const match = p2pDistances[d];
-      if (match.diff < 3) break; 
+      if (match.diff === 0) break; // Can't be contrary if the picks are completely identical
+      if (assignedNames.has(match.name)) continue; // Ensure they aren't already listed as a 'Similar' picker!
+
       if (match.diff !== currentContDiff) {
-        if (contGroupIndex >= 1) break;
+        if (contGroupIndex >= 1) break; // Max 2 contrary groups
         currentContDiff = match.diff;
         contGroupIndex++;
         contraryGroups.push({ diff: match.diff, names: [match.name] });
@@ -11924,7 +11946,7 @@ function calculateCohesionMetrics(picks, tiebreakers, names) {
         const grp = similarGroups[s];
         const prefix = `${grp.diff}: `;
         rowOutput.richTextValues[s] = SpreadsheetApp.newRichTextValue().setText(prefix + grp.names.join(', ')).setTextStyle(0, prefix.length, boldStyle).build();
-        rowOutput.backgrounds[s] = simColors[grp.diff] || simColors[5];
+        rowOutput.backgrounds[s] = getDynamicColor(grp.diff, numGames);
       } else {
         rowOutput.richTextValues[s] = SpreadsheetApp.newRichTextValue().setText("").build();
       }
@@ -11935,7 +11957,7 @@ function calculateCohesionMetrics(picks, tiebreakers, names) {
         const grp = contraryGroups[c];
         const prefix = `${grp.diff}: `;
         rowOutput.richTextValues[3 + c] = SpreadsheetApp.newRichTextValue().setText(prefix + grp.names.join(', ')).setTextStyle(0, prefix.length, boldStyle).build();
-        rowOutput.backgrounds[3 + c] = contColors[grp.diff] || contColors['fallback'];
+        rowOutput.backgrounds[3 + c] = getDynamicColor(grp.diff, numGames);
       } else {
         rowOutput.richTextValues[3 + c] = SpreadsheetApp.newRichTextValue().setText("").build();
       }
@@ -11947,7 +11969,9 @@ function calculateCohesionMetrics(picks, tiebreakers, names) {
   chalkDistances.sort((a, b) => a.diff - b.diff);
 
   const closestGroups = [], farthestGroups = [];
+  const assignedChalkNames = new Set();
   let currentDiff = -1;
+  
   for (const d of chalkDistances) {
     if (d.diff !== currentDiff) {
       if (closestGroups.length >= 3) break;
@@ -11956,13 +11980,17 @@ function calculateCohesionMetrics(picks, tiebreakers, names) {
     } else {
       closestGroups[closestGroups.length - 1].names.push(d.name);
     }
+    assignedChalkNames.add(d.name);
   }
 
   currentDiff = -1;
   for (let i = chalkDistances.length - 1; i >= 0; i--) {
     const d = chalkDistances[i];
-    if (farthestGroups.length >= 2) break;
+    if (d.diff === 0) break; 
+    if (assignedChalkNames.has(d.name)) continue;
+
     if (d.diff !== currentDiff) {
+      if (farthestGroups.length >= 2) break;
       currentDiff = d.diff;
       farthestGroups.push({ diff: d.diff, names: [d.name] });
     } else {
@@ -11977,7 +12005,7 @@ function calculateCohesionMetrics(picks, tiebreakers, names) {
     if (closestGroups[s]) {
       const prefix = `${closestGroups[s].diff}: `;
       summaryValues[s] = SpreadsheetApp.newRichTextValue().setText(prefix + closestGroups[s].names.join(', ')).setTextStyle(0, prefix.length, boldStyle).build();
-      summaryBgs[s] = simColors[closestGroups[s].diff] || simColors[5];
+      summaryBgs[s] = getDynamicColor(closestGroups[s].diff, numGames);
     } else {
       summaryValues[s] = SpreadsheetApp.newRichTextValue().setText("").build();
     }
@@ -11987,7 +12015,7 @@ function calculateCohesionMetrics(picks, tiebreakers, names) {
     if (farthestGroups[c]) {
       const prefix = `${farthestGroups[c].diff}: `;
       summaryValues[3 + c] = SpreadsheetApp.newRichTextValue().setText(prefix + farthestGroups[c].names.join(', ')).setTextStyle(0, prefix.length, boldStyle).build();
-      summaryBgs[3 + c] = contColors[farthestGroups[c].diff] || contColors['fallback'];
+      summaryBgs[3 + c] = getDynamicColor(farthestGroups[c].diff, numGames);
     } else {
       summaryValues[3 + c] = SpreadsheetApp.newRichTextValue().setText("").build();
     }
